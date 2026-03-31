@@ -169,3 +169,7 @@ Qt*-linux*.tar.*
 .github/styles/
 .gemini/
 .pytest_cache/
+build/ 
+.cache/ 
+*.user 
+*.log 

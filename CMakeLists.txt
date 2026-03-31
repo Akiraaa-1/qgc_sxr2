@@ -118,6 +118,14 @@ include(CPM)
 # Toolchain Configuration (Compiler, Linker, Build Settings)
 # ----------------------------------------------------------------------------
 include(Toolchain)
+# ----------------------------------------------------------------------------
+# MSVC Preprocessor Configuration
+# ----------------------------------------------------------------------------
+if(MSVC)
+    add_compile_options(/Zc:preprocessor)  # 启用符合标准的预处理器
+    add_compile_options(/wd5105)           # 禁用 __VA_OPT__ 警告
+    add_compile_options(/bigobj)
+endif()
 
 # ----------------------------------------------------------------------------
 # Output Directories
