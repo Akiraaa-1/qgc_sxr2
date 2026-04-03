@@ -15,6 +15,7 @@ FlightMap {
     id:                         _root
     allowGCSLocationCenter:     true
     allowVehicleLocationCenter: !_keepVehicleCentered
+    showGCSPositionMarker:      false
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
     center:                     QGroundControl.flightMapPosition
@@ -24,6 +25,7 @@ FlightMap {
     property var    rightPanelWidth
     property var    planMasterController
     property bool   pipMode:                    false   // true: map is shown in a small pip mode
+    property bool   showMissionPaths:           true
     property var    toolInsets                          // Insets for the center viewport area
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
@@ -35,6 +37,14 @@ FlightMap {
     property real   _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     property var    _flyViewSettings:           QGroundControl.settingsManager.flyViewSettings
     property bool   _keepMapCenteredOnVehicle:  _flyViewSettings.keepMapCenteredOnVehicle.rawValue
+    readonly property real _maxMissionSegmentLengthM: 50000
+    readonly property color _inactiveMissionLineColor: "#9C6233"
+    readonly property color _inactiveMissionArrowColor: "#C97A38"
+    readonly property color _selectedMissionGlowColor: Qt.rgba(0.52, 0.43, 0.96, 0.26)
+    readonly property color _selectedMissionBandColor: Qt.rgba(0.56, 0.47, 0.92, 0.76)
+    readonly property color _selectedMissionCoreColor: "#E8893D"
+    readonly property color _selectedMissionWaypointColor: "#C87833"
+    readonly property color _selectedMissionCurrentColor: "#2DB748"
 
     property bool   _disableVehicleTracking:    false
     property bool   _keepVehicleCentered:       pipMode ? true : false
@@ -79,6 +89,39 @@ FlightMap {
                 point.x < rect.x + rect.width &&
                 point.y > rect.y &&
                 point.y < rect.y + rect.height;
+    }
+
+    function _missionLinePath(coord1, coord2) {
+        if (!coord1 || !coord1.isValid || !coord2 || !coord2.isValid) {
+            return []
+        }
+
+        const distance = coord1.distanceTo(coord2)
+        if (distance <= _maxMissionSegmentLengthM) {
+            return [coord1, coord2]
+        }
+
+        const pathPoints = [coord1]
+        const numSegments = Math.ceil(distance / _maxMissionSegmentLengthM)
+
+        for (let i = 1; i < numSegments; i++) {
+            const segmentDist = (i * distance) / numSegments
+            pathPoints.push(coord1.atDistanceAndAzimuth(segmentDist, coord1.azimuthTo(coord2)))
+        }
+
+        pathPoints.push(coord2)
+        return pathPoints
+    }
+
+    function _missionItemIndex(missionItem) {
+        if (!missionItem || missionItem.abbreviation === undefined || missionItem.abbreviation === null) {
+            return 0
+        }
+
+        const abbreviation = "" + missionItem.abbreviation
+        return abbreviation.length > 0 && abbreviation.charAt(0) > "A" && abbreviation.charAt(0) < "z"
+            ? -1
+            : missionItem.sequenceNumber
     }
 
     property real _animatedLatitudeStart
@@ -242,7 +285,7 @@ FlightMap {
         line.width: 3
         line.color: "red"
         z:          QGroundControl.zOrderTrajectoryLines
-        visible:    !pipMode
+        visible:    showMissionPaths && !pipMode
 
         Connections {
             target:                 QGroundControl.multiVehicleManager
@@ -266,6 +309,7 @@ FlightMap {
             vehicle:        object
             coordinate:     object.coordinate
             map:            _root
+            showStatusCard: !pipMode
             size:           pipMode ? ScreenTools.defaultFontPixelHeight : ScreenTools.defaultFontPixelHeight * 3
             z:              QGroundControl.zOrderVehicles
         }
@@ -297,19 +341,122 @@ FlightMap {
 
     // Add the items associated with each vehicles flight plan to the map
     Repeater {
-        model: QGroundControl.multiVehicleManager.vehicles
+        model: showMissionPaths ? QGroundControl.multiVehicleManager.vehicles : 0
 
         PlanMapItems {
             map:                    _root
             largeMapView:           !pipMode
             planMasterController:   masterController
             vehicle:                _vehicle
+            missionItemOpacity:     _vehicle === _activeVehicle ? 0 : 0.7
+            missionLineOpacity:     _vehicle === _activeVehicle ? 0 : 0.75
+            directionArrowOpacity:  _vehicle === _activeVehicle ? 0 : 0.9
+            missionLineColor:       _inactiveMissionLineColor
+            directionArrowColor:    _inactiveMissionArrowColor
 
             property var _vehicle: object
 
             PlanMasterController {
                 id: masterController
                 Component.onCompleted: startStaticActiveVehicle(object)
+            }
+        }
+    }
+
+    MapItemView {
+        model: showMissionPaths && !pipMode && _planMasterController && _planMasterController.missionController
+            ? _planMasterController.missionController.simpleFlightPathSegments
+            : 0
+
+        delegate: MapPolyline {
+            line.width: Math.max(10, ScreenTools.defaultFontPixelHeight * 0.96)
+            line.color: _root._selectedMissionGlowColor
+            z:          QGroundControl.zOrderWaypointLines + 2
+            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+        }
+    }
+
+    MapItemView {
+        model: showMissionPaths && !pipMode && _planMasterController && _planMasterController.missionController
+            ? _planMasterController.missionController.simpleFlightPathSegments
+            : 0
+
+        delegate: MapPolyline {
+            line.width: Math.max(6, ScreenTools.defaultFontPixelHeight * 0.58)
+            line.color: _root._selectedMissionBandColor
+            z:          QGroundControl.zOrderWaypointLines + 3
+            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+        }
+    }
+
+    MapItemView {
+        model: showMissionPaths && !pipMode && _planMasterController && _planMasterController.missionController
+            ? _planMasterController.missionController.simpleFlightPathSegments
+            : 0
+
+        delegate: MapPolyline {
+            line.width: Math.max(2, ScreenTools.defaultFontPixelHeight * 0.18)
+            line.color: _root._selectedMissionCoreColor
+            z:          QGroundControl.zOrderWaypointLines + 4
+            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+        }
+    }
+
+    MapItemView {
+        model: showMissionPaths && !pipMode && _planMasterController && _planMasterController.missionController
+            ? _planMasterController.missionController.directionArrows
+            : 0
+
+        delegate: MapLineArrow {
+            fromCoord:      object ? object.coordinate1 : undefined
+            toCoord:        object ? object.coordinate2 : undefined
+            arrowPosition:  3
+            arrowColor:     _root._selectedMissionCoreColor
+            _arrowSize:     ScreenTools.defaultFontPixelHeight * 0.9
+            z:              QGroundControl.zOrderWaypointLines + 5
+        }
+    }
+
+    MapItemView {
+        model: showMissionPaths && !pipMode && _planMasterController && _planMasterController.missionController
+            ? _planMasterController.missionController.visualItems
+            : 0
+
+        delegate: MapQuickItem {
+            id: selectedMissionItem
+
+            readonly property bool _isCurrentItem: object ? object.isCurrentItem || object.hasCurrentChildItem : false
+
+            anchorPoint.x:  sourceItem.anchorPointX
+            anchorPoint.y:  sourceItem.anchorPointY
+            coordinate:     object ? object.coordinate : QtPositioning.coordinate()
+            visible:        !!(object && object.specifiesCoordinate && object.coordinate && object.coordinate.isValid)
+            z:              QGroundControl.zOrderMapItems + 2
+
+            sourceItem: MissionItemIndexLabel {
+                checked:                selectedMissionItem._isCurrentItem
+                label:                  object && object.abbreviation !== undefined ? object.abbreviation : ""
+                index:                  _root._missionItemIndex(object)
+                gimbalYaw:              object ? object.missionGimbalYaw : NaN
+                vehicleYaw:             object ? object.missionVehicleYaw : NaN
+                showGimbalYaw:          !!(object && !isNaN(object.missionGimbalYaw))
+                highlightSelected:      true
+                color:                  selectedMissionItem._isCurrentItem ? _root._selectedMissionCurrentColor : _root._selectedMissionWaypointColor
+                indicatorBorderWidth:   selectedMissionItem._isCurrentItem ? 2 : 1
+                indicatorBorderColor:   selectedMissionItem._isCurrentItem ? "#E8F7E8" : "#F2A462"
+                labelBackgroundColor:   "#17181B"
+                labelBackgroundOpacity: 0.92
+                labelTextColor:         "#F2F4F6"
+                selectionRingColor:     Qt.rgba(1, 1, 1, 0.75)
+                selectionRingWidth:     2
+                selectionRingScale:     1.95
+                onClicked: {
+                    if (globals.guidedControllerFlyView && object && object.sequenceNumber !== undefined) {
+                        globals.guidedControllerFlyView.confirmAction(
+                            globals.guidedControllerFlyView.actionSetWaypoint,
+                            Math.max(object.sequenceNumber, 1))
+                    }
+                }
             }
         }
     }

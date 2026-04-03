@@ -17,6 +17,7 @@ MapQuickItem {
     property double heading:        vehicle ? vehicle.heading.value : Number.NaN    ///< Vehicle heading, NAN for none
     property real   size:           ScreenTools.defaultFontPixelHeight * 3          /// Default size for icon, most usage overrides this
     property bool   alert:          false                                           /// Collision alert
+    property bool   showStatusCard: false
 
     anchorPoint.x:  vehicleItem.width  / 2
     anchorPoint.y:  vehicleItem.height / 2
@@ -26,12 +27,43 @@ MapQuickItem {
     property bool   _adsbVehicle:   vehicle ? false : true
     property var    _map:           map
     property bool   _multiVehicle:  QGroundControl.multiVehicleManager.vehicles.count > 1
+    property bool   _showStatusCard: !!vehicle && showStatusCard && _multiVehicle
+
+    function _hasFactValue(fact) {
+        return fact && fact.rawValue !== undefined && !isNaN(Number(fact.rawValue))
+    }
+
+    function _factText(fact, fallback) {
+        const safeFallback = fallback === undefined ? "--" : fallback
+        if (!_hasFactValue(fact)) {
+            return safeFallback
+        }
+
+        const units = fact.units !== "" ? (" " + fact.units) : ""
+        return fact.valueString + units
+    }
+
+    function _vehicleTitle() {
+        if (!vehicle) {
+            return qsTr("Vehicle")
+        }
+
+        const names = [vehicle.vehicleName, vehicle.name, vehicle.callsign, vehicle.displayName, vehicle.objectName]
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i] === undefined || names[i] === null ? "" : ("" + names[i]).trim()
+            if (name !== "") {
+                return name
+            }
+        }
+
+        return qsTr("Vehicle %1").arg(vehicle.id)
+    }
 
     sourceItem: Item {
         id:         vehicleItem
         width:      vehicleIcon.width
         height:     vehicleIcon.height
-        opacity:    _adsbVehicle || vehicle === _activeVehicle ? 1.0 : 0.5
+        opacity:    _adsbVehicle ? 1.0 : (vehicle === _activeVehicle ? 1.0 : (_showStatusCard ? 0.86 : 0.5))
 
         MultiEffect {
             source: vehicleIcon
@@ -122,6 +154,100 @@ MapQuickItem {
             }
         }
 
+        Rectangle {
+            id: vehicleStatusCard
+            visible: _showStatusCard
+            x: ScreenTools.defaultFontPixelWidth * 0.35
+            y: -height - (ScreenTools.defaultFontPixelHeight * 0.32)
+            width: Math.max(titleLabel.implicitWidth, metricsColumn.implicitWidth) + (ScreenTools.defaultFontPixelWidth * 4.1)
+            height: metricsColumn.y + metricsColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.52)
+            radius: ScreenTools.defaultFontPixelHeight * 0.18
+            color: vehicle === _activeVehicle ? Qt.rgba(0.08, 0.09, 0.10, 0.96) : Qt.rgba(0.08, 0.09, 0.10, 0.88)
+            border.width: 1
+            border.color: vehicle === _activeVehicle ? Qt.rgba(0.56, 0.79, 1, 0.42) : Qt.rgba(1, 1, 1, 0.10)
+
+            QGCLabel {
+                id: titleLabel
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.72
+                anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.38
+                anchors.right: parent.right
+                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 1.9
+                color: "#F0F3F6"
+                elide: Text.ElideRight
+                font.weight: Font.DemiBold
+                font.pixelSize: ScreenTools.smallFontPixelHeight * 1.02
+                text: _root._vehicleTitle()
+            }
+
+            Column {
+                id: metricsColumn
+                x: ScreenTools.defaultFontPixelWidth * 0.72
+                y: titleLabel.y + titleLabel.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.18)
+                spacing: ScreenTools.defaultFontPixelHeight * 0.12
+
+                Row {
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.16
+
+                    QGCColoredImage {
+                        width: ScreenTools.defaultFontPixelHeight * 0.56
+                        height: width
+                        color: "#D6DBE2"
+                        fillMode: Image.PreserveAspectFit
+                        source: "/InstrumentValueIcons/arrow-thin-up.svg"
+                    }
+
+                    QGCLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: "#D9DDE2"
+                        font.pixelSize: ScreenTools.smallFontPixelHeight * 0.95
+                        text: _root._factText(vehicle ? vehicle.altitudeRelative : null, "--")
+                    }
+                }
+
+                Row {
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.16
+
+                    QGCColoredImage {
+                        width: ScreenTools.defaultFontPixelHeight * 0.56
+                        height: width
+                        color: "#D6DBE2"
+                        fillMode: Image.PreserveAspectFit
+                        source: "/InstrumentValueIcons/dashboard.svg"
+                    }
+
+                    QGCLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: "#D9DDE2"
+                        font.pixelSize: ScreenTools.smallFontPixelHeight * 0.95
+                        text: _root._factText(vehicle ? vehicle.groundSpeed : null, "--")
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            visible: vehicleStatusCard.visible
+            width: ScreenTools.defaultFontPixelHeight * 1.12
+            height: width
+            radius: width / 2
+            x: vehicleStatusCard.x + vehicleStatusCard.width - (width * 0.28)
+            y: vehicleStatusCard.y + ScreenTools.defaultFontPixelHeight * 0.42
+            color: Qt.rgba(0.12, 0.13, 0.15, 1.0)
+            border.width: 1.4
+            border.color: vehicle === _activeVehicle ? Qt.rgba(0.93, 0.96, 1, 0.86) : Qt.rgba(1, 1, 1, 0.46)
+
+            QGCColoredImage {
+                anchors.centerIn: parent
+                width: parent.width * 0.5
+                height: width
+                color: vehicle === _activeVehicle ? "#8FD1FF" : "#F0F3F6"
+                fillMode: Image.PreserveAspectFit
+                source: "/InstrumentValueIcons/drone.svg"
+            }
+        }
+
         QGCMapLabel {
             id:                         vehicleLabel
             anchors.top:                parent.bottom
@@ -129,7 +255,7 @@ MapQuickItem {
             map:                        _map
             text:                       vehicleLabelText
             font.pointSize:             _adsbVehicle ? ScreenTools.defaultFontPointSize : ScreenTools.smallFontPointSize
-            visible:                    _adsbVehicle ? !isNaN(altitude) : _multiVehicle
+            visible:                    _adsbVehicle ? !isNaN(altitude) : (_multiVehicle && !_showStatusCard)
             property string vehicleLabelText: visible ?
                                                   (_adsbVehicle ?
                                                        QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(altitude).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString + "\n" + callsign :

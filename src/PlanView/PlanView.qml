@@ -35,6 +35,7 @@ Item {
     property bool   _addWaypointOnClick: false
     property bool   _homeTrackingMapCenter: true
     property bool   _updatingHomeFromMapCenter: false
+    property bool   embeddedView: false
 
     readonly property int _layerMission: 1
     readonly property int _layerFence: 2
@@ -251,9 +252,11 @@ Item {
     }
 
     PlanViewToolBar {
-        id: planToolBar
-        planMasterController: _planMasterController
-        showRallyPointsHelp: _editingLayer === _layerRally
+        id:                     planToolBar
+        visible:                !_root.embeddedView
+        height:                 visible ? ScreenTools.toolbarHeight : 0
+        planMasterController:   _planMasterController
+        showRallyPointsHelp:    _editingLayer === _layerRally
     }
 
     Item {

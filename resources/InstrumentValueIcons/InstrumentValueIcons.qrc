@@ -91,6 +91,7 @@
 		<file alias="conversation.svg">conversation.svg</file>
 		<file alias="arrow-outline-down.svg">arrow-outline-down.svg</file>
 		<file alias="airplane.svg">airplane.svg</file>
+		<file alias="airplane-outline.svg">airplane-outline.svg</file>
 		<file alias="cheveron-right.svg">cheveron-right.svg</file>
 		<file alias="swap.svg">swap.svg</file>
 		<file alias="border-outer.svg">border-outer.svg</file>
@@ -126,6 +127,8 @@
 		<file alias="information-solid.svg">information-solid.svg</file>
 		<file alias="format-text-size.svg">format-text-size.svg</file>
 		<file alias="location.svg">location.svg</file>
+		<file alias="map-follow.svg">map-follow.svg</file>
+		<file alias="map-pan.svg">map-pan.svg</file>
 		<file alias="close-outline.svg">close-outline.svg</file>
 		<file alias="dots-horizontal-double.svg">dots-horizontal-double.svg</file>
 		<file alias="servers.svg">servers.svg</file>

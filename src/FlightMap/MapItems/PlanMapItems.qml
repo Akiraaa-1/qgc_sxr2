@@ -24,16 +24,22 @@ Item {
     property var    _rallyPointController:      planMasterController.rallyPointController
     property var    _guidedController:          globals.guidedControllerFlyView
     property var    _missionLineViewComponent
+    property real   missionItemOpacity:         1
+    property real   missionLineOpacity:         1
+    property real   directionArrowOpacity:      1
+    property color  missionLineColor:           QGroundControl.globalPalette.mapMissionTrajectory
+    property color  directionArrowColor:        "white"
 
     property string fmode: vehicle.flightMode
 
     // Add the mission item visuals to the map
     Repeater {
-        model: largeMapView ? _missionController.visualItems : 0
+        model: largeMapView && _root.missionItemOpacity > 0.01 ? _missionController.visualItems : 0
 
         delegate: MissionItemMapVisual {
             map:        _map
             vehicle:    _vehicle
+            opacity:    _root.missionItemOpacity
             onClicked:  _guidedController.confirmAction(_guidedController.actionSetWaypoint, Math.max(object.sequenceNumber, 1))
         }
     }
@@ -58,16 +64,20 @@ Item {
 
         MapItemGroup {
             MissionLineView {
-                model: _missionController.simpleFlightPathSegments
+                model:       _root.missionLineOpacity > 0.01 ? _missionController.simpleFlightPathSegments : 0
+                lineColor:   _root.missionLineColor
+                lineOpacity: _root.missionLineOpacity
             }
 
             MapItemView {
-                model: _missionController.directionArrows
+                model: _root.directionArrowOpacity > 0.01 ? _missionController.directionArrows : 0
 
                 delegate: MapLineArrow {
                     fromCoord:      object ? object.coordinate1 : undefined
                     toCoord:        object ? object.coordinate2 : undefined
                     arrowPosition:  3
+                    arrowColor:     _root.directionArrowColor
+                    opacity:        _root.directionArrowOpacity
                     z:              QGroundControl.zOrderWaypointLines + 1
                 }
             }

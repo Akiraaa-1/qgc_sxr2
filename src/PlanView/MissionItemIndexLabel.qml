@@ -19,6 +19,8 @@ Canvas {
     property bool   child:                  false
     property bool   highlightSelected:      false
     property var    color:                  checked ? "green" : (child ? qgcPal.mapIndicatorChild : qgcPal.mapIndicator)
+    property color  indicatorBorderColor:   Qt.rgba(0, 0, 0, 0)
+    property real   indicatorBorderWidth:   0
     property real   anchorPointX:           _height / 2
     property real   anchorPointY:           _height / 2
     property bool   specifiesCoordinate:    true
@@ -26,6 +28,12 @@ Canvas {
     property real   vehicleYaw
     property bool   showGimbalYaw:          false
     property bool   showSequenceNumbers:    true
+    property color  labelBackgroundColor:   "white"
+    property real   labelBackgroundOpacity: 0.5
+    property color  labelTextColor:         "black"
+    property color  selectionRingColor:     Qt.rgba(1, 1, 1, 0.5)
+    property real   selectionRingWidth:     1
+    property real   selectionRingScale:     2
 
     property real   _width:             showGimbalYaw ? Math.max(_gimbalYawWidth, labelControl.visible ? labelControl.width : indicator.width) : (labelControl.visible ? labelControl.width : indicator.width)
     property real   _height:            showGimbalYaw ? _gimbalYawWidth : (labelControl.visible ? labelControl.height : indicator.height)
@@ -78,8 +86,8 @@ Canvas {
         anchors.leftMargin:     -((_labelMargin * 2) + indicator.width)
         anchors.rightMargin:    -(_labelMargin * 2)
         anchors.fill:           labelControlLabel
-        color:                  "white"
-        opacity:                0.5
+        color:                  labelBackgroundColor
+        opacity:                labelBackgroundOpacity
         radius:                 _labelRadius
         visible:                _label.length !== 0 && !small
     }
@@ -92,7 +100,7 @@ Canvas {
         anchors.left:           indicator.right
         anchors.top:            indicator.top
         anchors.bottom:         indicator.bottom
-        color:                  "black"
+        color:                  labelTextColor
         text:                   _label
         verticalAlignment:      Text.AlignVCenter
         visible:                labelControl.visible
@@ -108,6 +116,8 @@ Canvas {
         height:                         width
         color:                          root.color
         radius:                         _indicatorRadius
+        border.width:                   indicatorBorderWidth
+        border.color:                   indicatorBorderColor
 
         QGCLabel {
             anchors.fill:           parent
@@ -122,12 +132,12 @@ Canvas {
 
     // Extra circle to indicate selection
     Rectangle {
-        width:          indicator.width * 2
+        width:          indicator.width * selectionRingScale
         height:         width
         radius:         width * 0.5
         color:          Qt.rgba(0,0,0,0)
-        border.color:   Qt.rgba(1,1,1,0.5)
-        border.width:   1
+        border.color:   selectionRingColor
+        border.width:   selectionRingWidth
         visible:        checked && highlightSelected
         anchors.centerIn: indicator
     }
