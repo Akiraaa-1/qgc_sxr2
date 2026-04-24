@@ -1,0 +1,131 @@
+﻿## main...origin/main
+ M src/AnalyzeView/AnalyzePage.qml
+ M src/AnalyzeView/AnalyzeView.qml
+ M src/AnalyzeView/CMakeLists.txt
+ M src/AnalyzeView/GeoTag/GeoTagPage.qml
+ M src/AnalyzeView/MAVLinkConsole/MAVLinkConsolePage.qml
+ M src/AnalyzeView/MAVLinkInspector/MAVLinkChart.qml
+ M src/AnalyzeView/MAVLinkInspector/MAVLinkInspectorPage.qml
+ M src/AnalyzeView/MAVLinkInspector/MAVLinkMessageButton.qml
+ M src/AnalyzeView/OnboardLogs/OnboardLogPage.qml
+ M src/AnalyzeView/Vibration/VibrationPage.qml
+ M src/AutoPilotPlugins/APM/APMFlightModesComponent.qml
+ M src/AutoPilotPlugins/Common/JoystickComponentSummary.qml
+ M src/AutoPilotPlugins/Common/RadioComponent.qml
+ M src/AutoPilotPlugins/PX4/ActuatorComponent.qml
+ M src/AutoPilotPlugins/PX4/ActuatorSlider.qml
+ M src/AutoPilotPlugins/PX4/AirframeComponent.qml
+ M src/AutoPilotPlugins/PX4/AirframeComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/FlightModesComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/PX4AutoPilotPlugin.cc
+ M src/AutoPilotPlugins/PX4/PX4FlightModes.qml
+ M src/AutoPilotPlugins/PX4/PX4RadioComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/PowerComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/SafetyComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/SensorsComponent.qml
+ M src/AutoPilotPlugins/PX4/SensorsComponentSummary.qml
+ M src/AutoPilotPlugins/PX4/SensorsSetup.qml
+ M src/FactSystem/FactControls/FactTextFieldSlider.qml
+ M src/FactSystem/FactControls/LabelledFactComboBox.qml
+ M src/FactSystem/FactControls/LabelledFactTextField.qml
+ M src/FlyView/FlyIntegratedPage.qml
+ M src/FlyView/FlyViewDocsChecklistPanel.qml
+ M src/FlyView/FlyViewInstrumentCards.qml
+ M src/FlyView/FlyViewInstrumentPanel.qml
+ M src/PlanView/CMakeLists.txt
+ M src/PlanView/CameraCalcCamera.qml
+ M src/PlanView/CameraCalcGrid.qml
+ M src/PlanView/CameraSection.qml
+ M src/PlanView/FWLandingPatternEditor.qml
+ M src/PlanView/GeoFenceEditor.qml
+ M src/PlanView/MissionDefaultsEditor.qml
+ M src/PlanView/MissionItemEditor.qml
+ M src/PlanView/PlanInfoEditor.qml
+ M src/PlanView/PlanTreeView.qml
+ M src/PlanView/PlanView.qml
+ M src/PlanView/PlanViewRightPanel.qml
+ M src/PlanView/RallyPointEditorHeader.qml
+ M src/PlanView/RallyPointItemEditor.qml
+ M src/PlanView/SimpleItemEditor.qml
+ M src/PlanView/StructureScanEditor.qml
+ M src/PlanView/SurveyItemEditor.qml
+ M src/PlanView/TransectStyleComplexItemEditor.qml
+ M src/PlanView/TransectStyleComplexItemStats.qml
+ M src/PlanView/TransectStyleComplexItemTabBar.qml
+ M src/PlanView/TransectStyleComplexItemTerrainFollow.qml
+ M src/PlanView/TransformEditor.qml
+ M src/PlanView/VTOLLandingPatternEditor.qml
+ M src/QmlControls/AppSettings.qml
+ M src/QmlControls/CMakeLists.txt
+ M src/QmlControls/ConfigButton.qml
+ M src/QmlControls/DropPanel.qml
+ M src/QmlControls/LabelledButton.qml
+ M src/QmlControls/QGCButton.qml
+ M src/QmlControls/QGCCheckBox.qml
+ M src/QmlControls/QGCCheckBoxSlider.qml
+ M src/QmlControls/QGCComboBox.qml
+ M src/QmlControls/QGCGroupBox.qml
+ M src/QmlControls/QGCLabel.qml
+ M src/QmlControls/QGCMenu.qml
+ M src/QmlControls/QGCMenuItem.qml
+ M src/QmlControls/QGCMenuSeparator.qml
+ M src/QmlControls/QGCPopupDialog.qml
+ M src/QmlControls/QGCRadioButton.qml
+ M src/QmlControls/QGCSimpleMessageDialog.qml
+ M src/QmlControls/QGCSlider.qml
+ M src/QmlControls/QGCTabButton.qml
+ M src/QmlControls/QGCTextField.qml
+ M src/QmlControls/SettingsButton.qml
+ M src/QmlControls/SettingsGroupLayout.qml
+ M src/QmlControls/SetupPage.qml
+ M src/QmlControls/ToolStrip.qml
+ M src/QmlControls/ToolStripHoverButton.qml
+ M src/QmlControls/VehicleSummaryRow.qml
+ M src/Settings/Mavlink.SettingsGroup.json
+ M src/Settings/MavlinkSettings.cc
+ M src/Settings/MavlinkSettings.h
+ M src/UI/MainWindow.qml
+ M src/UI/toolbar/MainStatusIndicator.qml
+ M src/UI/toolbar/SelectViewDropdown.qml
+ M src/Vehicle/VehicleLinkManager.cc
+ M src/Vehicle/VehicleSetup/CMakeLists.txt
+ M src/Vehicle/VehicleSetup/JoystickComponent.qml
+ M src/Vehicle/VehicleSetup/JoystickComponentButtonMonitor.qml
+ M src/Vehicle/VehicleSetup/RemoteControlCalibration.qml
+ M src/Vehicle/VehicleSetup/RemoteControlChannelMonitor.qml
+ M src/Vehicle/VehicleSetup/RemoteControlChannelValueDisplay.qml
+ M src/Vehicle/VehicleSetup/VehicleConfigView.qml
+ M src/Vehicle/VehicleSetup/VehicleSummary.qml
+ M tools/generators/config_qml/page_generator.py
+?? .backup_snapshots/
+?? src/AnalyzeView/AnalyzeButton.qml
+?? src/AnalyzeView/AnalyzeCard.qml
+?? src/AnalyzeView/AnalyzeCheckBox.qml
+?? src/AnalyzeView/AnalyzeComboBox.qml
+?? src/AnalyzeView/AnalyzePalette.qml
+?? src/AnalyzeView/AnalyzeSubMenuButton.qml
+?? src/AnalyzeView/AnalyzeTextField.qml
+?? src/FlyView/FlyIntegratedPage.20260414_155858.bak.qml
+?? src/PlanView/PlanAltitudeFactTextField.qml
+?? src/PlanView/PlanButton.qml
+?? src/PlanView/PlanCheckBox.qml
+?? src/PlanView/PlanCheckBoxSlider.qml
+?? src/PlanView/PlanComboBox.qml
+?? src/PlanView/PlanEditorTheme.qml
+?? src/PlanView/PlanFactCheckBox.qml
+?? src/PlanView/PlanFactComboBox.qml
+?? src/PlanView/PlanFactTextField.qml
+?? src/PlanView/PlanFactTextFieldSlider.qml
+?? src/PlanView/PlanLabelledButton.qml
+?? src/PlanView/PlanLabelledFactComboBox.qml
+?? src/PlanView/PlanLabelledFactTextField.qml
+?? src/PlanView/PlanPanel.qml
+?? src/PlanView/PlanRadioButton.qml
+?? src/PlanView/PlanSectionHeader.qml
+?? src/PlanView/PlanTabButton.qml
+?? src/PlanView/PlanTextField.qml
+?? src/QmlControls/ModernConfigSection.qml
+?? src/QmlControls/QGCPopupStyle.qml
+?? src/UI/MainWindow.before_startpage_flow_20260415_092116.bak.qml
+?? src/Vehicle/VehicleSetup/VehicleConfigMenu.qml
+?? src/Vehicle/VehicleSetup/assets/

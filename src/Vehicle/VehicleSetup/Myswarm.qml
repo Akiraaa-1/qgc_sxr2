@@ -1,0 +1,8498 @@
+
+
+
+import QtQuick.Window
+import QtQuick.Controls
+import QtPositioning
+
+import QGroundControl
+import QGroundControl.Cluster
+import QGroundControl.Controls
+import QGroundControl.Viewer3D
+
+import QtCharts
+import QtQuick 2.15
+import QtQuick.Layouts
+import QtQuick3D 6.8
+import QtQuick3D.Helpers
+
+import QtQuick3D.Physics 6.8
+import QtQuick3D.AssetUtils 6.8
+Window {
+    id: root
+    title: "我的编队 - 战术控制面板"
+    width: 1600
+    height: 1050
+    minimumWidth: 1200
+    minimumHeight: 850
+    visible: false
+    color: "#0B1021"  // 深黑蓝色背景 (FUI风格)
+
+    // 商业级 FUI 科幻风格配色方案 - 优化版
+    property color primaryColor: "#00E5FF"  // 霓虹青 (主高亮色 - 用于关键操作)
+    property color secondaryColor: "#00FF88"  // 电光绿 (成功/确认)
+    property color accentColor: "#00D4FF"   // 青色强调
+    property color dangerColor: "#FF3366"   // 霓虹红 (危险操作)
+    property color textColor: "#FFFFFF"     // 纯白色文字 (数据显示)
+    property color textColorDim: "#6B7280"  // 暗灰色文字 (标签)
+    property color panelColor: "#1E293B"    // 深灰蓝面板 (比背景稍亮)
+    property color controlColor: "#252A3A"  // 控件背景色
+    property color borderColor: "#00E5FF"   // 霓虹青边框 (少用)
+    property color gridColor: "#00E5FF"     // 网格线颜色 (极低透明度)
+    property color glowColor: "#00E5FF"     // 发光颜色
+
+    property color modelColor1: "#00E5FF"  // 霓虹青 - 第一组
+    property color modelColor2: "#00FF88"  // 电光绿 - 第二组
+    property color modelColor3: "#FF8C00"  // 霓虹橙 - 第三组（改为橙色）
+    property color modelColor4: "#FFD700"  // 金色 - 第四组
+
+    // 各组连接的模型数量
+    property int group1Count: 0
+    property int group2Count: 0
+    property int group3Count: 0
+    property int group4Count: 0
+
+    // 各组执行开关状态
+    property bool group1Enabled: false
+    property bool group2Enabled: false
+    property bool group3Enabled: false
+    property bool group4Enabled: false
+
+    // 检查是否有开关打开，返回打开的组号数组
+    function getEnabledGroups() {
+        var enabledGroups = [];
+        if (group1Enabled) enabledGroups.push(1);
+        if (group2Enabled) enabledGroups.push(2);
+        if (group3Enabled) enabledGroups.push(3);
+        if (group4Enabled) enabledGroups.push(4);
+        return enabledGroups;
+    }
+
+    // 执行命令到所有启用的组
+    function executeCommandToEnabledGroups(cmd1, cmd2, cmd3, cmd4, cmd5) {
+        var enabledGroups = getEnabledGroups();
+        if (enabledGroups.length === 0) {
+            noGroupEnabledPopup.open();
+            addMessage("命令执行失败：请先打开待执行组的开关", "warning");
+            return false;
+        }
+        for (var i = 0; i < enabledGroups.length; i++) {
+            // 第二个参数填入组别号
+            if (cmd1 === 1) {
+                // 起飞命令
+                test_mavlink._sendcom(1, enabledGroups[i], 0, 0, 0);
+                addMessage("发送起飞命令到第" + enabledGroups[i] + "组", "success");
+            } else if (cmd3 === 1) {
+                // 降落命令
+                test_mavlink._sendcom(0, enabledGroups[i], 1, 0, 0);
+                addMessage("发送降落命令到第" + enabledGroups[i] + "组", "success");
+            } else if (cmd4 !== 0) {
+                // 暂停命令
+                test_mavlink._sendcom(0, enabledGroups[i], 0, cmd4, 0);
+                addMessage("发送暂停命令到第" + enabledGroups[i] + "组", "info");
+            } else if (cmd5 !== 0) {
+                // 继续命令
+                test_mavlink._sendcom(0, enabledGroups[i], 0, 0, cmd5);
+                addMessage("发送继续命令到第" + enabledGroups[i] + "组", "info");
+            }
+        }
+        return true;
+    }
+
+    // 更新各组数量
+    function updateGroupCounts() {
+        var c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].is_connected) {
+                if (plan_arr[i].group_id === 1) c1++;
+                else if (plan_arr[i].group_id === 2) c2++;
+                else if (plan_arr[i].group_id === 3) c3++;
+                else if (plan_arr[i].group_id === 4) c4++;
+            }
+        }
+        group1Count = c1;
+        group2Count = c2;
+        group3Count = c3;
+        group4Count = c4;
+    }
+
+    // 清除所有模型的主机状态
+    function clearAllMainStatus() {
+        for (var i = 0; i < plan_arr.length; i++) {
+            plan_arr[i].set_main = 0;
+            plan_arr[i].is_main = false;
+        }
+    }
+
+    // 交互消息列表模型
+    ListModel {
+        id: messageListModel
+    }
+
+    // 添加交互消息的函数
+    // msgType: "info", "success", "warning", "error"
+    function addMessage(msg, msgType) {
+        // 过滤空消息
+        if (!msg || msg.toString().trim() === "") {
+            console.log("[addMessage] 忽略空消息");
+            return;
+        }
+
+        if (!msgType) msgType = "info";
+        var timestamp = new Date().toLocaleTimeString(Qt.locale(), "HH:mm:ss");
+        messageListModel.append({
+            "message": "[" + timestamp + "] " + msg,
+            "msgType": msgType
+        });
+        // 限制消息数量，最多保留100条
+        if (messageListModel.count > 100) {
+            messageListModel.remove(0);
+        }
+    }
+
+    // 您的属性和信号保持不变
+    signal message()
+    signal update_other_airplane(int param, int isset, int grp)
+
+
+    Mavlinktest2 { id: test_mavlink }
+    Swarmsend { id: swarm_send }
+
+    // 接收主机航线高度信号
+    Connections {
+        target: swarm_send
+        function onMainAltitudeChanged(vehicleId, altitude) {
+            console.log("收到主机航线高度信号: 飞机ID", vehicleId, "高度", altitude, "米");
+            // 根据vehicleId找到对应的组
+            var groupId = getGroupIdByVehicleId(vehicleId);
+            if (groupId > 0) {
+                console.log("飞机", vehicleId, "属于第", groupId, "组");
+                setMainHeight(groupId, altitude);
+                addMessage("收到飞机" + vehicleId + "航线高度: " + altitude.toFixed(1) + "米", "info");
+            } else {
+                console.log("未找到飞机", vehicleId, "对应的组");
+            }
+        }
+    }
+
+    // 根据vehicleId获取组ID
+    Connections {
+        target: swarm_send
+        function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
+            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message)
+            addMessage(message, result === 0 ? "success" : "error")
+            if (root.visible) {
+                syncFromGroundStationTimer.restart()
+            }
+        }
+    }
+
+    function getGroupIdByVehicleId(vehicleId) {
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].objectName == vehicleId.toString() ||
+                parseInt(plan_arr[i].objectName) === vehicleId) {
+                // 检查是否是主机
+                if (plan_arr[i].is_main || plan_arr[i].set_main === 1) {
+                    return plan_arr[i].group_id;
+                }
+            }
+        }
+        return -1;
+    }
+
+    function _clusterFact(vehicle, factName) {
+        if (!vehicle || !vehicle.parameterManager || !vehicle.parameterManager.parametersReady) {
+            return null;
+        }
+
+        if (!vehicle.parameterManager.parameterExists(-1, factName)) {
+            return null;
+        }
+
+        return vehicle.parameterManager.getParameter(-1, factName);
+    }
+
+    function _syncVehiclesFromGroundStation() {
+        var vehicles = QGroundControl.multiVehicleManager.vehicles;
+        if (!vehicles || plan_id.length === 0) {
+            syncFromGroundStationTimer.restart();
+            return;
+        }
+
+        var requiredCount = Math.min(50, vehicles.count);
+        if (requiredCount > 0 && Number(input_plan.text) !== requiredCount) {
+            input_plan.text = requiredCount.toString();
+            plan_to_visible();
+        }
+
+        if (plan_arr.length < requiredCount) {
+            syncFromGroundStationTimer.restart();
+            return;
+        }
+
+        _sysid_list = [];
+        modelmp = {0: 0};
+        idpos_map = {};
+        main_node_name = [0, 0, 0, 0];
+        clearAllMainStatus();
+
+        for (var nodeIndex = 0; nodeIndex < plan_arr.length; nodeIndex++) {
+            var node = plan_arr[nodeIndex];
+            node.objectName = (nodeIndex + 1).toString();
+            node.is_connected = false;
+            node.is_main = false;
+            node.set_main = 0;
+            node.group_id = 1;
+            node.pickable = true;
+        }
+
+        for (var i = 0; i < requiredCount; i++) {
+            var vehicle = vehicles.get(i);
+            var mappedNode = plan_arr[i];
+            if (!vehicle || !mappedNode) {
+                continue;
+            }
+
+            var vehicleId = Number(vehicle.id);
+            var groupFact = _clusterFact(vehicle, "SWARM_GROUP_ID");
+            var leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER");
+            var groupId = groupFact ? Number(groupFact.rawValue) : 1;
+            var isLeader = leaderFact ? Number(leaderFact.rawValue) !== 0 : false;
+
+            if (groupId < 1 || groupId > 4) {
+                groupId = 1;
+            }
+
+            mappedNode.objectName = vehicleId.toString();
+            mappedNode.is_connected = true;
+            mappedNode.group_id = groupId;
+            mappedNode.is_main = isLeader;
+            mappedNode.set_main = isLeader ? 1 : 0;
+
+            _sysid_list.push(vehicleId);
+            modelmp[vehicleId] = mappedNode;
+            idpos_map[vehicleId] = [mappedNode.model_x, mappedNode.model_y, mappedNode.model_z];
+
+            if (isLeader) {
+                main_node_name[groupId - 1] = vehicleId.toString();
+            }
+        }
+
+        updateGroupCounts();
+    }
+
+    Component.onCompleted: syncFromGroundStationTimer.start()
+
+    onVisibleChanged: {
+        if (visible) {
+            syncFromGroundStationTimer.start()
+        }
+    }
+
+    Connections {
+        target: QGroundControl.multiVehicleManager
+
+        function onVehicleAdded(vehicle) {
+            syncFromGroundStationTimer.restart()
+        }
+
+        function onVehicleRemoved(vehicle) {
+            syncFromGroundStationTimer.restart()
+        }
+    }
+
+    Timer {
+        id: syncFromGroundStationTimer
+        interval: 120
+        repeat: false
+        onTriggered: _syncVehiclesFromGroundStation()
+    }
+
+    // 集群操作确认弹窗
+    Timer {
+        id: liveStateRefreshTimer
+        interval: 1000
+        repeat: true
+        running: root.visible
+        onTriggered: _syncVehiclesFromGroundStation()
+    }
+
+    SwarmOperationPopup {
+        id: swarmOpPopup
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: 20
+        anchors.topMargin: 100
+        z: 1000  // 确保在最上层
+    }
+
+    // 连接Mavlinktest2的操作确认信号到弹窗和交互信息框
+    Connections {
+        target: test_mavlink
+        function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
+            console.log("[Myswarm] 收到操作确认: " + message);
+            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
+
+            // 同时添加到交互信息框
+            var msgType = (result === 0) ? "success" : "error";
+            addMessage(message, msgType);
+        }
+    }
+
+    // 筹划参数设置弹窗 - 点击筹划时弹出，让用户设置间距和高度
+    property var pendingPlanAction: null  // 存储待执行的筹划操作
+
+    Popup {
+        id: planParamPopup
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        height: 280
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        background: Rectangle {
+            color: "#1A1E2E"
+            radius: 0
+            border.color: root.primaryColor
+            border.width: 2
+            opacity: 0.98
+
+            // 外发光
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -3
+                color: "transparent"
+                border.color: root.primaryColor
+                border.width: 1
+                radius: 0
+                opacity: 0.4
+            }
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 15
+
+            Label {
+                text: "[ 筹划参数设置 ]"
+                font.bold: true
+                font.pixelSize: 16
+                font.family: "Monospace"
+                color: primaryColor
+                Layout.alignment: Qt.AlignHCenter
+
+                // 文字发光
+                style: Text.Normal
+                styleColor: primaryColor
+            }
+
+            Label {
+                text: "请设置飞机之间的间距和高度差"
+                font.pixelSize: 12
+                font.family: "Sans Serif"
+                color: textColor
+                Layout.alignment: Qt.AlignHCenter
+                opacity: 0.8
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 100
+                color: "#252A3A"
+                radius: 0
+                border.color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.3)
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 15
+
+                    RowLayout {
+                        spacing: 10
+                        Layout.alignment: Qt.AlignHCenter
+
+                        Label {
+                            text: "飞机间距:"
+                            font.pixelSize: 13
+                            font.family: "Monospace"
+                            color: primaryColor
+                        }
+
+                        TextField {
+                            id: planDistanceInput
+                            text: input5.text
+                            width: 60
+                            height: 30
+                            validator: IntValidator { bottom: 1; top: 99 }
+                            horizontalAlignment: Text.AlignHCenter
+                            font.family: "Monospace"
+                            font.bold: true
+                            background: Rectangle {
+                                color: "#1A1E2E"
+                                radius: 0
+                                border.color: planDistanceInput.activeFocus ? primaryColor : Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.5)
+                                border.width: 1
+                            }
+                            color: textColor
+                        }
+
+                        Label {
+                            text: "米"
+                            font.pixelSize: 13
+                            color: textColor
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 20
+
+                CustomButton {
+                    text: "取消"
+                    color: dangerColor
+                    onClicked: {
+                        pendingPlanAction = null;
+                        planParamPopup.close();
+                    }
+                }
+
+                CustomButton {
+                    text: "确认筹划"
+                    color: secondaryColor
+                    onClicked: {
+                        // 更新间距参数
+                        input5.text = planDistanceInput.text;
+
+                        // 执行筹划操作
+                        if (pendingPlanAction) {
+                            pendingPlanAction();
+                            pendingPlanAction = null;
+                        }
+                        planParamPopup.close();
+
+                        // 显示确认提示
+                        swarmOpPopup.showPopup(0, 3, 0, 0, 0,
+                            "筹划完成，间距: " + input5.text + "米");
+                    }
+                }
+            }
+        }
+    }
+
+    // 显示筹划参数设置弹窗
+    function showPlanParamPopup(action) {
+        planDistanceInput.text = input5.text;
+        pendingPlanAction = action;
+        planParamPopup.open();
+    }
+
+    // 主布局
+    Rectangle {
+        anchors.fill: parent
+        color: "transparent"
+
+        // 顶部控制栏 - 无边框卡片风格
+        Rectangle {
+            id: topBar
+            width: parent.width
+            height: 80
+            color: "#1E293B"  // 深灰蓝，比背景稍亮
+            radius: 0
+            border.width: 0  // 去掉边框
+
+            // 底部分隔线（极细）
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.2)
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 15
+
+
+                // 筹划管理
+                RowLayout {
+                    spacing: 10
+                    CustomButton {
+                        text: "筹划";
+                        color: root.primaryColor;
+                        onClicked: {
+                            if (Number(input_plan.text) > 50) {
+                                group_popu4.open()
+                            } else if (Number(input_plan.text) <= 0) {
+                                // 筹划数量为0时不弹窗
+                                return;
+                            } else {
+                                // 弹出参数设置弹窗，确认后执行筹划
+                                showPlanParamPopup(function() {
+                                    plan_to_visible();
+                                });
+                            }
+                        }
+                    }
+
+                    CustomTextField {
+                        id: input_plan
+                        text: "0"
+                        width: 50
+                        validator: IntValidator { bottom: 0; top: 50 }
+                    }
+
+                    Label {
+                        text: "UAV"
+                        color: textColorDim  // 暗灰色标签
+                        font.pixelSize: 10
+                        font.family: "Monospace"
+                        font.bold: true
+                    }
+                }
+
+                    Switch {
+                        id: group1Switch
+                        checked: group1Enabled
+                        onCheckedChanged: group1Enabled = checked
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: 40
+                        indicator: Rectangle {
+                            implicitWidth: 36
+                            implicitHeight: 18
+                            x: 2
+                            y: (parent.height - height) / 2
+                            radius: 0
+                            color: "transparent"
+                            border.color: group1Switch.checked ? root.secondaryColor : Qt.rgba(root.borderColor.r, root.borderColor.g, root.borderColor.b, 0.3)
+                            border.width: 1
+                            Rectangle {
+                                x: group1Switch.checked ? parent.width - width - 2 : 2
+                                y: 2
+                                width: 14
+                                height: 14
+                                radius: 0
+                                color: group1Switch.checked ? root.secondaryColor : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.3)
+                                border.color: group1Switch.checked ? root.secondaryColor : "transparent"
+                                border.width: 1
+                                Behavior on x { NumberAnimation { duration: 150 } }
+
+                                // 发光效果
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -2
+                                    color: "transparent"
+                                    border.color: parent.color
+                                    border.width: 1
+                                    opacity: group1Switch.checked ? 0.5 : 0
+                                }
+                            }
+                        }
+                    }
+
+                    RadiusButton {// 第一组
+                        text: "";
+                        color: modelColor1;// 选择第一组的颜色
+                        enabled:false
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Label {
+                        text: "[ GRP-1: " + group1Count + " ]"
+                        color: textColor  // 亮白色数据
+                        font.pixelSize: 11
+                        font.family: "Monospace"
+                        font.bold: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Switch {
+                        id: group2Switch
+                        checked: group2Enabled
+                        onCheckedChanged: group2Enabled = checked
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: 40
+                        indicator: Rectangle {
+                            implicitWidth: 36
+                            implicitHeight: 18
+                            x: 2
+                            y: (parent.height - height) / 2
+                            radius: 0
+                            color: "transparent"
+                            border.color: group2Switch.checked ? root.secondaryColor : Qt.rgba(root.borderColor.r, root.borderColor.g, root.borderColor.b, 0.3)
+                            border.width: 1
+                            Rectangle {
+                                x: group2Switch.checked ? parent.width - width - 2 : 2
+                                y: 2
+                                width: 14
+                                height: 14
+                                radius: 0
+                                color: group2Switch.checked ? root.secondaryColor : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.3)
+                                border.color: group2Switch.checked ? root.secondaryColor : "transparent"
+                                border.width: 1
+                                Behavior on x { NumberAnimation { duration: 150 } }
+
+                                // 发光效果
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -2
+                                    color: "transparent"
+                                    border.color: parent.color
+                                    border.width: 1
+                                    opacity: group2Switch.checked ? 0.5 : 0
+                                }
+                            }
+                        }
+                    }
+
+                    RadiusButton {// 第二组
+                        text: "";
+                        color: root.modelColor2; //第二组颜色需改变
+                        enabled:false
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Label {
+                        text: "[ GRP-2: " + group2Count + " ]"
+                        color: textColor  // 亮白色数据
+                        font.pixelSize: 11
+                        font.family: "Monospace"
+                        font.bold: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Switch {
+                        id: group3Switch
+                        checked: group3Enabled
+                        onCheckedChanged: group3Enabled = checked
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: 40
+                        indicator: Rectangle {
+                            implicitWidth: 36
+                            implicitHeight: 18
+                            x: 2
+                            y: (parent.height - height) / 2
+                            radius: 0
+                            color: "transparent"
+                            border.color: group3Switch.checked ? root.secondaryColor : Qt.rgba(root.borderColor.r, root.borderColor.g, root.borderColor.b, 0.3)
+                            border.width: 1
+                            Rectangle {
+                                x: group3Switch.checked ? parent.width - width - 2 : 2
+                                y: 2
+                                width: 14
+                                height: 14
+                                radius: 0
+                                color: group3Switch.checked ? root.secondaryColor : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.3)
+                                border.color: group3Switch.checked ? root.secondaryColor : "transparent"
+                                border.width: 1
+                                Behavior on x { NumberAnimation { duration: 150 } }
+
+                                // 发光效果
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -2
+                                    color: "transparent"
+                                    border.color: parent.color
+                                    border.width: 1
+                                    opacity: group3Switch.checked ? 0.5 : 0
+                                }
+                            }
+                        }
+                    }
+
+                    RadiusButton {// 第三组
+                        text: "";
+                        color: modelColor3; //第三组颜3色需改变
+                        enabled:false
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Label {
+                        text: "[ GRP-3: " + group3Count + " ]"
+                        color: textColor  // 亮白色数据
+                        font.pixelSize: 11
+                        font.family: "Monospace"
+                        font.bold: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+
+                    Switch {
+                        id: group4Switch
+                        checked: group4Enabled
+                        onCheckedChanged: group4Enabled = checked
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: 40
+                        indicator: Rectangle {
+                            implicitWidth: 36
+                            implicitHeight: 18
+                            x: 2
+                            y: (parent.height - height) / 2
+                            radius: 0
+                            color: "transparent"
+                            border.color: group4Switch.checked ? root.secondaryColor : Qt.rgba(root.borderColor.r, root.borderColor.g, root.borderColor.b, 0.3)
+                            border.width: 1
+                            Rectangle {
+                                x: group4Switch.checked ? parent.width - width - 2 : 2
+                                y: 2
+                                width: 14
+                                height: 14
+                                radius: 0
+                                color: group4Switch.checked ? root.secondaryColor : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.3)
+                                border.color: group4Switch.checked ? root.secondaryColor : "transparent"
+                                border.width: 1
+                                Behavior on x { NumberAnimation { duration: 150 } }
+
+                                // 发光效果
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -2
+                                    color: "transparent"
+                                    border.color: parent.color
+                                    border.width: 1
+                                    opacity: group4Switch.checked ? 0.5 : 0
+                                }
+                            }
+                        }
+                    }
+
+                    RadiusButton {// 第四组
+                        id:modelbutton4
+                        text: "";
+                        color: modelColor4; //第四组颜色需改变
+                        enabled:false
+                        Layout.alignment: Qt.AlignVCenter
+                       // visible: false
+                    }
+
+                    Label {
+                        id:modellable4
+                        text: "[ GRP-4: " + group4Count + " ]"
+                        color: textColor  // 亮白色数据
+                        font.pixelSize: 11
+                        font.family: "Monospace"
+                        font.bold: true
+                        Layout.alignment: Qt.AlignVCenter
+                       // visible: false
+                    }
+
+
+                // // 飞行管理
+                RowLayout {
+                    spacing: 10
+                    CustomButton {
+                        text: "暂停";
+                        color: root.accentColor;
+                        onClicked: {
+                            executeCommandToEnabledGroups(0, 0, 0, separate_main, 0)
+                        }
+                    }
+                    CustomButton {
+                        text: "继续";
+                        color: secondaryColor;
+                        onClicked: {
+                            executeCommandToEnabledGroups(0, 0, 0, 0, separate_main)
+                        }
+                    }
+                }
+
+
+            }
+        }
+
+        // 主内容区域 - 3D视图
+        Rectangle {
+            id: viewContainer
+            anchors {
+                top: topBar.bottom
+                bottom: droneHeightArea.top
+                // left: parent.left
+                // right: controlPanel.left
+                left: controlPanel.right
+                right: parent.right
+                margins: 12
+                bottomMargin: 6
+            }
+
+                // 超出部分裁剪（可选）
+                clip: true
+
+            color: "#0B1021"  // 深黑蓝色背景
+            radius: 0
+            border.width: 0  // 去掉边框
+
+            // 全息网格背景层（极低透明度，不喧宾夺主）
+            Canvas {
+                id: holographicGrid
+                anchors.fill: parent
+                opacity: 0.05  // 降低到5%
+                onPaint: {
+                    var ctx = getContext("2d");
+                    ctx.strokeStyle = root.gridColor;
+                    ctx.lineWidth = 0.5;
+
+                    // 绘制垂直网格线
+                    var gridSize = 40;
+                    for (var x = 0; x < width; x += gridSize) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, height);
+                        ctx.stroke();
+                    }
+
+                    // 绘制水平网格线
+                    for (var y = 0; y < height; y += gridSize) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(width, y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            View3D {
+                id: control
+                anchors.fill:parent
+                //背景 - 深空背景
+                environment: SceneEnvironment {
+                   clearColor: "#0B1021"  // 深黑蓝色
+                   backgroundMode: SceneEnvironment.Color
+                }
+                Component.onCompleted: {
+                        console.log("View3D实际尺寸：宽=", width, "高=", height);
+                    }
+
+                // 标记是否已完成初始化
+                property bool _initialized: false
+
+                // 定时器：用于合并窗口大小变化时的重新定位调用
+                Timer {
+                    id: repositionTimer
+                    interval: 50  // 50毫秒延迟，合并多次调用
+                    repeat: false
+                    onTriggered: {
+                        repositionPlanedAircraft();
+                    }
+                }
+
+                onWidthChanged: {
+                            if (width > 0) {
+                                console.log("View3D宽度更新：", width);
+
+                                // 只在首次初始化时执行mymove
+                                if (!_initialized) {
+                                    mymove(1,1,sphere_node)
+                                    get_pos(sphere_node);
+
+                                    mymove(2,1,sphere_node2)
+                                    get_pos(sphere_node2);
+                                    mymove(3,1,sphere_node3)
+                                    get_pos(sphere_node3);
+                                    mymove(4,1,sphere_node4)
+                                    get_pos(sphere_node4);
+                                    mymove(5,1,sphere_node5)
+                                    get_pos(sphere_node5);
+                                    mymove(6,1,sphere_node6)
+                                    get_pos(sphere_node6);
+                                    mymove(7,1,sphere_node7)
+                                    get_pos(sphere_node7);
+                                    mymove(8,1,sphere_node8)
+                                    get_pos(sphere_node8);
+                                    mymove(9,1,sphere_node9)
+                                    get_pos(sphere_node9);
+                                    mymove(10,1,sphere_node10)
+                                    get_pos(sphere_node10);
+                                    mymove(11,1,sphere_node11)
+                                    get_pos(sphere_node11);
+                                    mymove(12,1,sphere_node12)
+                                    get_pos(sphere_node12);
+                                    mymove(13,1,sphere_node13)
+                                    get_pos(sphere_node13);
+                                    mymove(14,1,sphere_node14)
+                                    get_pos(sphere_node14);
+                                    mymove(15,1,sphere_node15)
+                                    get_pos(sphere_node15);
+                                    mymove(16,1,sphere_node16)
+                                    get_pos(sphere_node16);
+                                    mymove(17,1,sphere_node17)
+                                    get_pos(sphere_node17);
+                                    mymove(18,1,sphere_node18)
+                                    get_pos(sphere_node18);
+                                    mymove(19,1,sphere_node19)
+                                    get_pos(sphere_node19);
+                                    mymove(20,1,sphere_node20)
+                                    get_pos(sphere_node20);
+                                    mymove(21,1,sphere_node21)
+                                    get_pos(sphere_node21);
+                                    mymove(22,1,sphere_node22)
+                                    get_pos(sphere_node22);
+                                    mymove(23,1,sphere_node23)
+                                    get_pos(sphere_node23);
+                                    mymove(24,1,sphere_node24)
+                                    get_pos(sphere_node24);
+                                    mymove(25,1,sphere_node25)
+                                    get_pos(sphere_node25);
+                                    mymove(26,1,sphere_node26)
+                                    get_pos(sphere_node26);
+                                    mymove(27,1,sphere_node27)
+                                    get_pos(sphere_node27);
+                                    mymove(28,1,sphere_node28)
+                                    get_pos(sphere_node28);
+                                    mymove(1,2,sphere_node29)
+                                    get_pos(sphere_node29);
+                                    mymove(2,2,sphere_node30)
+                                    get_pos(sphere_node30);
+                                    mymove(3,2,sphere_node31)
+                                    get_pos(sphere_node2);
+                                    mymove(4,2,sphere_node32)
+                                    get_pos(sphere_node32);
+                                    mymove(5,2,sphere_node33)
+                                    get_pos(sphere_node33);
+                                    mymove(6,2,sphere_node34)
+                                    get_pos(sphere_node34);
+                                    mymove(7,2,sphere_node35)
+                                    get_pos(sphere_node35);
+                                    mymove(8,2,sphere_node36)
+                                    get_pos(sphere_node36);
+                                    mymove(9,2,sphere_node37)
+                                    get_pos(sphere_node37);
+                                    mymove(10,2,sphere_node38)
+                                    get_pos(sphere_node38);
+                                    mymove(11,2,sphere_node39)
+                                    get_pos(sphere_node39);
+                                    mymove(12,2,sphere_node40)
+                                    get_pos(sphere_node40);
+                                    mymove(13,2,sphere_node41)
+                                    get_pos(sphere_node41);
+                                    mymove(14,2,sphere_node42)
+                                    get_pos(sphere_node42);
+                                    mymove(15,2,sphere_node43)
+                                    get_pos(sphere_node43);
+                                    mymove(16,2,sphere_node44)
+                                    get_pos(sphere_node44);
+                                    mymove(17,2,sphere_node45)
+                                    get_pos(sphere_node45);
+                                    mymove(18,2,sphere_node46)
+                                    get_pos(sphere_node46);
+                                    mymove(19,2,sphere_node47)
+                                    get_pos(sphere_node47);
+                                    mymove(20,2,sphere_node48)
+                                    get_pos(sphere_node48);
+                                    mymove(21,2,sphere_node49)
+                                    get_pos(sphere_node49);
+                                    mymove(22,2,sphere_node50)
+                                    get_pos(sphere_node50);
+
+                                    _initialized = true;
+                                } else {
+                                    // 窗口大小变化时，使用定时器合并多次调用
+                                    repositionTimer.restart();
+                                }
+                            }
+                        }
+
+                // 添加高度变化处理，解决最大化/还原时模型位置问题
+                onHeightChanged: {
+                    if (height > 0 && _initialized) {
+                        console.log("View3D高度更新：", height);
+                        // 窗口大小变化时，使用定时器合并多次调用
+                        repositionTimer.restart();
+                    }
+                }
+
+                GridView{
+                   id:mygrid
+                   anchors.fill: parent
+                   anchors.margins: 0
+
+                   clip: true　　// 设置clip属性为true，来激活裁剪功能
+
+                   model:1500
+                   delegate: numberDelegate
+                   cellHeight: 40
+                   cellWidth: 40
+                }
+                           Component{
+                               id:numberDelegate
+                               Rectangle{
+                                   id:rct
+                                   width: 40;
+                                   height: 40;
+                                   color: "Transparent"
+                                   Text {
+                                       id:txt
+                                       anchors.centerIn: parent
+                                       font.pixelSize: 15
+                                       text: "+"
+                                        color: "#dae0eb"
+
+                                   }
+                                   function setText(newtext) {
+                                       txt.text=newtext
+                                   }
+                               }
+                           }
+
+                       //观察相机
+                       //View3D的mapTo/mapFrom坐标转换函数需要先设置camera属性
+                       camera: perspective_camera
+                       PerspectiveCamera {
+                           id: perspective_camera
+                         //  z:   control.height * 3.5   //1800左右
+                           z:1800
+                       }
+                       //光照
+                       DirectionalLight {
+                           eulerRotation.z: 0
+                       }
+
+                       Canvas{
+                           id:canv
+                           anchors.fill: parent
+                           visible: false
+                           onPaint: { //    |的上半部分
+                               var vtx = getContext("2d")
+                               vtx.strokeStyle = "#6B7280"  // 更暗的灰色
+                               vtx.lineWidth = 1  // 更细的线
+                               var startX = control.width / 2
+                               var startY = 0
+
+                               var endX = control.width / 2
+                               var endY =(control.height ) / 2
+
+                               vtx.beginPath()
+                               vtx.moveTo(startX,startY)
+                               vtx.lineTo(endX,endY)
+                               vtx.stroke()
+                           }
+                       }
+
+                       Canvas{  //    |的下半部分
+                           id:canv2
+                           anchors.fill: parent
+                           visible: false
+                           onPaint: {
+                               var vtx = getContext("2d")
+                               vtx.strokeStyle = "#6B7280"  // 更暗的灰色
+                               vtx.lineWidth = 1  // 更细的线
+                               var startX = control.width / 2
+                               var startY = (control.height ) / 2
+
+                               var endX = control.width / 2
+                               var endY = control.height
+
+                               vtx.beginPath()
+                               vtx.moveTo(startX,startY)
+                               vtx.lineTo(endX,endY)
+                               vtx.stroke()
+                           }
+                       }
+
+                       Canvas{
+                           id:canv3  //    ——的左半部分
+                           anchors.fill: parent
+                           visible: false
+                           onPaint: {
+                               var vtx = getContext("2d")
+                               vtx.strokeStyle = "#6B7280"  // 更暗的灰色
+                               vtx.lineWidth = 1  // 更细的线
+                               var startX = 0
+                               var startY = (control.height ) / 2
+
+                               var endX = control.width / 2
+                               var endY = (control.height ) / 2
+
+                               vtx.beginPath()
+                               vtx.moveTo(startX,startY)
+                               vtx.lineTo(endX,endY)
+                               vtx.stroke()
+                           }
+                       }
+                       Canvas{
+                           id:canv4  //    ——的右半部分
+                           anchors.fill: parent
+                           visible: false
+                           onPaint: {
+                               var vtx = getContext("2d")
+                               vtx.strokeStyle = "#6B7280"  // 更暗的灰色
+                               vtx.lineWidth = 1  // 更细的线
+                               var startX = control.width / 2
+                               var startY = (control.height ) / 2
+
+                               var endX = control.width
+                               var endY = (control.height ) / 2
+
+                               vtx.beginPath()
+                               vtx.moveTo(startX,startY)
+                               vtx.lineTo(endX,endY)
+                               vtx.stroke()
+                           }
+                       }
+
+
+                       Model {
+                           Text {
+                               id: name
+                               text: "  " + sphere_node.objectName + "_" + sphere_node.group_id
+                               font.pixelSize: 62
+                               color: sphere_node.set_main ? "red" : "white"  // 从机改为白色
+                           }
+                           id: sphere_node
+                           objectName: "1"
+                           source: "#Sphere"
+                           pickable: true
+                           x: 0
+                           y: 1
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           z: 5
+                           visible: true
+                           function loadModel() {
+                               visible = true;
+                           }
+
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                          // property color darkcolor: Qt.darker("#646566",1.2)
+                           materials: DefaultMaterial {
+                               opacity: sphere_node.select_color
+                               diffuseColor: sphere_node.is_connected ? (sphere_node.is_main ? "red" : (sphere_node.group_id === 1 ? modelColor1 : (sphere_node.group_id === 2 ? modelColor2 : (sphere_node.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+
+                           }
+                           Component.onCompleted: {
+
+                               hasset_map[1]=0
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // bug：所有模型都连此信号时，当信号发过来时，所有已显示的模型名字更新 且一样  应该已解决，待测试
+                                   if (n === 1) {
+                                       if (if_main_node(sphere_node.objectName)) {sphere_node.is_main = true;reset_main_name(sphere_node.objectName,sysid)} // 如果已设置主机,连上时需更新曾设的主机名,因为连上前和连上后的id并非一致
+                                       sphere_node.objectName = sysid
+                                       _sysid_list.push(sysid)  // 所有id 集合
+                                       sphere_node.is_connected = true
+                                       sphere_node.pickable = true
+                                       idpos_map[sysid] = [sphere_node.model_x,sphere_node.model_y,sphere_node.model_z]
+                                       modelmp[sysid] = sphere_node
+                                       swarm_send.store_airplane_group(sysid, sphere_node.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node.set_main,sphere_node.group_id)
+                                       else
+                                           update_other_airplane(sphere_node.set_main,sphere_node.set_main,sphere_node.group_id)
+
+                                       console.log("pos1",sphere_node.model_x,sphere_node.model_y,sphere_node.model_z)
+
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node.objectName)) {
+                                       sphere_node.objectName = "1"
+                                       sphere_node.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name2
+                               text: "  " + sphere_node2.objectName + "_" + sphere_node2.group_id
+                               font.pixelSize: 62
+                               color: sphere_node2.set_main ? "red" : "white"
+                           }
+                           id: sphere_node2
+                           objectName: "2"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           y: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int group_id: 1
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node2.select_color
+                               diffuseColor: sphere_node2.is_connected ? (sphere_node2.is_main ? "red" : (sphere_node2.group_id === 1 ? modelColor1 : (sphere_node2.group_id === 2 ? modelColor2 : (sphere_node2.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 2) {
+                                       if (if_main_node(sphere_node2.objectName)) {sphere_node2.is_main = true;reset_main_name(sphere_node2.objectName,sysid)}
+                                       sphere_node2.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node2.is_connected = true
+                                       idpos_map[sysid] = [sphere_node2.model_x,sphere_node2.model_y,sphere_node2.model_z]
+                                       modelmp[sysid] = sphere_node2
+                                       swarm_send.store_airplane_group(sysid, sphere_node2.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node2.set_main,sphere_node2.group_id)
+                                       else
+                                           update_other_airplane(sphere_node2.set_main,sphere_node2.set_main,sphere_node2.group_id)
+
+                                       console.log("pos2",sphere_node2.model_x,sphere_node2.model_y,sphere_node2.model_z)
+
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node2.objectName)) {
+                                       sphere_node2.objectName = "2"
+                                       sphere_node2.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node2.group_id = 1
+                                   }
+                               }
+                           }
+
+                       }
+                       Model {
+                           Text {
+                               id: name3
+                               text: "  " + sphere_node3.objectName + "_" + sphere_node3.group_id
+                               font.pixelSize: 62
+                               color: sphere_node3.set_main ? "red" : "white"
+                           }
+                           id: sphere_node3
+                           objectName: "3"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int group_id: 1
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node3.select_color
+                              // diffuseColor:sphere_node3.is_main ? "red" : "cyan"
+                               diffuseColor: sphere_node3.is_connected ? (sphere_node3.is_main ? "red" : (sphere_node3.group_id === 1 ? modelColor1 : (sphere_node3.group_id === 2 ? modelColor2 : (sphere_node3.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 3) {
+                                       if (if_main_node(sphere_node3.objectName)) {sphere_node3.is_main = true;reset_main_name(sphere_node3.objectName,sysid)}
+                                       sphere_node3.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node3.is_connected = true
+                                       idpos_map[sysid] = [sphere_node3.model_x,sphere_node3.model_y,sphere_node3.model_z]
+                                       modelmp[sysid] = sphere_node3
+                                       swarm_send.store_airplane_group(sysid, sphere_node3.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node3.set_main,sphere_node3.group_id)
+                                       else
+                                           update_other_airplane(sphere_node3.set_main,sphere_node3.set_main,sphere_node3.group_id)
+                                      console.log("pos3",sphere_node3.model_x,sphere_node3.model_y,sphere_node3.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node3.objectName)) {
+                                       sphere_node3.objectName = "3"
+                                       sphere_node3.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node3.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name4
+                               text: "  " + sphere_node4.objectName + "_" + sphere_node4.group_id
+                               font.pixelSize: 62
+                               color: sphere_node4.set_main ? "red" : "white"
+                           }
+                           id: sphere_node4
+                           objectName: "4"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node4.select_color
+                               diffuseColor: sphere_node4.is_connected ? (sphere_node4.is_main ? "red" : (sphere_node4.group_id === 1 ? modelColor1 : (sphere_node4.group_id === 2 ? modelColor2 : (sphere_node4.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 4) {
+                                       if (if_main_node(sphere_node4.objectName)) {sphere_node4.is_main = true;reset_main_name(sphere_node4.objectName,sysid)}
+                                       sphere_node4.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node4.is_connected = true
+                                       idpos_map[sysid] = [sphere_node4.model_x,sphere_node4.model_y,sphere_node4.model_z]
+                                       modelmp[sysid] = sphere_node4
+                                       swarm_send.store_airplane_group(sysid, sphere_node4.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node4.set_main,sphere_node4.group_id)
+                                       else
+                                           update_other_airplane(sphere_node4.set_main,sphere_node4.set_main,sphere_node4.group_id)
+                                     console.log("pos4",sphere_node4.model_x,sphere_node4.model_y,sphere_node4.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node4.objectName)) {
+                                       sphere_node4.objectName = "4"
+                                       sphere_node4.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node4.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name5
+                               text: "  " + sphere_node5.objectName + "_" + sphere_node5.group_id
+                               font.pixelSize: 62
+                               color: sphere_node5.set_main ? "red" : "white"
+                           }
+                           id: sphere_node5
+                           objectName: "5"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node5.select_color
+                               diffuseColor: sphere_node5.is_connected ? (sphere_node5.is_main ? "red" : (sphere_node5.group_id === 1 ? modelColor1 : (sphere_node5.group_id === 2 ? modelColor2 : (sphere_node5.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 5) {
+                                       if (if_main_node(sphere_node5.objectName)) {sphere_node5.is_main = true;reset_main_name(sphere_node5.objectName,sysid)}
+                                       sphere_node5.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node5.is_connected = true
+                                       idpos_map[sysid] = [sphere_node5.model_x,sphere_node5.model_y,sphere_node5.model_z]
+                                       modelmp[sysid] = sphere_node5
+                                       swarm_send.store_airplane_group(sysid, sphere_node5.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node5.set_main,sphere_node5.group_id)
+                                       else
+                                           update_other_airplane(sphere_node5.set_main,sphere_node5.set_main,sphere_node5.group_id)
+                                    console.log("pos5",sphere_node5.model_x,sphere_node5.model_y,sphere_node5.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node5.objectName)) {
+                                       sphere_node5.objectName = "5"
+                                       sphere_node5.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node5.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name6
+                               text: "  " + sphere_node6.objectName + "_" + sphere_node6.group_id
+                               font.pixelSize: 62
+                               color: sphere_node6.set_main ? "red" : "white"
+                           }
+                           id: sphere_node6
+                           objectName: "6"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node6.select_color
+                               diffuseColor: sphere_node6.is_connected ? (sphere_node6.is_main ? "red" : (sphere_node6.group_id === 1 ? modelColor1 : (sphere_node6.group_id === 2 ? modelColor2 : (sphere_node6.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 6) {
+                                       if (if_main_node(sphere_node6.objectName)) {sphere_node6.is_main = true;reset_main_name(sphere_node6.objectName,sysid)}
+                                       sphere_node6.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node6.is_connected = true
+                                       idpos_map[sysid] = [sphere_node6.model_x,sphere_node6.model_y,sphere_node6.model_z]
+                                       modelmp[sysid] = sphere_node6
+                                       swarm_send.store_airplane_group(sysid, sphere_node6.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node6.set_main,sphere_node6.group_id)
+                                       else
+                                           update_other_airplane(sphere_node6.set_main,sphere_node6.set_main,sphere_node6.group_id)
+                                     console.log("pos6",sphere_node6.model_x,sphere_node6.model_y,sphere_node6.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node6.objectName)) {
+                                       sphere_node6.objectName = "6"
+                                       sphere_node6.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node6.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name7
+                               text: "  " + sphere_node7.objectName + "_" + sphere_node7.group_id
+                               font.pixelSize: 62
+                               color: sphere_node7.set_main ? "red" : "white"
+                           }
+                           id: sphere_node7
+                           objectName: "7"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node7.select_color
+                               diffuseColor: sphere_node7.is_connected ? (sphere_node7.is_main ? "red" : (sphere_node7.group_id === 1 ? modelColor1 : (sphere_node7.group_id === 2 ? modelColor2 : (sphere_node7.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 7) {
+                                       if (if_main_node(sphere_node7.objectName)) {sphere_node7.is_main = true;reset_main_name(sphere_node7.objectName,sysid)}
+                                       sphere_node7.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node7.is_connected = true
+                                       idpos_map[sysid] = [sphere_node7.model_x,sphere_node7.model_y,sphere_node7.model_z]
+                                       modelmp[sysid] = sphere_node7
+                                       swarm_send.store_airplane_group(sysid, sphere_node7.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node7.set_main,sphere_node7.group_id)
+                                       else
+                                           update_other_airplane(sphere_node7.set_main,sphere_node7.set_main,sphere_node7.group_id)
+                                     console.log("pos7",sphere_node7.model_x,sphere_node7.model_y,sphere_node7.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node7.objectName)) {
+                                       sphere_node7.objectName = "7"
+                                       sphere_node7.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node7.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name8
+                               text: "  " + sphere_node8.objectName + "_" + sphere_node8.group_id
+                               font.pixelSize: 62
+                               color: sphere_node8.set_main ? "red" : "white"
+                           }
+                           id: sphere_node8
+                           objectName: "8"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool is_main: false
+                           property bool set_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node8.select_color
+                               diffuseColor: sphere_node8.is_connected ? (sphere_node8.is_main ? "red" : (sphere_node8.group_id === 1 ? modelColor1 : (sphere_node8.group_id === 2 ? modelColor2 : (sphere_node8.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 8) {
+                                       if (if_main_node(sphere_node8.objectName)) {sphere_node8.is_main = true;reset_main_name(sphere_node8.objectName,sysid)}
+                                       sphere_node8.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node8.is_connected = true
+                                       idpos_map[sysid] = [sphere_node8.model_x,sphere_node8.model_y,sphere_node8.model_z]
+                                       modelmp[sysid] = sphere_node8
+                                       swarm_send.store_airplane_group(sysid, sphere_node8.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node8.set_main,sphere_node8.group_id)
+                                       else
+                                           update_other_airplane(sphere_node8.set_main,sphere_node8.set_main,sphere_node8.group_id)
+                                     console.log("pos8",sphere_node8.model_x,sphere_node8.model_y,sphere_node8.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node8.objectName)) {
+                                       sphere_node8.objectName = "8"
+                                       sphere_node8.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node8.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name9
+                               text: "  " + sphere_node9.objectName + "_" + sphere_node9.group_id
+                               font.pixelSize: 62
+                               color: sphere_node9.set_main ? "red" : "white"
+                           }
+                           id: sphere_node9
+                           objectName: "9"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node9.select_color
+                               diffuseColor: sphere_node9.is_connected ? (sphere_node9.is_main ? "red" : (sphere_node9.group_id === 1 ? modelColor1 : (sphere_node9.group_id === 2 ? modelColor2 : (sphere_node9.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 9) {
+                                       if (if_main_node(sphere_node9.objectName)) {sphere_node9.is_main = true;reset_main_name(sphere_node9.objectName,sysid)}
+                                       sphere_node9.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node9.is_connected = true
+                                       idpos_map[sysid] = [sphere_node9.model_x,sphere_node9.model_y,sphere_node9.model_z]
+                                       modelmp[sysid] = sphere_node9
+                                       swarm_send.store_airplane_group(sysid, sphere_node9.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node9.set_main,sphere_node9.group_id)
+                                       else
+                                           update_other_airplane(sphere_node9.set_main,sphere_node9.set_main,sphere_node9.group_id)
+                                     console.log("pos9",sphere_node9.model_x,sphere_node9.model_y,sphere_node9.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node9.objectName)) {
+                                       sphere_node9.objectName = "9"
+                                       sphere_node9.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node9.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name10
+                               text: "  " + sphere_node10.objectName + "_" + sphere_node10.group_id
+                               font.pixelSize: 62
+                               color: sphere_node10.set_main ? "red" : "white"
+                           }
+                           id: sphere_node10
+                           objectName: "10"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node10.select_color
+                               diffuseColor: sphere_node10.is_connected ? (sphere_node10.is_main ? "red" : (sphere_node10.group_id === 1 ? modelColor1 : (sphere_node10.group_id === 2 ? modelColor2 : (sphere_node10.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 10) {
+                                       if (if_main_node(sphere_node10.objectName)) {sphere_node10.is_main = true;reset_main_name(sphere_node10.objectName,sysid)}
+                                       sphere_node10.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node10.is_connected = true
+                                       idpos_map[sysid] = [sphere_node10.model_x,sphere_node10.model_y,sphere_node10.model_z]
+                                       modelmp[sysid] = sphere_node10
+                                       swarm_send.store_airplane_group(sysid, sphere_node10.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node10.set_main,sphere_node10.group_id)
+                                       else
+                                           update_other_airplane(sphere_node10.set_main,sphere_node10.set_main,sphere_node10.group_id)
+                                       console.log("pos10",sphere_node10.model_x,sphere_node10.model_y,sphere_node10.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node10.objectName)) {
+                                       sphere_node10.objectName = "10"
+                                       sphere_node10.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node10.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name11
+                               text: "  " + sphere_node11.objectName + "_" + sphere_node11.group_id
+                               font.pixelSize: 62
+                               color: sphere_node11.set_main ? "red" : "white"
+                           }
+                           id: sphere_node11
+                           objectName: "11"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node11.select_color
+                               diffuseColor: sphere_node11.is_connected ? (sphere_node11.is_main ? "red" : (sphere_node11.group_id === 1 ? modelColor1 : (sphere_node11.group_id === 2 ? modelColor2 : (sphere_node11.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 11) {
+                                       if (if_main_node(sphere_node11.objectName)) {sphere_node11.is_main = true;reset_main_name(sphere_node11.objectName,sysid)}
+                                       sphere_node11.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node11.is_connected = true
+                                       idpos_map[sysid] = [sphere_node11.model_x,sphere_node11.model_y,sphere_node11.model_z]
+                                       modelmp[sysid] = sphere_node11
+                                       swarm_send.store_airplane_group(sysid, sphere_node11.group_id,false)
+
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node11.set_main,sphere_node11.group_id)
+                                       else
+                                           update_other_airplane(sphere_node11.set_main,sphere_node11.set_main,sphere_node11.group_id)
+                                       console.log("pos11",sphere_node11.model_x,sphere_node11.model_y,sphere_node11.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node11.objectName)) {
+                                       sphere_node11.objectName = "11"
+                                       sphere_node11.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node11.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name12
+                               text: "  " + sphere_node12.objectName + "_" + sphere_node12.group_id
+                               font.pixelSize: 62
+                               color: sphere_node12.set_main ? "red" : "white"
+                           }
+                           id: sphere_node12
+                           objectName: "12"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node12.select_color
+                               diffuseColor: sphere_node12.is_connected ? (sphere_node12.is_main ? "red" : (sphere_node12.group_id === 1 ? modelColor1 : (sphere_node12.group_id === 2 ? modelColor2 : (sphere_node12.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 12) {
+                                       if (if_main_node(sphere_node12.objectName)) {sphere_node12.is_main = true;reset_main_name(sphere_node12.objectName,sysid)}
+                                       sphere_node12.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node12.is_connected = true
+                                       idpos_map[sysid] = [sphere_node12.model_x,sphere_node12.model_y,sphere_node12.model_z]
+                                       modelmp[sysid] = sphere_node12
+                                       swarm_send.store_airplane_group(sysid, sphere_node12.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node12.set_main,sphere_node12.group_id)
+                                       else
+                                           update_other_airplane(sphere_node12.set_main,sphere_node12.set_main,sphere_node12.group_id)
+
+                                       console.log("pos12",sphere_node12.model_x,sphere_node12.model_y,sphere_node12.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node12.objectName)) {
+                                       sphere_node12.objectName = "12"
+                                       sphere_node12.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node12.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name13
+                               text: "  " + sphere_node13.objectName + "_" + sphere_node13.group_id
+                               font.pixelSize: 62
+                               color: sphere_node13.set_main ? "red" : "white"
+                           }
+                           id: sphere_node13
+                           objectName: "13"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node13.select_color
+                               diffuseColor: sphere_node13.is_connected ? (sphere_node13.is_main ? "red" : (sphere_node13.group_id === 1 ? modelColor1 : (sphere_node13.group_id === 2 ? modelColor2 : (sphere_node13.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 13) {
+                                       if (if_main_node(sphere_node13.objectName)) {sphere_node13.is_main = true;reset_main_name(sphere_node13.objectName,sysid)}
+                                       sphere_node13.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node13.is_connected = true
+                                       idpos_map[sysid] = [sphere_node13.model_x,sphere_node13.model_y,sphere_node13.model_z]
+                                       modelmp[sysid] = sphere_node13
+                                       swarm_send.store_airplane_group(sysid, sphere_node13.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node13.set_main,sphere_node13.group_id)
+                                       else
+                                           update_other_airplane(sphere_node13.set_main,sphere_node13.set_main,sphere_node13.group_id)
+                                       console.log("pos13",sphere_node13.model_x,sphere_node13.model_y,sphere_node13.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node13.objectName)) {
+                                       sphere_node13.objectName = "13"
+                                       sphere_node13.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node13.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name14
+                               text: "  " + sphere_node14.objectName + "_" + sphere_node14.group_id
+                               font.pixelSize: 62
+                               color: sphere_node14.set_main ? "red" : "white"
+                           }
+                           id: sphere_node14
+                           objectName: "14"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node14.select_color
+                               diffuseColor: sphere_node14.is_connected ? (sphere_node14.is_main ? "red" : (sphere_node14.group_id === 1 ? modelColor1 : (sphere_node14.group_id === 2 ? modelColor2 : (sphere_node14.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 14) {
+                                       if (if_main_node(sphere_node14.objectName)) {sphere_node14.is_main = true;reset_main_name(sphere_node14.objectName,sysid)}
+                                       sphere_node14.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node14.is_connected = true
+                                       idpos_map[sysid] = [sphere_node14.model_x,sphere_node14.model_y,sphere_node14.model_z]
+                                       modelmp[sysid] = sphere_node14
+                                       swarm_send.store_airplane_group(sysid, sphere_node14.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node14.set_main,sphere_node14.group_id)
+                                       else
+                                           update_other_airplane(sphere_node14.set_main,sphere_node14.set_main,sphere_node14.group_id)
+                                       console.log("pos14",sphere_node14.model_x,sphere_node14.model_y,sphere_node14.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node14.objectName)) {
+                                       sphere_node14.objectName = "14"
+                                       sphere_node14.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node14.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name15
+                               text: "  " + sphere_node15.objectName + "_" + sphere_node15.group_id
+                               font.pixelSize: 62
+                               color: sphere_node15.set_main ? "red" : "white"
+                           }
+                           id: sphere_node15
+                           objectName: "15"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node15.select_color
+                               diffuseColor: sphere_node15.is_connected ? (sphere_node15.is_main ? "red" : (sphere_node15.group_id === 1 ? modelColor1 : (sphere_node15.group_id === 2 ? modelColor2 : (sphere_node15.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 15) {
+                                       if (if_main_node(sphere_node15.objectName)) {sphere_node15.is_main = true;reset_main_name(sphere_node15.objectName,sysid)}
+                                       sphere_node15.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node15.is_connected = true
+                                       idpos_map[sysid] = [sphere_node15.model_x,sphere_node15.model_y,sphere_node15.model_z]
+                                       modelmp[sysid] = sphere_node15
+                                       swarm_send.store_airplane_group(sysid, sphere_node15.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node15.set_main,sphere_node15.group_id)
+                                       else
+                                           update_other_airplane(sphere_node15.set_main,sphere_node15.set_main,sphere_node15.group_id)
+                                       console.log("pos15",sphere_node15.model_x,sphere_node15.model_y,sphere_node15.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node15.objectName)) {
+                                       sphere_node15.objectName = "15"
+                                       sphere_node15.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node15.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name16
+                               text: "  " + sphere_node16.objectName + "_" + sphere_node16.group_id
+                               font.pixelSize: 62
+                               color: sphere_node16.set_main ? "red" : "white"
+                           }
+                           id: sphere_node16
+                           objectName: "16"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node16.select_color
+                               diffuseColor: sphere_node16.is_connected ? (sphere_node16.is_main ? "red" : (sphere_node16.group_id === 1 ? modelColor1 : (sphere_node16.group_id === 2 ? modelColor2 : (sphere_node16.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 16) {
+                                       if (if_main_node(sphere_node16.objectName)) {sphere_node16.is_main = true;reset_main_name(sphere_node16.objectName,sysid)}
+                                       sphere_node16.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node16.is_connected = true
+                                       idpos_map[sysid] = [sphere_node16.model_x,sphere_node16.model_y,sphere_node16.model_z]
+                                       modelmp[sysid] = sphere_node16
+                                       swarm_send.store_airplane_group(sysid, sphere_node16.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node16.set_main,sphere_node16.group_id)
+                                       else
+                                           update_other_airplane(sphere_node16.set_main,sphere_node16.set_main,sphere_node16.group_id)
+                                       console.log("pos16",sphere_node16.model_x,sphere_node16.model_y,sphere_node16.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node16.objectName)) {
+                                       sphere_node16.objectName = "16"
+                                       sphere_node16.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node16.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name17
+                               text: "  " + sphere_node17.objectName + "_" + sphere_node17.group_id
+                               font.pixelSize: 62
+                               color: sphere_node17.set_main ? "red" : "white"
+                           }
+                           id: sphere_node17
+                           objectName: "17"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node17.select_color
+                               diffuseColor: sphere_node17.is_connected ? (sphere_node17.is_main ? "red" : (sphere_node17.group_id === 1 ? modelColor1 : (sphere_node17.group_id === 2 ? modelColor2 : (sphere_node17.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 17) {
+                                       if (if_main_node(sphere_node17.objectName)) {sphere_node17.is_main = true;reset_main_name(sphere_node17.objectName,sysid)}
+                                       sphere_node17.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node17.is_connected = true
+                                       idpos_map[sysid] = [sphere_node17.model_x,sphere_node17.model_y,sphere_node17.model_z]
+                                       modelmp[sysid] = sphere_node17
+                                       swarm_send.store_airplane_group(sysid, sphere_node17.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node17.set_main,sphere_node17.group_id)
+                                       else
+                                           update_other_airplane(sphere_node17.set_main,sphere_node17.set_main,sphere_node17.group_id)
+                                       console.log("pos17",sphere_node17.model_x,sphere_node17.model_y,sphere_node17.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node17.objectName)) {
+                                       sphere_node17.objectName = "17"
+                                       sphere_node17.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node17.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name18
+                               text: "  " + sphere_node18.objectName + "_" + sphere_node18.group_id
+                               font.pixelSize: 62
+                               color: sphere_node18.set_main ? "red" : "white"
+                           }
+                           id: sphere_node18
+                           objectName: "18"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node18.select_color
+                               diffuseColor: sphere_node18.is_connected ? (sphere_node18.is_main ? "red" : (sphere_node18.group_id === 1 ? modelColor1 : (sphere_node18.group_id === 2 ? modelColor2 : (sphere_node18.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 18) {
+                                       if (if_main_node(sphere_node18.objectName)) {sphere_node18.is_main = true;reset_main_name(sphere_node18.objectName,sysid)}
+                                       sphere_node18.objectName = sysid
+                                       _sysid_list.push(sysid)
+
+                                       sphere_node18.is_connected = true
+                                       idpos_map[sysid] = [sphere_node18.model_x,sphere_node18.model_y,sphere_node18.model_z]
+                                       modelmp[sysid] = sphere_node18
+                                       swarm_send.store_airplane_group(sysid, sphere_node18.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node18.set_main,sphere_node18.group_id)
+                                       else
+                                           update_other_airplane(sphere_node18.set_main,sphere_node18.set_main,sphere_node18.group_id)
+                                       console.log("pos18",sphere_node18.model_x,sphere_node18.model_y,sphere_node18.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node18.objectName)) {
+                                       sphere_node18.objectName = "18"
+                                       sphere_node18.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node18.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name19
+                               text: "  " + sphere_node19.objectName + "_" + sphere_node19.group_id
+                               font.pixelSize: 62
+                               color: sphere_node19.set_main ? "red" : "white"
+                           }
+                           id: sphere_node19
+                           objectName: "19"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node19.select_color
+                               diffuseColor: sphere_node19.is_connected ? (sphere_node19.is_main ? "red" : (sphere_node19.group_id === 1 ? modelColor1 : (sphere_node19.group_id === 2 ? modelColor2 : (sphere_node19.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 19) {
+                                       if (if_main_node(sphere_node19.objectName)) {sphere_node19.is_main = true;reset_main_name(sphere_node19.objectName,sysid)}
+                                       sphere_node19.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node19.is_connected = true
+                                       idpos_map[sysid] = [sphere_node19.model_x,sphere_node19.model_y,sphere_node19.model_z]
+                                       modelmp[sysid] = sphere_node19
+                                       swarm_send.store_airplane_group(sysid, sphere_node19.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node19.set_main,sphere_node19.group_id)
+                                       else
+                                           update_other_airplane(sphere_node19.set_main,sphere_node19.set_main,sphere_node19.group_id)
+                                       console.log("pos19",sphere_node19.model_x,sphere_node19.model_y,sphere_node19.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node19.objectName)) {
+                                       sphere_node19.objectName = "19"
+                                       sphere_node19.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node19.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name20
+                               text: "  " + sphere_node20.objectName + "_" + sphere_node20.group_id
+                               font.pixelSize: 62
+                               color: sphere_node20.set_main ? "red" : "white"
+                           }
+                           id: sphere_node20
+                           objectName: "20"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node20.select_color
+                               diffuseColor: sphere_node20.is_connected ? (sphere_node20.is_main ? "red" : (sphere_node20.group_id === 1 ? modelColor1 : (sphere_node20.group_id === 2 ? modelColor2 : (sphere_node20.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 20) {
+                                       if (if_main_node(sphere_node20.objectName)) {sphere_node20.is_main = true;reset_main_name(sphere_node20.objectName,sysid)}
+                                       sphere_node20.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node20.is_connected = true
+                                       idpos_map[sysid] = [sphere_node20.model_x,sphere_node20.model_y,sphere_node20.model_z]
+                                       modelmp[sysid] = sphere_node20
+                                       swarm_send.store_airplane_group(sysid, sphere_node20.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node20.set_main,sphere_node20.group_id)
+                                       else
+                                           update_other_airplane(sphere_node20.set_main,sphere_node20.set_main,sphere_node20.group_id)
+                                       console.log("pos20",sphere_node20.model_x,sphere_node20.model_y,sphere_node20.model_z)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node20.objectName)) {
+                                       sphere_node20.objectName = "20"
+                                       sphere_node20.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node20.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name21
+                               text: "  " + sphere_node21.objectName + "_" + sphere_node21.group_id
+                               font.pixelSize: 62
+                               color: sphere_node21.set_main ? "red" : "white"
+                           }
+                           id: sphere_node21
+                           objectName: "21"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node21.select_color
+                               diffuseColor: sphere_node21.is_connected ? (sphere_node21.is_main ? "red" : (sphere_node21.group_id === 1 ? modelColor1 : (sphere_node21.group_id === 2 ? modelColor2 : (sphere_node21.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 21) {
+                                       if (if_main_node(sphere_node21.objectName)) {sphere_node21.is_main = true;reset_main_name(sphere_node21.objectName,sysid)}
+                                       sphere_node21.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node21.is_connected = true
+                                       idpos_map[sysid] = [sphere_node21.model_x,sphere_node21.model_y,sphere_node21.model_z]
+                                       modelmp[sysid] = sphere_node21
+                                       swarm_send.store_airplane_group(sysid, sphere_node21.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node21.set_main,sphere_node21.group_id)
+                                       else
+                                           update_other_airplane(sphere_node21.set_main,sphere_node21.set_main,sphere_node21.group_id)
+                                       console.log("pos21",sphere_node21.model_x,sphere_node21.model_y,sphere_node21.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node21.objectName)) {
+                                       sphere_node21.objectName = "21"
+                                       sphere_node21.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node21.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name22
+                               text: "  " + sphere_node22.objectName + "_" + sphere_node22.group_id
+                               font.pixelSize: 62
+                               color: sphere_node22.set_main ? "red" : "white"
+                           }
+                           id: sphere_node22
+                           objectName: "22"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               diffuseColor: sphere_node22.is_connected ? (sphere_node22.is_main ? "red" : (sphere_node22.group_id === 1 ? modelColor1 : (sphere_node22.group_id === 2 ? modelColor2 : (sphere_node22.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                               opacity: sphere_node22.select_color
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 22) {
+                                       if (if_main_node(sphere_node22.objectName)) {sphere_node22.is_main = true;reset_main_name(sphere_node22.objectName,sysid)}
+                                       sphere_node22.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node22.is_connected = true
+                                       idpos_map[sysid] = [sphere_node22.model_x,sphere_node22.model_y,sphere_node22.model_z]
+                                       modelmp[sysid] = sphere_node22
+                                       swarm_send.store_airplane_group(sysid, sphere_node22.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node22.set_main,sphere_node22.group_id)
+                                       else
+                                           update_other_airplane(sphere_node22.set_main,sphere_node22.set_main,sphere_node22.group_id)
+                                       console.log("pos22",sphere_node22.model_x,sphere_node22.model_y,sphere_node22.model_z)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node22.objectName)) {
+                                       sphere_node22.objectName = "22"
+                                       sphere_node22.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node22.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name23
+                               text: "  " + sphere_node23.objectName + "_" + sphere_node23.group_id
+                               font.pixelSize: 62
+                               color: sphere_node23.set_main ? "red" : "white"
+                           }
+                           id: sphere_node23
+                           objectName: "23"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               diffuseColor: sphere_node23.is_connected ? (sphere_node23.is_main ? "red" : (sphere_node23.group_id === 1 ? modelColor1 : (sphere_node23.group_id === 2 ? modelColor2 : (sphere_node23.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                               opacity: sphere_node23.select_color
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 23) {
+                                       if (if_main_node(sphere_node23.objectName)) {sphere_node23.is_main = true;reset_main_name(sphere_node23.objectName,sysid)}
+                                       sphere_node23.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node23.is_connected = true
+                                       idpos_map[sysid] = [sphere_node23.model_x,sphere_node23.model_y,sphere_node23.model_z]
+                                       modelmp[sysid] = sphere_node23
+                                       swarm_send.store_airplane_group(sysid, sphere_node23.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node23.set_main,sphere_node23.group_id)
+                                       else
+                                           update_other_airplane(sphere_node23.set_main,sphere_node23.set_main,sphere_node23.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node23.objectName)) {
+                                       sphere_node23.objectName = "23"
+                                       sphere_node23.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node23.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name24
+                               text: "  " + sphere_node24.objectName + "_" + sphere_node24.group_id
+                               font.pixelSize: 62
+                               color: sphere_node24.set_main ? "red" : "white"
+                           }
+                           id: sphere_node24
+                           objectName: "24"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node24.select_color
+                               diffuseColor: sphere_node24.is_connected ? (sphere_node24.is_main ? "red" : (sphere_node24.group_id === 1 ? modelColor1 : (sphere_node24.group_id === 2 ? modelColor2 : (sphere_node24.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 24) {
+                                       if (if_main_node(sphere_node24.objectName)) {sphere_node24.is_main = true;reset_main_name(sphere_node24.objectName,sysid)}
+                                       sphere_node24.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node24.is_connected = true
+                                       idpos_map[sysid] = [sphere_node24.model_x,sphere_node24.model_y,sphere_node24.model_z]
+                                       modelmp[sysid] = sphere_node24
+                                       swarm_send.store_airplane_group(sysid, sphere_node24.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node24.set_main,sphere_node24.group_id)
+                                       else
+                                           update_other_airplane(sphere_node24.set_main,sphere_node24.set_main,sphere_node24.group_id)
+                                   }
+
+                                   console.log("qml 收到cpp的消息",n)
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node24.objectName)) {
+                                       sphere_node24.objectName = "24"
+                                       sphere_node24.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node24.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name25
+                               text: "  " + sphere_node25.objectName + "_" + sphere_node25.group_id
+                               font.pixelSize: 62
+                               color: sphere_node25.set_main ? "red" : "white"
+                           }
+                           id: sphere_node25
+                           objectName: "25"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node25.select_color
+                               diffuseColor: sphere_node25.is_connected ? (sphere_node25.is_main ? "red" : (sphere_node25.group_id === 1 ? modelColor1 : (sphere_node25.group_id === 2 ? modelColor2 : (sphere_node25.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 25) {
+                                       if (if_main_node(sphere_node25.objectName)) {sphere_node25.is_main = true;reset_main_name(sphere_node25.objectName,sysid)}
+                                       sphere_node25.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node25.is_connected = true
+                                       idpos_map[sysid] = [sphere_node25.model_x,sphere_node25.model_y,sphere_node25.model_z]
+                                       modelmp[sysid] = sphere_node25
+                                       swarm_send.store_airplane_group(sysid, sphere_node25.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node25.set_main,sphere_node25.group_id)
+                                       else
+                                           update_other_airplane(sphere_node25.set_main,sphere_node25.set_main,sphere_node25.group_id)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node25.objectName)) {
+                                       sphere_node25.objectName = "25"
+                                       sphere_node25.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node25.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name26
+                               text: "  " + sphere_node26.objectName + "_" + sphere_node26.group_id
+                               font.pixelSize: 62
+                               color: sphere_node26.set_main ? "red" : "white"
+                           }
+                           id: sphere_node26
+                           objectName: "26"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node26.select_color
+                               diffuseColor: sphere_node26.is_connected ? (sphere_node26.is_main ? "red" : (sphere_node26.group_id === 1 ? modelColor1 : (sphere_node26.group_id === 2 ? modelColor2 : (sphere_node26.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 26) {
+                                       if (if_main_node(sphere_node26.objectName)) {sphere_node26.is_main = true;reset_main_name(sphere_node26.objectName,sysid)}
+                                       sphere_node26.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node26.is_connected = true
+                                       idpos_map[sysid] = [sphere_node26.model_x,sphere_node26.model_y,sphere_node26.model_z]
+                                       modelmp[sysid] = sphere_node26
+                                       swarm_send.store_airplane_group(sysid, sphere_node26.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node26.set_main,sphere_node26.group_id)
+                                       else
+                                           update_other_airplane(sphere_node26.set_main,sphere_node26.set_main,sphere_node26.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node26.objectName)) {
+                                       sphere_node26.objectName = "26"
+                                       sphere_node26.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node26.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name27
+                               text: "  " + sphere_node27.objectName + "_" + sphere_node27.group_id
+                               font.pixelSize: 62
+                               color: sphere_node27.set_main ? "red" : "white"
+                           }
+                           id: sphere_node27
+                           objectName: "27"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node27.select_color
+                               diffuseColor: sphere_node27.is_connected ? (sphere_node27.is_main ? "red" : (sphere_node27.group_id === 1 ? modelColor1 : (sphere_node27.group_id === 2 ? modelColor2 : (sphere_node27.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 27) {
+                                       if (if_main_node(sphere_node27.objectName)) {sphere_node27.is_main = true;reset_main_name(sphere_node27.objectName,sysid)}
+                                       sphere_node27.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node27.is_connected = true
+                                       idpos_map[sysid] = [sphere_node27.model_x,sphere_node27.model_y,sphere_node27.model_z]
+                                       modelmp[sysid] = sphere_node27
+                                       swarm_send.store_airplane_group(sysid, sphere_node27.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node27.set_main,sphere_node27.group_id)
+                                       else
+                                           update_other_airplane(sphere_node27.set_main,sphere_node27.set_main,sphere_node27.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node27.objectName)) {
+                                       sphere_node27.objectName = "27"
+                                       sphere_node27.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node27.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name28
+                               text: "  " + sphere_node28.objectName + "_" + sphere_node28.group_id
+                               font.pixelSize: 62
+                               color: sphere_node28.set_main ? "red" : "white"
+                           }
+                           id: sphere_node28
+                           objectName: "28"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node28.select_color
+                               diffuseColor: sphere_node28.is_connected ? (sphere_node28.is_main ? "red" : (sphere_node28.group_id === 1 ? modelColor1 : (sphere_node28.group_id === 2 ? modelColor2 : (sphere_node28.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 28) {
+                                       if (if_main_node(sphere_node28.objectName)) {sphere_node28.is_main = true;reset_main_name(sphere_node28.objectName,sysid)}
+                                       sphere_node28.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node28.is_connected = true
+                                       idpos_map[sysid] = [sphere_node28.model_x,sphere_node28.model_y,sphere_node28.model_z]
+                                       modelmp[sysid] = sphere_node28
+                                       swarm_send.store_airplane_group(sysid, sphere_node28.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node28.set_main,sphere_node28.group_id)
+                                       else
+                                           update_other_airplane(sphere_node28.set_main,sphere_node28.set_main,sphere_node28.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node28.objectName)) {
+                                       sphere_node28.objectName = "28"
+                                       sphere_node28.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node28.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name29
+                               text: "  " + sphere_node29.objectName + "_" + sphere_node29.group_id
+                               font.pixelSize: 62
+                               color: sphere_node29.set_main ? "red" : "white"
+                           }
+                           id: sphere_node29
+                           objectName: "29"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node29.select_color
+                               diffuseColor: sphere_node29.is_connected ? (sphere_node29.is_main ? "red" : (sphere_node29.group_id === 1 ? modelColor1 : (sphere_node29.group_id === 2 ? modelColor2 : (sphere_node29.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 29) {
+                                       if (if_main_node(sphere_node29.objectName)) {sphere_node29.is_main = true;reset_main_name(sphere_node29.objectName,sysid)}
+                                       sphere_node29.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node29.is_connected = true
+                                       idpos_map[sysid] = [sphere_node29.model_x,sphere_node29.model_y,sphere_node29.model_z]
+                                       modelmp[sysid] = sphere_node29
+                                       swarm_send.store_airplane_group(sysid, sphere_node29.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node29.set_main,sphere_node29.group_id)
+                                       else
+                                           update_other_airplane(sphere_node29.set_main,sphere_node29.set_main,sphere_node29.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node29.objectName)) {
+                                       sphere_node29.objectName = "29"
+                                       sphere_node29.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node29.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name30
+                               text: "  " + sphere_node30.objectName + "_" + sphere_node30.group_id
+                               font.pixelSize: 62
+                               color: sphere_node30.set_main ? "red" : "white"
+                           }
+                           id: sphere_node30
+                           objectName: "30"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node30.select_color
+                               diffuseColor: sphere_node30.is_connected ? (sphere_node30.is_main ? "red" : (sphere_node30.group_id === 1 ? modelColor1 : (sphere_node30.group_id === 2 ? modelColor2 : (sphere_node30.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 30) {
+                                       if (if_main_node(sphere_node30.objectName)) {sphere_node30.is_main = true;reset_main_name(sphere_node30.objectName,sysid)}
+                                       sphere_node30.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node30.is_connected = true
+                                       idpos_map[sysid] = [sphere_node30.model_x,sphere_node30.model_y,sphere_node30.model_z]
+                                       modelmp[sysid] = sphere_node30
+                                       swarm_send.store_airplane_group(sysid, sphere_node30.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node30.set_main,sphere_node30.group_id)
+                                       else
+                                           update_other_airplane(sphere_node30.set_main,sphere_node30.set_main,sphere_node30.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node30.objectName)) {
+                                       sphere_node30.objectName = "30"
+                                       sphere_node30.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node30.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name31
+                               text: "  " + sphere_node31.objectName + "_" + sphere_node31.group_id
+                               font.pixelSize: 62
+                               color: sphere_node31.set_main ? "red" : "white"
+                           }
+                           id: sphere_node31
+                           objectName: "31"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node31.select_color
+                               diffuseColor: sphere_node31.is_connected ? (sphere_node31.is_main ? "red" : (sphere_node31.group_id === 1 ? modelColor1 : (sphere_node31.group_id === 2 ? modelColor2 : (sphere_node31.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 31) {
+                                       if (if_main_node(sphere_node31.objectName)) {sphere_node31.is_main = true;reset_main_name(sphere_node31.objectName,sysid)}
+                                       sphere_node31.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node31.is_connected = true
+                                       idpos_map[sysid] = [sphere_node31.model_x,sphere_node31.model_y,sphere_node31.model_z]
+                                       modelmp[sysid] = sphere_node31
+                                       swarm_send.store_airplane_group(sysid, sphere_node31.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node31.set_main,sphere_node31.group_id)
+                                       else
+                                           update_other_airplane(sphere_node31.set_main,sphere_node31.set_main,sphere_node31.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node31.objectName)) {
+                                       sphere_node31.objectName = "31"
+                                       sphere_node31.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node31.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name32
+                               text: "  " + sphere_node32.objectName + "_" + sphere_node32.group_id
+                               font.pixelSize: 62
+                               color: sphere_node32.set_main ? "red" : "white"
+                           }
+                           id: sphere_node32
+                           objectName: "32"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node32.select_color
+                               diffuseColor: sphere_node32.is_connected ? (sphere_node32.is_main ? "red" : (sphere_node32.group_id === 1 ? modelColor1 : (sphere_node32.group_id === 2 ? modelColor2 : (sphere_node32.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 32) {
+                                       if (if_main_node(sphere_node32.objectName)) {sphere_node32.is_main = true;reset_main_name(sphere_node32.objectName,sysid)}
+                                       sphere_node32.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node32.is_connected = true
+                                       idpos_map[sysid] = [sphere_node32.model_x,sphere_node32.model_y,sphere_node32.model_z]
+                                       modelmp[sysid] = sphere_node32
+                                       swarm_send.store_airplane_group(sysid, sphere_node32.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node32.set_main,sphere_node32.group_id)
+                                       else
+                                           update_other_airplane(sphere_node32.set_main,sphere_node32.set_main,sphere_node32.group_id)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node32.objectName)) {
+                                       sphere_node32.objectName = "32"
+                                       sphere_node32.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node32.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name33
+                               text: "  " + sphere_node33.objectName + "_" + sphere_node33.group_id
+                               font.pixelSize: 62
+                               color: sphere_node33.set_main ? "red" : "white"
+                           }
+                           id: sphere_node33
+                           objectName: "33"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node33.select_color
+                               diffuseColor: sphere_node33.is_connected ? (sphere_node33.is_main ? "red" : (sphere_node33.group_id === 1 ? modelColor1 : (sphere_node33.group_id === 2 ? modelColor2 : (sphere_node33.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 33) {
+                                       if (if_main_node(sphere_node33.objectName)) {sphere_node33.is_main = true;reset_main_name(sphere_node33.objectName,sysid)}
+                                       sphere_node33.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node33.is_connected = true
+                                       idpos_map[sysid] = [sphere_node33.model_x,sphere_node33.model_y,sphere_node33.model_z]
+                                       modelmp[sysid] = sphere_node33
+                                       swarm_send.store_airplane_group(sysid, sphere_node33.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node33.set_main,sphere_node33.group_id)
+                                       else
+                                           update_other_airplane(sphere_node33.set_main,sphere_node33.set_main,sphere_node33.group_id)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node33.objectName)) {
+                                       sphere_node33.objectName = "33"
+                                       sphere_node33.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node33.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name34
+                               text: "  " + sphere_node34.objectName + "_" + sphere_node34.group_id
+                               font.pixelSize: 62
+                               color: sphere_node34.set_main ? "red" : "white"
+                           }
+                           id: sphere_node34
+                           objectName: "34"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node34.select_color
+                               diffuseColor: sphere_node34.is_connected ? (sphere_node34.is_main ? "red" : (sphere_node34.group_id === 1 ? modelColor1 : (sphere_node34.group_id === 2 ? modelColor2 : (sphere_node34.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 34) {
+                                       if (if_main_node(sphere_node34.objectName)) {sphere_node34.is_main = true;reset_main_name(sphere_node34.objectName,sysid)}
+                                       sphere_node34.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node34.is_connected = true
+                                       idpos_map[sysid] = [sphere_node34.model_x,sphere_node34.model_y,sphere_node34.model_z]
+                                       modelmp[sysid] = sphere_node34
+                                       swarm_send.store_airplane_group(sysid, sphere_node34.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node34.set_main,sphere_node34.group_id)
+                                       else
+                                           update_other_airplane(sphere_node34.set_main,sphere_node34.set_main,sphere_node34.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node34.objectName)) {
+                                       sphere_node34.objectName = "34"
+                                       sphere_node34.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node34.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name35
+                               text: "  " + sphere_node35.objectName + "_" + sphere_node35.group_id
+                               font.pixelSize: 62
+                               color: sphere_node35.set_main ? "red" : "white"
+                           }
+                           id: sphere_node35
+                           objectName: "35"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node35.select_color
+                               diffuseColor: sphere_node35.is_connected ? (sphere_node35.is_main ? "red" : (sphere_node35.group_id === 1 ? modelColor1 : (sphere_node35.group_id === 2 ? modelColor2 : (sphere_node35.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 35) {
+                                       if (if_main_node(sphere_node35.objectName)) {sphere_node35.is_main = true;reset_main_name(sphere_node35.objectName,sysid)}
+                                       sphere_node35.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node35.is_connected = true
+                                       idpos_map[sysid] = [sphere_node35.model_x,sphere_node35.model_y,sphere_node35.model_z]
+                                       modelmp[sysid] = sphere_node35
+                                       swarm_send.store_airplane_group(sysid, sphere_node35.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node35.set_main,sphere_node35.group_id)
+                                       else
+                                           update_other_airplane(sphere_node35.set_main,sphere_node35.set_main,sphere_node35.group_id)
+                                   }
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node35.objectName)) {
+                                       sphere_node35.objectName = "35"
+                                       sphere_node35.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node35.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name36
+                               text: "  " + sphere_node36.objectName + "_" + sphere_node36.group_id
+                               font.pixelSize: 62
+                               color: sphere_node36.set_main ? "red" : "white"
+                           }
+                           id: sphere_node36
+                           objectName: "36"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node36.select_color
+                               diffuseColor: sphere_node36.is_connected ? (sphere_node36.is_main ? "red" : (sphere_node36.group_id === 1 ? modelColor1 : (sphere_node36.group_id === 2 ? modelColor2 : (sphere_node36.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 36) {
+                                       if (if_main_node(sphere_node36.objectName)) {sphere_node36.is_main = true;reset_main_name(sphere_node36.objectName,sysid)}
+                                       sphere_node36.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node36.is_connected = true
+                                       idpos_map[sysid] = [sphere_node36.model_x,sphere_node36.model_y,sphere_node36.model_z]
+                                       modelmp[sysid] = sphere_node36
+                                       swarm_send.store_airplane_group(sysid, sphere_node36.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node36.set_main,sphere_node36.group_id)
+                                       else
+                                           update_other_airplane(sphere_node36.set_main,sphere_node36.set_main,sphere_node36.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node36.objectName)) {
+                                       sphere_node36.objectName = "36"
+                                       sphere_node36.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node36.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name37
+                               text: "  " + sphere_node37.objectName + "_" + sphere_node37.group_id
+                               font.pixelSize: 62
+                               color: sphere_node37.set_main ? "red" : "white"
+                           }
+                           id: sphere_node37
+                           objectName: "37"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node37.select_color
+                               diffuseColor: sphere_node37.is_connected ? (sphere_node37.is_main ? "red" : (sphere_node37.group_id === 1 ? modelColor1 : (sphere_node37.group_id === 2 ? modelColor2 : (sphere_node37.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 37) {
+                                       if (if_main_node(sphere_node37.objectName)) {sphere_node37.is_main = true;reset_main_name(sphere_node37.objectName,sysid)}
+                                       sphere_node37.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node37.is_connected = true
+                                       idpos_map[sysid] = [sphere_node37.model_x,sphere_node37.model_y,sphere_node37.model_z]
+                                       modelmp[sysid] = sphere_node37
+                                       swarm_send.store_airplane_group(sysid, sphere_node37.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node37.set_main,sphere_node37.group_id)
+                                       else
+                                           update_other_airplane(sphere_node37.set_main,sphere_node37.set_main,sphere_node37.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node37.objectName)) {
+                                       sphere_node37.objectName = "37"
+                                       sphere_node37.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node37.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name38
+                               text: "  " + sphere_node38.objectName + "_" + sphere_node38.group_id
+                               font.pixelSize: 62
+                               color: sphere_node38.set_main ? "red" : "white"
+                           }
+                           id: sphere_node38
+                           objectName: "38"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node38.select_color
+                               diffuseColor: sphere_node38.is_connected ? (sphere_node38.is_main ? "red" : (sphere_node38.group_id === 1 ? modelColor1 : (sphere_node38.group_id === 2 ? modelColor2 : (sphere_node38.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 38) {
+                                       if (if_main_node(sphere_node38.objectName)) {sphere_node38.is_main = true;reset_main_name(sphere_node38.objectName,sysid)}
+                                       sphere_node38.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node38.is_connected = true
+                                       idpos_map[sysid] = [sphere_node38.model_x,sphere_node38.model_y,sphere_node38.model_z]
+                                       modelmp[sysid] = sphere_node38
+                                       swarm_send.store_airplane_group(sysid, sphere_node38.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node38.set_main,sphere_node38.group_id)
+                                       else
+                                           update_other_airplane(sphere_node38.set_main,sphere_node38.set_main,sphere_node38.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node38.objectName)) {
+                                       sphere_node38.objectName = "38"
+                                       sphere_node38.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node38.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name39
+                               text: "  " + sphere_node39.objectName + "_" + sphere_node39.group_id
+                               font.pixelSize: 62
+                               color: sphere_node39.set_main ? "red" : "white"
+                           }
+                           id: sphere_node39
+                           objectName: "39"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node39.select_color
+                               diffuseColor: sphere_node39.is_connected ? (sphere_node39.is_main ? "red" : (sphere_node39.group_id === 1 ? modelColor1 : (sphere_node39.group_id === 2 ? modelColor2 : (sphere_node39.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 39) {
+                                       if (if_main_node(sphere_node39.objectName)) {sphere_node39.is_main = true;reset_main_name(sphere_node39.objectName,sysid)}
+                                       sphere_node39.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node39.is_connected = true
+                                       idpos_map[sysid] = [sphere_node39.model_x,sphere_node39.model_y,sphere_node39.model_z]
+                                       modelmp[sysid] = sphere_node39
+                                       swarm_send.store_airplane_group(sysid, sphere_node39.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node39.set_main,sphere_node39.group_id)
+                                       else
+                                           update_other_airplane(sphere_node39.set_main,sphere_node39.set_main,sphere_node39.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node39.objectName)) {
+                                       sphere_node39.objectName = "39"
+                                       sphere_node39.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node39.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name40
+                               text: "  " + sphere_node40.objectName + "_" + sphere_node40.group_id
+                               font.pixelSize: 62
+                               color: sphere_node40.set_main ? "red" : "white"
+                           }
+                           id: sphere_node40
+                           objectName: "40"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node40.select_color
+                               diffuseColor: sphere_node40.is_connected ? (sphere_node40.is_main ? "red" : (sphere_node40.group_id === 1 ? modelColor1 : (sphere_node40.group_id === 2 ? modelColor2 : (sphere_node40.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 40) {
+                                       if (if_main_node(sphere_node40.objectName)) {sphere_node40.is_main = true;reset_main_name(sphere_node40.objectName,sysid)}
+                                       sphere_node40.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node40.is_connected = true
+                                       idpos_map[sysid] = [sphere_node40.model_x,sphere_node40.model_y,sphere_node40.model_z]
+                                       modelmp[sysid] = sphere_node40
+                                       swarm_send.store_airplane_group(sysid, sphere_node40.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node40.set_main,sphere_node40.group_id)
+                                       else
+                                           update_other_airplane(sphere_node40.set_main,sphere_node40.set_main,sphere_node40.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node40.objectName)) {
+                                       sphere_node40.objectName = "40"
+                                       sphere_node40.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node40.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name41
+                               text: "  " + sphere_node41.objectName + "_" + sphere_node41.group_id
+                               font.pixelSize: 62
+                               color: sphere_node41.set_main ? "red" : "white"
+                           }
+                           id: sphere_node41
+                           objectName: "41"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node41.select_color
+                               diffuseColor: sphere_node41.is_connected ? (sphere_node41.is_main ? "red" : (sphere_node41.group_id === 1 ? modelColor1 : (sphere_node41.group_id === 2 ? modelColor2 : (sphere_node41.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 41) {
+                                       if (if_main_node(sphere_node41.objectName)) {sphere_node41.is_main = true;reset_main_name(sphere_node41.objectName,sysid)}
+                                       sphere_node41.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node41.is_connected = true
+                                       idpos_map[sysid] = [sphere_node41.model_x,sphere_node41.model_y,sphere_node41.model_z]
+                                       modelmp[sysid] = sphere_node41
+                                       swarm_send.store_airplane_group(sysid, sphere_node41.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node41.set_main,sphere_node41.group_id)
+                                       else
+                                           update_other_airplane(sphere_node41.set_main,sphere_node41.set_main,sphere_node41.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node41.objectName)) {
+                                       sphere_node41.objectName = "41"
+                                       sphere_node41.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node41.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name42
+                               text: "  " + sphere_node42.objectName + "_" + sphere_node42.group_id
+                               font.pixelSize: 62
+                               color: sphere_node42.set_main ? "red" : "white"
+                           }
+                           id: sphere_node42
+                           objectName: "42"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node42.select_color
+                               diffuseColor: sphere_node42.is_connected ? (sphere_node42.is_main ? "red" : (sphere_node42.group_id === 1 ? modelColor1 : (sphere_node42.group_id === 2 ? modelColor2 : (sphere_node42.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 42) {
+                                       if (if_main_node(sphere_node42.objectName)) {sphere_node42.is_main = true;reset_main_name(sphere_node42.objectName,sysid)}
+                                       sphere_node42.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node42.is_connected = true
+                                       idpos_map[sysid] = [sphere_node42.model_x,sphere_node42.model_y,sphere_node42.model_z]
+                                       modelmp[sysid] = sphere_node42
+                                       swarm_send.store_airplane_group(sysid, sphere_node42.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node42.set_main,sphere_node42.group_id)
+                                       else
+                                           update_other_airplane(sphere_node42.set_main,sphere_node42.set_main,sphere_node42.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node42.objectName)) {
+                                       sphere_node42.objectName = "42"
+                                       sphere_node42.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node42.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name43
+                               text: "  " + sphere_node43.objectName + "_" + sphere_node43.group_id
+                               font.pixelSize: 62
+                               color: sphere_node43.set_main ? "red" : "white"
+                           }
+                           id: sphere_node43
+                           objectName: "43"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node43.select_color
+                               diffuseColor: sphere_node43.is_connected ? (sphere_node43.is_main ? "red" : (sphere_node43.group_id === 1 ? modelColor1 : (sphere_node43.group_id === 2 ? modelColor2 : (sphere_node43.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 43) {
+                                       if (if_main_node(sphere_node43.objectName)) {sphere_node43.is_main = true;reset_main_name(sphere_node43.objectName,sysid)}
+                                       sphere_node43.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node43.is_connected = true
+                                       idpos_map[sysid] = [sphere_node43.model_x,sphere_node43.model_y,sphere_node43.model_z]
+                                       modelmp[sysid] = sphere_node43
+                                       swarm_send.store_airplane_group(sysid, sphere_node43.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node43.set_main,sphere_node43.group_id)
+                                       else
+                                           update_other_airplane(sphere_node43.set_main,sphere_node43.set_main,sphere_node43.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node43.objectName)) {
+                                       sphere_node43.objectName = "43"
+                                       sphere_node43.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node43.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name44
+                               text: "  " + sphere_node44.objectName + "_" + sphere_node44.group_id
+                               font.pixelSize: 62
+                               color: sphere_node44.set_main ? "red" : "white"
+                           }
+                           id: sphere_node44
+                           objectName: "44"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node44.select_color
+                               diffuseColor: sphere_node44.is_connected ? (sphere_node44.is_main ? "red" : (sphere_node44.group_id === 1 ? modelColor1 : (sphere_node44.group_id === 2 ? modelColor2 : (sphere_node44.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 44) {
+                                       if (if_main_node(sphere_node44.objectName)) {sphere_node44.is_main = true;reset_main_name(sphere_node44.objectName,sysid)}
+                                       sphere_node44.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node44.is_connected = true
+                                       idpos_map[sysid] = [sphere_node44.model_x,sphere_node44.model_y,sphere_node44.model_z]
+                                       modelmp[sysid] = sphere_node44
+                                       swarm_send.store_airplane_group(sysid, sphere_node44.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node44.set_main,sphere_node44.group_id)
+                                       else
+                                           update_other_airplane(sphere_node44.set_main,sphere_node44.set_main,sphere_node44.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node44.objectName)) {
+                                       sphere_node44.objectName = "44"
+                                       sphere_node44.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node44.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name45
+                               text: "  " + sphere_node45.objectName + "_" + sphere_node45.group_id
+                               font.pixelSize: 62
+                               color: sphere_node45.set_main ? "red" : "white"
+                           }
+                           id: sphere_node45
+                           objectName: "45"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node45.select_color
+                               diffuseColor: sphere_node45.is_connected ? (sphere_node45.is_main ? "red" : (sphere_node45.group_id === 1 ? modelColor1 : (sphere_node45.group_id === 2 ? modelColor2 : (sphere_node45.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 45) {
+                                       if (if_main_node(sphere_node45.objectName)) {sphere_node45.is_main = true;reset_main_name(sphere_node45.objectName,sysid)}
+                                       sphere_node45.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node45.is_connected = true
+                                       idpos_map[sysid] = [sphere_node45.model_x,sphere_node45.model_y,sphere_node45.model_z]
+                                       modelmp[sysid] = sphere_node45
+                                       swarm_send.store_airplane_group(sysid, sphere_node45.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node45.set_main,sphere_node45.group_id)
+                                       else
+                                           update_other_airplane(sphere_node45.set_main,sphere_node45.set_main,sphere_node45.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node45.objectName)) {
+                                       sphere_node45.objectName = "45"
+                                       sphere_node45.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node45.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name46
+                               text: "  " + sphere_node46.objectName + "_" + sphere_node46.group_id
+                               font.pixelSize: 62
+                               color: sphere_node46.set_main ? "red" : "white"
+                           }
+                           id: sphere_node46
+                           objectName: "46"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node46.select_color
+                               diffuseColor: sphere_node46.is_connected ? (sphere_node46.is_main ? "red" : (sphere_node46.group_id === 1 ? modelColor1 : (sphere_node46.group_id === 2 ? modelColor2 : (sphere_node46.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 46) {
+                                       if (if_main_node(sphere_node46.objectName)) {sphere_node46.is_main = true;reset_main_name(sphere_node46.objectName,sysid)}
+                                       sphere_node46.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node46.is_connected = true
+                                       idpos_map[sysid] = [sphere_node46.model_x,sphere_node46.model_y,sphere_node46.model_z]
+                                       modelmp[sysid] = sphere_node46
+                                       swarm_send.store_airplane_group(sysid, sphere_node46.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node46.set_main,sphere_node46.group_id)
+                                       else
+                                           update_other_airplane(sphere_node46.set_main,sphere_node46.set_main,sphere_node46.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node46.objectName)) {
+                                       sphere_node46.objectName = "46"
+                                       sphere_node46.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node46.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name47
+                               text: "  " + sphere_node47.objectName + "_" + sphere_node47.group_id
+                               font.pixelSize: 62
+                               color: sphere_node47.set_main ? "red" : "white"
+                           }
+                           id: sphere_node47
+                           objectName: "47"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node47.select_color
+                               diffuseColor: sphere_node47.is_connected ? (sphere_node47.is_main ? "red" : (sphere_node47.group_id === 1 ? modelColor1 : (sphere_node47.group_id === 2 ? modelColor2 : (sphere_node47.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 47) {
+                                       if (if_main_node(sphere_node47.objectName)) {sphere_node47.is_main = true;reset_main_name(sphere_node47.objectName,sysid)}
+                                       sphere_node47.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node47.is_connected = true
+                                       idpos_map[sysid] = [sphere_node47.model_x,sphere_node47.model_y,sphere_node47.model_z]
+                                       modelmp[sysid] = sphere_node47
+                                       swarm_send.store_airplane_group(sysid, sphere_node47.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node47.set_main,sphere_node47.group_id)
+                                       else
+                                           update_other_airplane(sphere_node47.set_main,sphere_node47.set_main,sphere_node47.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node47.objectName)) {
+                                       sphere_node47.objectName = "47"
+                                       sphere_node47.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node47.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name48
+                               text: "  " + sphere_node48.objectName + "_" + sphere_node48.group_id
+                               font.pixelSize: 62
+                               color: sphere_node48.set_main ? "red" : "white"
+                           }
+                           id: sphere_node48
+                           objectName: "48"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node48.select_color
+                               diffuseColor: sphere_node48.is_connected ? (sphere_node48.is_main ? "red" : (sphere_node48.group_id === 1 ? modelColor1 : (sphere_node48.group_id === 2 ? modelColor2 : (sphere_node48.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 48) {
+                                       if (if_main_node(sphere_node48.objectName)) {sphere_node48.is_main = true;reset_main_name(sphere_node48.objectName,sysid)}
+                                       sphere_node48.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node48.is_connected = true
+                                       idpos_map[sysid] = [sphere_node48.model_x,sphere_node48.model_y,sphere_node48.model_z]
+                                       modelmp[sysid] = sphere_node48
+                                       swarm_send.store_airplane_group(sysid, sphere_node48.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node48.set_main,sphere_node48.group_id)
+                                       else
+                                           update_other_airplane(sphere_node48.set_main,sphere_node48.set_main,sphere_node48.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node48.objectName)) {
+                                       sphere_node48.objectName = "48"
+                                       sphere_node48.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node48.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name49
+                               text: "  " + sphere_node49.objectName + "_" + sphere_node49.group_id
+                               font.pixelSize: 62
+                               color: sphere_node49.set_main ? "red" : "white"
+                           }
+                           id: sphere_node49
+                           objectName: "49"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node49.select_color
+                               diffuseColor: sphere_node49.is_connected ? (sphere_node49.is_main ? "red" : (sphere_node49.group_id === 1 ? modelColor1 : (sphere_node49.group_id === 2 ? modelColor2 : (sphere_node49.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 49) {
+                                       if (if_main_node(sphere_node49.objectName)) {sphere_node49.is_main = true;reset_main_name(sphere_node49.objectName,sysid)}
+                                       sphere_node49.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node49.is_connected = true
+                                       idpos_map[sysid] = [sphere_node49.model_x,sphere_node49.model_y,sphere_node49.model_z]
+                                       modelmp[sysid] = sphere_node49
+                                       swarm_send.store_airplane_group(sysid, sphere_node49.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node49.set_main,sphere_node49.group_id)
+                                       else
+                                           update_other_airplane(sphere_node49.set_main,sphere_node49.set_main,sphere_node49.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node49.objectName)) {
+                                       sphere_node49.objectName = "49"
+                                       sphere_node49.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node49.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+                       Model {
+                           Text {
+                               id: name50
+                               text: "  " + sphere_node50.objectName + "_" + sphere_node50.group_id
+                               font.pixelSize: 62
+                               color: sphere_node50.set_main ? "red" : "white"
+                           }
+                           id: sphere_node50
+                           objectName: "50"
+                           source: "#Sphere"
+                           pickable: true
+                           visible: true
+                           x: 0
+                           z: 5
+                           scale: Qt.vector3d(0.8,0.8,0.1)
+                           property int model_x : 0
+                           property int model_y : 0
+                           property int model_z : 0
+                           property int group_id: 1
+                           property bool set_main: false
+                           property bool is_main: false
+                           property bool is_connected: false
+                           property real select_color: 0.6
+                           materials: DefaultMaterial {
+                               opacity: sphere_node50.select_color
+                               diffuseColor: sphere_node50.is_connected ? (sphere_node50.is_main ? "red" : (sphere_node50.group_id === 1 ? modelColor1 : (sphere_node50.group_id === 2 ? modelColor2 : (sphere_node50.group_id === 3 ? modelColor3 : modelColor4)))) : "#646566"
+                           }
+
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydatachanged(n,sysid) { // cpp发信号
+                                   if (n === 50) {
+                                       if (if_main_node(sphere_node50.objectName)) {sphere_node50.is_main = true;reset_main_name(sphere_node50.objectName,sysid)}
+                                       sphere_node50.objectName = sysid
+                                       _sysid_list.push(sysid)
+                                       sphere_node50.is_connected = true
+                                       idpos_map[sysid] = [sphere_node50.model_x,sphere_node50.model_y,sphere_node50.model_z]
+                                       modelmp[sysid] = sphere_node50
+                                       swarm_send.store_airplane_group(sysid, sphere_node50.group_id,false)
+                                       if (n === Number(input_plan.text))
+                                           update_other_airplane(2,sphere_node50.set_main,sphere_node50.group_id)
+                                       else
+                                           update_other_airplane(sphere_node50.set_main,sphere_node50.set_main,sphere_node50.group_id)
+                                   }
+
+                               }
+                           }
+                           Connections {
+                               target: QGroundControl.multiVehicleManager  //cpp模块
+                               function onMydata_disconnected(sysid) {
+                                   if (sysid === Number(sphere_node50.objectName)) {
+                                       sphere_node50.objectName = "50"
+                                       sphere_node50.is_connected = false
+                                       for (var vei = 0; vei < _sysid_list.length; vei++) {
+                                           if (_sysid_list[vei] === sysid) {
+                                               _sysid_list.splice(vei,1)
+                                           }
+                                       }
+                                       delete idpos_map[sysid]
+                                       delete modelmp[sysid]
+                                       sphere_node50.group_id = 1
+                                   }
+                               }
+                           }
+                       }
+
+                       MouseArea {
+                           id: mouse_area
+                           anchors.fill: parent
+                           hoverEnabled: false
+                           property var pickNode: null
+                           property var lastpickNode: null
+                           //鼠标和物体xy的偏移
+                           property real xOffset: 0
+                           property real yOffset: 0
+                           property real zOffset: 0
+
+                           acceptedButtons:Qt.LeftButton | Qt.RightButton
+                           onPressed: {
+                               var if_right = pressedButtons & Qt.RightButton
+
+                               var result = control.pick(mouse.x, mouse.y)
+                               //目前只在点击时更新了pick物体的信息
+                               if (result.objectHit) {
+                                   pickNode = result.objectHit
+                                   var map_from = control.mapFrom3DScene(pickNode.scenePosition)
+
+                                   xOffset = map_from.x - mouse.x
+                                   yOffset = map_from.y - mouse.y
+                                   zOffset = map_from.z
+
+                                   if_release = true
+
+                                   // 先更新位置信息，再更新相对坐标显示
+                                   show_position(pickNode)
+                                   updateRelativePosition(pickNode)
+
+                                   // 多选操作
+                                   if (ifpick) {
+                                       select_merge.push(pickNode)
+                                   }
+                                   if (if_right) { // 可在onpressed里做筛选条件
+                                       pickNode.select_color = 1
+                                       select_merge.push(pickNode)
+                                       console.log("right mouse",pickNode.objectName,pickNode.group_id)
+                                   }
+                               } else {
+                                   pickNode = null
+
+                                   // 清空相对坐标显示
+                                   updateRelativePosition(null)
+
+                                   for(var i = 0; i < select_merge.length; i++)
+                                       select_merge[i].select_color = 0.6
+                                   select_merge.length = 0
+                               }
+
+                           }
+
+                           onPositionChanged: {
+                               if(!mouse_area.containsMouse || !pickNode){
+                                   return
+                               }
+
+                               show_position(pickNode)
+                               updateRelativePosition(pickNode)  // 移动时更新相对坐标
+
+                               if(if_release) { // 解决被挤开后再次回来碰撞问题
+                                   var pos_temp = Qt.vector3d(mouse.x + xOffset, mouse.y + yOffset, zOffset);
+                                   var map_to = control.mapTo3DScene(pos_temp)
+                                   pickNode.x = map_to.x
+                                   pickNode.y = map_to.y
+                               }
+
+                               var map_from_1 = control.mapFrom3DScene(pickNode.scenePosition) // 屏幕坐标
+                               if (((map_from_1.x -20) % 40 <= 1 || (map_from_1.x -20) % 40 >= 39) && ((map_from_1.y-20) % 40 <= 1 || (map_from_1.y-20) % 40 >= 39)) {
+                                   return
+                               }
+                               var nu_x = (map_from_1.x-20) % 40 > 20 ? map_from_1.x + 40 - (map_from_1.x-20) % 40 : map_from_1.x - (map_from_1.x-20) % 40;
+                               var nu_y = (map_from_1.y-20) % 40 > 20 ? map_from_1.y + 40 - (map_from_1.y-20) % 40 : map_from_1.y - (map_from_1.y-20) % 40;
+
+                               var pos_temp_1 = Qt.vector3d(nu_x,nu_y, map_from_1.z);
+                               var map_to_1 = control.mapTo3DScene(pos_temp_1) // 世界坐标
+                               pickNode.x = map_to_1.x
+                               pickNode.y = map_to_1.y
+
+                               if(canv.visible === true) {// 左右
+                                   var x = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][0]: pickNode.model_x
+                                   var y = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][1]: pickNode.model_y
+                                   if(mouse.x < (control.width ) / 2 && (2 === grp_pos_mp[pickNode.group_id])) {
+                                       screen_pos_to_world_pos((control.width - 20) / 80,y,pickNode)
+                                       if_release = false
+                                   } else if (mouse.x > (control.width ) / 2 && (grp_pos_mp[pickNode.group_id] === 1)){
+                                       screen_pos_to_world_pos((control.width - 20) / 80 - 1,y,pickNode)
+                                       if_release = false
+                                   }
+                               }
+                               if(canv2.visible === true) {// 左右
+                                   var x2 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][0]: pickNode.model_x
+                                   var y2 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][1]: pickNode.model_y
+                                   if(mouse.x < (control.width ) / 2 && (grp_pos_mp[pickNode.group_id] === 4)) {
+                                       screen_pos_to_world_pos((control.width - 20) / 80,y2,pickNode)
+                                       if_release = false
+                                   } else if (mouse.x > (control.width ) / 2 && (grp_pos_mp[pickNode.group_id] === 3)){
+                                       screen_pos_to_world_pos((control.width - 20) / 80 - 1,y2,pickNode)
+                                       if_release = false
+                                   }
+                               }
+                               if(canv3.visible === true) {
+                                   var x_1 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][0]: pickNode.model_x
+                                   var y_1 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][1]: pickNode.model_y
+                                   if(mouse.y < (control.height ) / 2 && (grp_pos_mp[pickNode.group_id] === 3)) {
+                                       screen_pos_to_world_pos(x_1,(control.height - 20) / 80,pickNode)
+                                       if_release = false
+                                   } else if (mouse.y > (control.height ) / 2 && (grp_pos_mp[pickNode.group_id] === 1)){
+                                       screen_pos_to_world_pos(x_1,(control.height - 20) / 80 - 2,pickNode)
+                                       if_release = false
+                                   }
+                               }
+                               if(canv4.visible === true) {
+                                   var x_2 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][0]: pickNode.model_x
+                                   var y_2 = pickNode.is_connected ? idpos_map[Number(pickNode.objectName)][1]: pickNode.model_y
+                                   if(mouse.y < (control.height ) / 2 && (grp_pos_mp[pickNode.group_id] === 4)) {
+                                       screen_pos_to_world_pos(x_2,(control.height - 20) / 80,pickNode)
+                                       if_release = false
+                                   } else if (mouse.y > (control.height ) / 2 && (grp_pos_mp[pickNode.group_id] === 2)){
+                                       screen_pos_to_world_pos(x_2,(control.height - 20) / 80 - 2,pickNode)
+                                       if_release = false
+                                   }
+                               }
+
+                               if(pickNode.is_connected) {
+                                   lastIntx = myIntx
+                                   lastInty = myInty
+                                   get_pos(pickNode)
+                                   idpos_map[Number(pickNode.objectName)][0] = myIntx
+                                   idpos_map[Number(pickNode.objectName)][1] = myInty
+                                   if  (will_crush(pickNode)) { //先移动再检测，检测无问题继续，碰撞时移动至上次位置
+                                       screen_pos_to_world_pos(lastIntx,lastInty,pickNode)
+                                       if_release = false
+
+                                       idpos_map[Number(pickNode.objectName)][0] = lastIntx
+                                       idpos_map[Number(pickNode.objectName)][1] = lastInty
+                                   }
+
+                                   send_all_airplane_pos(pickNode.group_id,0)
+                               }
+
+                           }
+
+                           WheelHandler {
+                               onWheel:{//鼠标滚轮滚动
+                                   if(event.angleDelta.y > 0){
+                                    //   perspective_camera.z -= 15//相机靠近，放大
+                                   } else {
+                                   //    perspective_camera.z += 15//相机远离，缩小
+                                   }
+                               }
+                           }
+
+
+                           DragHandler {
+                               property bool _isRotating: false
+                               property point _lastPose;
+                               id: cameraRotationDragHandler
+                               target: null
+                           }
+
+                       }
+
+                }
+
+            Keys.onPressed: {
+                console.log("keys")
+                if (Number(event.key) === Number(Qt.Key_Control)) {
+                    ifpick = true
+                    console.log("ctrl")
+                }
+                event.accepted = true // 标记事件已被处理
+            }
+            Keys.onReleased: {
+                // 当释放任意键时触发
+                root.ifpick = false
+                event.accepted = true // 标记事件已被处理
+            }
+            //}
+        }
+
+        // 控制面板 - 无边框卡片风格
+        Rectangle {
+            id: controlPanel
+            width: 280  // 增大宽度以容纳所有按钮
+            anchors {
+                top: topBar.bottom
+                bottom: bottomBar.top
+                left: parent.left
+                margins: 12
+            }
+            color: "#1E293B"  // 深灰蓝
+            radius: 0
+            border.width: 0  // 去掉边框
+
+            // 左侧装饰线（极细发光线）
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 2
+                color: primaryColor
+                opacity: 0.6
+
+                // 发光效果
+                layer.enabled: true
+                layer.effect: ShaderEffect {
+                    property color glowColor: primaryColor
+                }
+            }
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 15
+                spacing: 20
+
+                // 分组设置 - FUI风格
+                GroupBox {
+                    title: "分组设置"
+                    Layout.fillWidth: true
+                    background: Rectangle {
+                        color: "transparent"
+                        border.color: root.borderColor
+                        border.width: 1
+                        radius: 0
+                        opacity: 0.3
+                    }
+
+                    label: Label {
+                        text: "▸ " + parent.title
+                        color: primaryColor
+                        font.bold: true
+                        font.family: "Monospace"
+                        font.pixelSize: 13
+                        leftPadding: 5
+
+                        // 文字发光效果
+                        style: Text.Normal
+                        styleColor: primaryColor
+                    }
+
+                    GridLayout {
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 15
+                        anchors.fill: parent
+
+                        Label {
+                            text: "当前分组:"
+                            color: root.textColor
+                            font.family: "Monospace"
+                            font.pixelSize: 12
+                        }
+                        Label {
+                            text: group_num
+                            font.bold: true
+                            font.family: "Monospace"
+                            font.pixelSize: 14
+                            color: secondaryColor
+
+                            // 文字发光
+                            style: Text.Normal
+                            styleColor: secondaryColor
+                        }
+
+                        // 目标分组行：标签 + 输入框 + 分组按钮
+                        Label {
+                            text: "目标分组:"
+                            color: textColorDim  // 暗灰色标签
+                            font.family: "Monospace"
+                            font.pixelSize: 11
+                        }
+                        Row {
+                            spacing: 8  // 输入框与按钮的间距
+                            CustomTextField {
+                                id: input3
+                                text: "1"
+                                Layout.fillWidth: true
+                                validator: IntValidator { bottom: 1; top: 4 }
+                            }
+                            CustomButton {
+                                text: "分组"
+                                color: root.primaryColor
+                                onClicked: {
+                                    if (Number(input3.text) > Number(input_plan.text)) {
+                                        popup.open()
+                                    } else { // 执行分组
+                                        // 先清除所有主机状态
+                                        clearAllMainStatus();
+
+                                        if (input3.text === "1") {   //
+                                            canv.visible = false
+                                            canv2.visible = false
+                                            canv3.visible = false
+                                            canv4.visible = false
+                                            for (var i1 = 0; i1 <plan_arr.length; i1++) {
+                                                plan_arr[i1].group_id = 1
+                                                if(plan_arr[i1].is_connected)swarm_send.store_airplane_group(plan_arr[i1].objectName, plan_arr[i1].group_id, true)
+                                            }
+                                            main_node_name.length = 1
+                                            // 找id最小的作为主机
+                                            var minId1Grp = Number.MAX_VALUE
+                                            var minIdx1Grp = 0
+                                            for (var findMin1 = 0; findMin1 < plan_arr.length; findMin1++) {
+                                                var id1Grp = Number(plan_arr[findMin1].objectName)
+                                                if (id1Grp < minId1Grp) {
+                                                    minId1Grp = id1Grp
+                                                    minIdx1Grp = findMin1
+                                                }
+                                            }
+                                            main_node_name[0] = plan_arr[minIdx1Grp].objectName
+                                            set_main_name(plan_arr[minIdx1Grp])
+                                            if(plan_arr[minIdx1Grp].is_connected === true)set_main_color(plan_arr[minIdx1Grp].objectName)
+                                            send_all_airplane_pos(1,0)
+
+                                            // 将模型居中排列
+                                            var modelCount1 = plan_arr.length;
+                                            if (modelCount1 > 0) {
+                                                var areaWidth1 = Math.floor(control.width / 40) - 1;
+                                                var areaHeight1 = Math.floor(control.height / 40) - 1;
+                                                var cols1 = Math.min(modelCount1, areaWidth1);
+                                                var rows1 = Math.ceil(modelCount1 / cols1);
+                                                var startX1 = Math.floor((areaWidth1 - cols1) / 2);
+                                                var startY1 = Math.floor((areaHeight1 - rows1) / 2);
+
+                                                var xx1 = startX1;
+                                                var yy1 = startY1;
+                                                var lim1 = startX1 + cols1;
+
+                                                for (var c1 = 0; c1 < plan_arr.length; c1++) {
+                                                    if (xx1 < lim1) {
+                                                        screen_pos_to_world_pos(xx1, yy1, plan_arr[c1]);
+                                                        xx1++;
+                                                    } else {
+                                                        yy1++;
+                                                        xx1 = startX1;
+                                                        screen_pos_to_world_pos(xx1, yy1, plan_arr[c1]);
+                                                        xx1++;
+                                                    }
+                                                }
+                                            }
+
+                                            grp_pos_mp = {}  // 清理所有旧的位置映射
+                                            grp_pos_mp[1] = 1
+                                            group_num = 1
+                                            updateGroupCounts()
+                                            planArrChanged()
+                                        } else if (input3.text === "2") {//1、改groupid 2、设主机（同组的其他 视情况 设为从机）
+
+
+                                            var j = 0
+                                            for (var i = 0; i < plan_arr.length; i++) {
+                                                if (i < plan_arr.length / 2) {  // 条件不适用
+                                                    plan_arr[i].group_id = 1 // 把前一半变成第1组   保证和设置主机的group-1对应
+                                                    j = i
+                                                } else {
+                                                    plan_arr[i].group_id = 2
+                                                }
+                                                if(plan_arr[i].is_connected)swarm_send.store_airplane_group(plan_arr[i].objectName, plan_arr[i].group_id, true) //
+                                            }
+                                            main_node_name.length = 2
+                                            // 找第1组中id最小的作为主机
+                                            var minId1 = Number.MAX_VALUE
+                                            var minIdx1 = 0
+                                            for (var n0 = 0; n0 < plan_arr.length / 2; n0++) {
+                                                var id1 = Number(plan_arr[n0].objectName)
+                                                if (id1 < minId1) {
+                                                    minId1 = id1
+                                                    minIdx1 = n0
+                                                }
+                                            }
+                                            main_node_name[0] = plan_arr[minIdx1].objectName
+                                            set_main_name(plan_arr[minIdx1])
+                                            if(plan_arr[minIdx1].is_connected === true)set_main_color(plan_arr[minIdx1].objectName)
+
+                                            // 找第2组中id最小的作为主机
+                                            var minId2 = Number.MAX_VALUE
+                                            var minIdx2 = j + 1
+                                            for (var n1 = j + 1; n1 < plan_arr.length; n1++) {
+                                                var id2 = Number(plan_arr[n1].objectName)
+                                                if (id2 < minId2) {
+                                                    minId2 = id2
+                                                    minIdx2 = n1
+                                                }
+                                            }
+                                            main_node_name[1] = plan_arr[minIdx2].objectName
+                                            set_main_name(plan_arr[minIdx2])
+                                            if(plan_arr[minIdx2].is_connected === true)set_main_color(plan_arr[minIdx2].objectName)
+
+                                            send_all_airplane_pos(2,0)
+
+                                            group_num = 2
+                                            hasset_map[2] = 0
+                                            for(i = 0; i < main_node_name.length;i++) {
+                                                for(j = 0;j < plan_arr.length;j++){
+                                                    if(plan_arr[j].objectName === main_node_name[i]) {
+
+                                                        grp_pos_mp[plan_arr[j].group_id] = i + 1 // 要的是grp  不是name
+                                                    }
+                                                }
+                                            }
+                                            canv.visible = true
+                                            canv2.visible = true
+                                            canv3.visible = false
+                                            canv4.visible = false
+                                            // 强制重新绘制需要显示的Canvas
+                                            canv.requestPaint()
+                                            canv2.requestPaint()
+
+                                            move_model(1,2)
+                                            move_model(2,2)
+                                            updateGroupCounts()
+                                            planArrChanged()
+                                        } else if (input3.text === "3") {
+                                            console.log("设置分组3的Canvas可见性");
+                                            canv.visible = true
+                                            canv4.visible = true
+                                            canv2.visible = true
+                                            canv3.visible = true
+                                            // 强制重新绘制Canvas
+                                            canv.requestPaint()
+                                            canv2.requestPaint()
+                                            canv3.requestPaint()
+                                            canv4.requestPaint()
+                                            console.log("Canvas状态:", canv.visible, canv2.visible, canv3.visible, canv4.visible);
+                                            for (var k = 0; k < plan_arr.length; k++) {
+                                                if (k < plan_arr.length / 3) {
+                                                    plan_arr[k].group_id = 1
+                                                    i = k
+                                                } else if (k >= plan_arr.length / 3 && k < plan_arr.length * 2 / 3) {
+                                                    plan_arr[k].group_id = 2
+                                                    j = k
+                                                } else {
+                                                    plan_arr[k].group_id = 3
+                                                }
+                                                if(plan_arr[k].is_connected)swarm_send.store_airplane_group(plan_arr[k].objectName, plan_arr[k].group_id, true)
+                                            }
+                                            main_node_name.length = 3
+
+                                            // 找第1组中id最小的作为主机
+                                            var minId3_1 = Number.MAX_VALUE
+                                            var minIdx3_1 = 0
+                                            for (var mn3_1 = 0; mn3_1 < plan_arr.length / 3; mn3_1++) {
+                                                var id3_1 = Number(plan_arr[mn3_1].objectName)
+                                                if (id3_1 < minId3_1) {
+                                                    minId3_1 = id3_1
+                                                    minIdx3_1 = mn3_1
+                                                }
+                                            }
+                                            main_node_name[0] = plan_arr[minIdx3_1].objectName
+                                            set_main_name(plan_arr[minIdx3_1])
+                                            if(plan_arr[minIdx3_1].is_connected === true)set_main_color(plan_arr[minIdx3_1].objectName)
+
+                                            // 找第2组中id最小的作为主机
+                                            var minId3_2 = Number.MAX_VALUE
+                                            var minIdx3_2 = i + 1
+                                            for (var mn3_2 = i + 1; mn3_2 < plan_arr.length * 2 / 3; mn3_2++) {
+                                                var id3_2 = Number(plan_arr[mn3_2].objectName)
+                                                if (id3_2 < minId3_2) {
+                                                    minId3_2 = id3_2
+                                                    minIdx3_2 = mn3_2
+                                                }
+                                            }
+                                            main_node_name[1] = plan_arr[minIdx3_2].objectName
+                                            set_main_name(plan_arr[minIdx3_2])
+                                            if(plan_arr[minIdx3_2].is_connected === true)set_main_color(plan_arr[minIdx3_2].objectName)
+
+                                            // 找第3组中id最小的作为主机
+                                            var minId3_3 = Number.MAX_VALUE
+                                            var minIdx3_3 = j + 1
+                                            for (var mn3_3 = j + 1; mn3_3 < plan_arr.length; mn3_3++) {
+                                                var id3_3 = Number(plan_arr[mn3_3].objectName)
+                                                if (id3_3 < minId3_3) {
+                                                    minId3_3 = id3_3
+                                                    minIdx3_3 = mn3_3
+                                                }
+                                            }
+                                            main_node_name[2] = plan_arr[minIdx3_3].objectName
+                                            set_main_name(plan_arr[minIdx3_3])
+                                            if(plan_arr[minIdx3_3].is_connected === true)set_main_color(plan_arr[minIdx3_3].objectName)
+
+                                            send_all_airplane_pos(3,0)
+
+                                            group_num = 3
+                                            for(i = 0; i < main_node_name.length;i++) {
+                                                for(j = 0;j < plan_arr.length;j++){
+                                                    if(plan_arr[j].objectName === main_node_name[i]) {
+
+                                                        grp_pos_mp[plan_arr[j].group_id] = i + 1 // 要的是grp  不是name
+                                                    }
+                                                }
+                                            }
+                                            move_model(1,3)
+                                            move_model(2,3)
+                                            move_model(3,3)
+                                            updateGroupCounts()
+                                            planArrChanged()
+                                        } else if (input3.text === "4") {
+                                            canv.visible = true
+                                            canv4.visible = true
+                                            canv2.visible = true
+                                            canv3.visible = true
+                                            // 强制重新绘制Canvas
+                                            canv.requestPaint()
+                                            canv2.requestPaint()
+                                            canv3.requestPaint()
+                                            canv4.requestPaint()
+
+                                            // 初始化边界索引
+                                            var bound1 = Math.floor(plan_arr.length / 4);
+                                            var bound2 = Math.floor(plan_arr.length / 2);
+                                            var bound3 = Math.floor(plan_arr.length * 3 / 4);
+
+                                            for (var l = 0; l < plan_arr.length; l++) {
+                                                if (l < bound1) {
+                                                    plan_arr[l].group_id = 1
+                                                } else if (l < bound2) {
+                                                    plan_arr[l].group_id = 2
+                                                } else if (l < bound3) {
+                                                    plan_arr[l].group_id = 3
+                                                } else {
+                                                    plan_arr[l].group_id = 4
+                                                }
+                                                if(plan_arr[l].is_connected)swarm_send.store_airplane_group(plan_arr[l].objectName, plan_arr[l].group_id, true)
+                                            }
+                                            main_node_name.length = 4
+                                            main_node_name[0] = ""
+                                            main_node_name[1] = ""
+                                            main_node_name[2] = ""
+                                            main_node_name[3] = ""
+
+                                            // 为每组设置主机 - 找id最小的
+                                            // 第1组
+                                            var minId4_1 = Number.MAX_VALUE
+                                            var minIdx4_1 = 0
+                                            for (var mn4_1 = 0; mn4_1 < bound1 && mn4_1 < plan_arr.length; mn4_1++) {
+                                                var id4_1 = Number(plan_arr[mn4_1].objectName)
+                                                if (id4_1 < minId4_1) {
+                                                    minId4_1 = id4_1
+                                                    minIdx4_1 = mn4_1
+                                                }
+                                            }
+                                            if (minIdx4_1 < plan_arr.length) {
+                                                main_node_name[0] = plan_arr[minIdx4_1].objectName
+                                                set_main_name(plan_arr[minIdx4_1])
+                                                if(plan_arr[minIdx4_1].is_connected === true)set_main_color(plan_arr[minIdx4_1].objectName)
+                                            }
+
+                                            // 第2组
+                                            var minId4_2 = Number.MAX_VALUE
+                                            var minIdx4_2 = bound1
+                                            for (var mn4_2 = bound1; mn4_2 < bound2 && mn4_2 < plan_arr.length; mn4_2++) {
+                                                var id4_2 = Number(plan_arr[mn4_2].objectName)
+                                                if (id4_2 < minId4_2) {
+                                                    minId4_2 = id4_2
+                                                    minIdx4_2 = mn4_2
+                                                }
+                                            }
+                                            if (minIdx4_2 < plan_arr.length) {
+                                                main_node_name[1] = plan_arr[minIdx4_2].objectName
+                                                set_main_name(plan_arr[minIdx4_2])
+                                                if(plan_arr[minIdx4_2].is_connected === true)set_main_color(plan_arr[minIdx4_2].objectName)
+                                            }
+
+                                            // 第3组
+                                            var minId4_3 = Number.MAX_VALUE
+                                            var minIdx4_3 = bound2
+                                            for (var mn4_3 = bound2; mn4_3 < bound3 && mn4_3 < plan_arr.length; mn4_3++) {
+                                                var id4_3 = Number(plan_arr[mn4_3].objectName)
+                                                if (id4_3 < minId4_3) {
+                                                    minId4_3 = id4_3
+                                                    minIdx4_3 = mn4_3
+                                                }
+                                            }
+                                            if (minIdx4_3 < plan_arr.length) {
+                                                main_node_name[2] = plan_arr[minIdx4_3].objectName
+                                                set_main_name(plan_arr[minIdx4_3])
+                                                if(plan_arr[minIdx4_3].is_connected === true)set_main_color(plan_arr[minIdx4_3].objectName)
+                                            }
+
+                                            // 第4组
+                                            var minId4_4 = Number.MAX_VALUE
+                                            var minIdx4_4 = bound3
+                                            for (var mn4_4 = bound3; mn4_4 < plan_arr.length; mn4_4++) {
+                                                var id4_4 = Number(plan_arr[mn4_4].objectName)
+                                                if (id4_4 < minId4_4) {
+                                                    minId4_4 = id4_4
+                                                    minIdx4_4 = mn4_4
+                                                }
+                                            }
+                                            if (minIdx4_4 < plan_arr.length) {
+                                                main_node_name[3] = plan_arr[minIdx4_4].objectName
+                                                set_main_name(plan_arr[minIdx4_4])
+                                                if(plan_arr[minIdx4_4].is_connected === true)set_main_color(plan_arr[minIdx4_4].objectName)
+                                            }
+
+                                            send_all_airplane_pos(4,0) // 四组全更新
+                                            group_num = 4
+
+                                            // 设置位置映射
+                                            grp_pos_mp[1] = 1
+                                            grp_pos_mp[2] = 2
+                                            grp_pos_mp[3] = 3
+                                            grp_pos_mp[4] = 4
+
+                                            move_model(1,4)
+                                            move_model(2,4)
+                                            move_model(3,4)
+                                            move_model(4,4)
+                                            updateGroupCounts()
+                                            planArrChanged()
+                                        }
+                                    }
+                                    updateGroupCounts()  // 更新各组数量显示
+                                    planArrChanged()  // 刷新高度调整框
+                                }
+                            }
+                        }
+
+                        // 更改组号行：标签 + 输入框 + 更换分组按钮
+                        Label {
+                            text: "更改组号:"
+                            color: textColorDim  // 暗灰色标签
+                            font.family: "Monospace"
+                            font.pixelSize: 11
+                        }
+                        Row {
+                            spacing: 8  // 输入框与按钮的间距
+                            CustomTextField {
+                                id: input_change
+                                text: "1"
+                                Layout.fillWidth: true
+                                validator: IntValidator { bottom: 1; top: 4 }
+                            }
+                            CustomButton {
+                                text: "更换分组"
+                                color: secondaryColor
+                                onClicked: {
+                                    if (mouse_area.pickNode === null) {
+                                        group_popup2.open()
+                                        return
+                                    }
+                                    if (group_num >= input_change.text && input_change.text > 0 &&// 需要把连接功能放开
+                                            mouse_area.pickNode.set_main !== true) {
+                                        mouse_area.pickNode.group_id = Number(input_change.text)
+
+                                        display_changed_pos(mouse_area.pickNode.group_id) //需要考虑更换后组内是否还有剩余，若无剩余  grp_pos_mp 消除
+
+                                        if(hasset_map[mouse_area.pickNode.group_id]===1){
+                                            swarm_send.store_airplane_group(Number(mouse_area.pickNode.objectName), modelmp[Number(mouse_area.pickNode.objectName)].group_id, true)
+
+
+                                            send_all_airplane_pos(mouse_area.pickNode.group_id,0)
+                                        }
+                                        updateGroupCounts()  // 更新各组数量显示
+                                        planArrChanged()  // 刷新高度调整框
+
+                                    } else {
+                                        group_popup.open()
+                                    }
+                                }
+                            }
+                        }
+
+
+                        // 独立分组操作
+                        Label {
+                            text: "独立分组:"
+                            color: textColorDim  // 暗灰色标签
+                            font.family: "Monospace"
+                            font.pixelSize: 11
+                        }
+                        Row {
+                            spacing: 6  // 增加间距
+
+                            CustomButton {
+                                text: "独立"
+                                width: 40  // 稍微增大按钮宽度
+                                color: root.accentColor
+                                onClicked: {
+                                    // 检查输入的组号是否有效
+                                    var targetGroupId = Number(input_independent_group.text);
+                                    if (targetGroupId < 1 || targetGroupId > 4) {
+                                        console.log("目标组号必须在1-4之间");
+                                        return;
+                                    }
+
+                                    // 检查是否有选中的模型
+                                    if(select_merge.length === 0) {
+                                        console.log("请先右键选择要独立分组的模型");
+                                        return;
+                                    }
+
+                                    // 检查目标组号是否已经存在
+                                    var targetGroupExists = false;
+                                    for(var check = 0; check < plan_arr.length; check++) {
+                                        if(plan_arr[check].group_id === targetGroupId) {
+                                            targetGroupExists = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if(targetGroupExists) {
+                                        console.log("目标组号", targetGroupId, "已存在，请选择其他组号");
+                                        return;
+                                    }
+
+                                    // 统计当前实际有模型的组数
+                                    var actualGroupCount = 0;
+                                    var existingGroups = {};
+                                    for(var cnt = 0; cnt < plan_arr.length; cnt++) {
+                                        if(!existingGroups[plan_arr[cnt].group_id]) {
+                                            existingGroups[plan_arr[cnt].group_id] = true;
+                                            actualGroupCount++;
+                                        }
+                                    }
+
+                                    // 如果实际组数已经达到4组，不能再分组
+                                    if(actualGroupCount >= 4) {
+                                        select_merge.length = 0;
+                                        for(var i1 = 0; i1 < select_merge.length; i1++) {
+                                            select_merge[i1].select_color = 0.6;
+                                        }
+                                        devide_grp_pop.open();
+                                        return;
+                                    }
+
+                                    // 将选中的模型分配到目标组
+                                    // 先找出选中模型中id最小的作为主机
+                                    var minIdIndep = Number.MAX_VALUE
+                                    var minIdxIndep = 0
+                                    for(var findMin = 0; findMin < select_merge.length; findMin++) {
+                                        var idIndep = Number(select_merge[findMin].objectName)
+                                        if (idIndep < minIdIndep) {
+                                            minIdIndep = idIndep
+                                            minIdxIndep = findMin
+                                        }
+                                    }
+
+                                    for(var i = 0; i < select_merge.length; i++) {
+                                        select_merge[i].group_id = targetGroupId;
+                                        select_merge[i].select_color = 0.6;
+
+                                        if(select_merge[i].is_connected === true) {
+                                            // id最小的会成为主机，其他的设为从机
+                                            if(i === minIdxIndep) {
+                                                swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id, true, false);
+                                            } else {
+                                                // 非id最小的，设为从机
+                                                swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id, true, true);
+                                            }
+                                        }
+                                    }
+
+                                    // 确保main_node_name数组有足够的长度
+                                    while(main_node_name.length < targetGroupId) {
+                                        main_node_name.push("");
+                                    }
+
+                                    // 设置目标组的主机为id最小的
+                                    main_node_name[targetGroupId - 1] = select_merge[minIdxIndep].objectName;
+                                    select_merge[minIdxIndep].set_main = 1;
+
+                                    if(select_merge[minIdxIndep].is_connected === true) {
+                                        swarm_send.set_main_airplane(main_node_name[targetGroupId - 1], select_merge[minIdxIndep].group_id,
+                                                          0, 0, 0);
+                                        select_merge[minIdxIndep].is_main = true;
+                                        set_main_color(select_merge[minIdxIndep]);
+                                    }
+
+                                    // 更新组数为实际组数+1（新增的组）
+                                    var newGroupNum = actualGroupCount + 1;
+
+                                    // 重新分配所有组的位置
+                                    // 收集所有组（包括新组）
+                                    var allGroupIds = [];
+                                    for(var eg = 0; eg < plan_arr.length; eg++) {
+                                        var egid = plan_arr[eg].group_id;
+                                        if(allGroupIds.indexOf(egid) === -1) {
+                                            allGroupIds.push(egid);
+                                        }
+                                    }
+                                    // 添加新组
+                                    if(allGroupIds.indexOf(targetGroupId) === -1) {
+                                        allGroupIds.push(targetGroupId);
+                                    }
+                                    // 排序组号
+                                    allGroupIds.sort(function(a, b) { return a - b; });
+
+                                    // 清空旧的位置映射，重新分配
+                                    grp_pos_mp = {};
+
+                                    // 根据组数分配位置
+                                    // 2组：位置1和2（左右）
+                                    // 3组：位置1、2、3（左上、右上、左下）
+                                    // 4组：位置1、2、3、4（四个象限）
+                                    for(var gi = 0; gi < allGroupIds.length && gi < 4; gi++) {
+                                        grp_pos_mp[allGroupIds[gi]] = gi + 1;
+                                        console.log("为组", allGroupIds[gi], "分配位置", gi + 1);
+                                    }
+
+                                    var newPos = grp_pos_mp[targetGroupId];
+
+                                    // 设置分屏线可见性
+                                    if(newGroupNum >= 3) {
+                                        canv.visible = true;
+                                        canv2.visible = true;
+                                        canv3.visible = true;
+                                        canv4.visible = true;
+                                        canv.requestPaint();
+                                        canv2.requestPaint();
+                                        canv3.requestPaint();
+                                        canv4.requestPaint();
+                                    } else if(newGroupNum === 2) {
+                                        canv.visible = true;
+                                        canv2.visible = true;
+                                        canv3.visible = false;
+                                        canv4.visible = false;
+                                        canv.requestPaint();
+                                        canv2.requestPaint();
+                                    }
+
+                                    group_num = newGroupNum;
+
+                                    // 将新组的模型移动到分配的屏幕位置，并检测碰撞
+                                    if(newPos > 0) {
+                                        moveGroupToPositionWithCollision(targetGroupId, newPos);
+                                    }
+
+                                    // 重新调整所有组的模型位置到各自区域居中（保持原有队形）
+                                    for(var grpIdx in grp_pos_mp) {
+                                        var gid = Number(grpIdx);
+                                        var gpos = grp_pos_mp[grpIdx];
+                                        if(gpos > 0) {
+                                            moveGroupKeepFormation(gid, gpos);
+                                        }
+                                    }
+
+                                    if(select_merge[0].is_connected === true) {
+                                        send_all_airplane_pos(targetGroupId, 0);
+                                    }
+
+                                    // 注意：主机和从机的状态变更提示由PX4端发送ACK消息触发
+                                    // 不在这里本地生成提示，避免重复
+
+                                    select_merge.length = 0;
+
+                                    console.log("独立分组完成，目标组号:", targetGroupId, "当前组数:", group_num);
+                                    console.log("grp_pos_mp:", JSON.stringify(grp_pos_mp));
+                                    updateGroupCounts()  // 更新各组数量显示
+                                    planArrChanged()  // 刷新高度调整框
+                                }
+                            }
+                            Label {
+                                text: "到"
+                                color: textColor
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            CustomTextField {
+                                id: input_independent_group
+                                text: "2"
+                                width: 35  // 稍微增大输入框宽度
+                                validator: IntValidator { bottom: 1; top: 4 }
+                            }
+                            Label {
+                                text: "组"
+                                color: root.textColor
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            CustomButton {
+                                text: "合并"
+                                width: 40  // 稍微增大按钮宽度
+                                color: secondaryColor
+                                onClicked: {
+                                    // 需要选中至少2个主机才能合并
+                                    if(select_merge.length < 2) {
+                                        console.log("请选择至少2个主机进行合并");
+                                        return;
+                                    }
+
+                                    // 检查所有选中的是否都是主机
+                                    for(var c = 0; c < select_merge.length; c++) {
+                                        console.log("检查模型:", select_merge[c].objectName, "set_main:", select_merge[c].set_main, "类型:", typeof select_merge[c].set_main);
+                                        // 兼容 1, true, "1" 等情况
+                                        if(select_merge[c].set_main != 1 && select_merge[c].set_main !== true) {
+                                            console.log("只能选择主机进行合并, 模型", select_merge[c].objectName, "不是主机");
+                                            return;
+                                        }
+                                    }
+
+                                    // 找出所有选中主机中id最小的作为合并后的主机
+                                    var minIdMerge = Number.MAX_VALUE
+                                    var minIdxMerge = 0
+                                    for(var findMinMerge = 0; findMinMerge < select_merge.length; findMinMerge++) {
+                                        var idMerge = Number(select_merge[findMinMerge].objectName)
+                                        if (idMerge < minIdMerge) {
+                                            minIdMerge = idMerge
+                                            minIdxMerge = findMinMerge
+                                        }
+                                    }
+
+                                    var targetGroup = select_merge[minIdxMerge].group_id;  // 目标组（id最小的主机所在组）
+                                    var targetPos = grp_pos_mp[targetGroup];  // 目标组的屏幕位置
+                                    console.log("合并到组:", targetGroup, "位置:", targetPos, "主机id:", select_merge[minIdxMerge].objectName);
+
+                                    // 找到目标组当前占用的最大X坐标，用于放置被合并的模型
+                                    var targetMaxX = 0;
+                                    for(var t = 0; t < plan_arr.length; t++) {
+                                        if(plan_arr[t].group_id === targetGroup) {
+                                            if(plan_arr[t].model_x > targetMaxX) {
+                                                targetMaxX = plan_arr[t].model_x;
+                                            }
+                                        }
+                                    }
+                                    console.log("目标组最大X坐标:", targetMaxX);
+
+                                    // 处理被合并的组（除了id最小的主机所在组）
+                                    for(var h = 0; h < select_merge.length; h++) {
+                                        if(h === minIdxMerge) continue;  // 跳过id最小的主机所在组
+                                        var sourceGroup = select_merge[h].group_id;
+                                        var sourcePos = grp_pos_mp[sourceGroup];  // 被合并组的屏幕位置
+                                        console.log("合并组", sourceGroup, "位置", sourcePos, "到组", targetGroup, "位置", targetPos);
+
+                                        // 收集被合并组的所有模型，并找到它们的最小X坐标
+                                        var sourceModels = [];
+                                        var sourceMinX = 9999;
+                                        var sourceMinY = 9999;
+                                        for(var j = 0; j < plan_arr.length; j++) {
+                                            if(plan_arr[j].group_id === sourceGroup) {
+                                                sourceModels.push(plan_arr[j]);
+                                                if(plan_arr[j].model_x < sourceMinX) {
+                                                    sourceMinX = plan_arr[j].model_x;
+                                                }
+                                                if(plan_arr[j].model_y < sourceMinY) {
+                                                    sourceMinY = plan_arr[j].model_y;
+                                                }
+                                            }
+                                        }
+                                        console.log("被合并组模型数:", sourceModels.length, "最小X:", sourceMinX, "最小Y:", sourceMinY);
+
+                                        // 计算偏移量：将被合并组平移到目标组右侧
+                                        // 新位置X = 目标组最大X + 1，Y保持相对位置
+                                        var offsetX = (targetMaxX + 1) - sourceMinX;
+                                        // 找到目标组的最小Y，让被合并组Y对齐
+                                        var targetMinY = 9999;
+                                        for(var ty = 0; ty < plan_arr.length; ty++) {
+                                            if(plan_arr[ty].group_id === targetGroup) {
+                                                if(plan_arr[ty].model_y < targetMinY) {
+                                                    targetMinY = plan_arr[ty].model_y;
+                                                }
+                                            }
+                                        }
+                                        var offsetY = targetMinY - sourceMinY;
+                                        console.log("平移偏移量: offsetX=", offsetX, "offsetY=", offsetY);
+
+                                        // 平移被合并组的所有模型（保持原队形）
+                                        for(var k = 0; k < sourceModels.length; k++) {
+                                            var model = sourceModels[k];
+                                            var newX = model.model_x + offsetX;
+                                            var newY = model.model_y + offsetY;
+                                            console.log("平移模型", model.objectName, "从", model.model_x, model.model_y, "到", newX, newY);
+
+                                            // 使用screen_pos_to_world_pos更新模型位置
+                                            screen_pos_to_world_pos(newX, newY, model);
+
+                                            // 更新组别
+                                            model.group_id = targetGroup;
+                                            model.set_main = 0;
+                                            model.is_main = false;
+                                            if(model.is_connected) {
+                                                swarm_send.store_airplane_group(model.objectName, targetGroup, true, true);
+                                            }
+
+                                            // 更新targetMaxX以便下一组合并时使用
+                                            if(newX > targetMaxX) {
+                                                targetMaxX = newX;
+                                            }
+                                        }
+
+                                        // 清除被合并组的主机信息
+                                        main_node_name[sourceGroup - 1] = 0;
+
+                                        // 清除被合并组的位置映射
+                                        grp_pos_mp[sourceGroup] = 0;
+                                        delete grp_pos_mp[sourceGroup];
+
+                                        // 被合并的主机也变成从机
+                                        select_merge[h].set_main = 0;
+                                        select_merge[h].is_main = false;
+                                        select_merge[h].select_color = 0.6;
+                                    }
+
+                                    select_merge[minIdxMerge].select_color = 0.6;
+
+                                    // 更新组数
+                                    group_num = group_num - select_merge.length + 1;
+
+                                    // 根据剩余组的实际位置更新分屏线可见性
+                                    // 位置: 1=左上, 2=右上, 3=左下, 4=右下
+                                    // canv+canv2 = 垂直线| (分隔左右)
+                                    // canv3+canv4 = 水平线— (分隔上下)
+                                    var hasLeft = false;   // 左边有组 (位置1或3)
+                                    var hasRight = false;  // 右边有组 (位置2或4)
+                                    var hasTop = false;    // 上边有组 (位置1或2)
+                                    var hasBottom = false; // 下边有组 (位置3或4)
+
+                                    for(var grpKey in grp_pos_mp) {
+                                        var pos = grp_pos_mp[grpKey];
+                                        if(pos === 1) { hasLeft = true; hasTop = true; }
+                                        if(pos === 2) { hasRight = true; hasTop = true; }
+                                        if(pos === 3) { hasLeft = true; hasBottom = true; }
+                                        if(pos === 4) { hasRight = true; hasBottom = true; }
+                                    }
+
+                                    // 垂直线：只有左右都有组时才显示
+                                    var showVertical = hasLeft && hasRight;
+                                    // 水平线：只有上下都有组时才显示
+                                    var showHorizontal = hasTop && hasBottom;
+
+                                    canv.visible = showVertical;   // 垂直线上半
+                                    canv2.visible = showVertical;  // 垂直线下半
+                                    canv3.visible = showHorizontal; // 水平线左半
+                                    canv4.visible = showHorizontal; // 水平线右半
+
+                                    if(showVertical) {
+                                        canv.requestPaint();
+                                        canv2.requestPaint();
+                                    }
+                                    if(showHorizontal) {
+                                        canv3.requestPaint();
+                                        canv4.requestPaint();
+                                    }
+
+                                    console.log("分界线状态: 垂直=", showVertical, "水平=", showHorizontal);
+
+                                    if(select_merge[minIdxMerge].is_connected === true) {
+                                        send_all_airplane_pos(targetGroup, 0);
+                                    }
+
+                                    select_merge.length = 0;
+                                    updateGroupCounts();  // 更新各组数量显示
+                                    planArrChanged();  // 刷新高度调整框
+                                    console.log("合并完成，当前组数:", group_num);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 队形设置
+                GroupBox {
+                    title: "队形设置"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    background: Rectangle {
+                        color: "transparent"
+                        border.color: "#4c566a"
+                        radius: 4
+                    }
+
+                    label: Label {
+                        text: parent.title
+                        color: root.primaryColor
+                        font.bold: true
+                        leftPadding: 5
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 15
+
+                        RowLayout {
+                            spacing: 10
+                            Label {
+                                text: "第"
+                                color: textColor
+                            }
+                            CustomTextField {
+                                id: input4
+                                text: "1"
+                                width: 40
+                                validator: IntValidator { bottom: 1; top: 4 }
+                            }
+                            Label {
+                                text: "组"
+                                color: textColor
+                            }
+                        }
+
+                        CustomComboBox {
+                            id: comboBox
+                            Layout.fillWidth: true
+                            model: ["队形变换", "东西一字形", "南北一字形", "三角队形", "正方队形", "菱形队形", "圆形队形"]
+                            onActivated: {
+                                // 保留原有功能
+                                if (currentText === "东西一字形") {
+                                    // 处理东西一字形
+                                    stright_line_swarm()
+                                } else if(currentText === "南北一字形") {
+                                    // 处理南北一字形
+                                    stright_NS_line_swarm()
+                                } else if(currentText === "三角队形") {
+                                    // 处理三角队形
+                                    triangle_swarm()
+                                } else if (currentText === "正方队形") {
+                                    // 处理正方队形
+                                    rectangle_swarm()
+                                } else if (currentText === "菱形队形") {
+                                    // 处理菱形队形
+                                    diamond_swarm()
+                                } else if (currentText === "圆形队形") {
+                                    // 处理圆形队形
+                                    circle_swarm()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //   新增
+                GroupBox {
+                    title: "参数设置"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    background: Rectangle {
+                        color: "transparent"
+                        border.color: "#4c566a"
+                        radius: 4
+                    }
+
+                    label: Label {
+                        text: parent.title
+                        color: primaryColor
+                        font.bold: true
+                        leftPadding: 5
+                    }
+
+                    // 保存上一次的间距和高度值，用于提示
+                    property int lastDistance: 1
+                    property int lastHeight: 0
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            spacing: 8
+                            Label {
+                                text: "间距:"
+                                color: root.textColor
+                                font.pixelSize: 12
+                            }
+                            CustomTextField {
+                                id: input5
+                                text: "1"
+                                width: 30
+                                validator: IntValidator { bottom: 1; top: 99 }
+                                onTextChanged: {
+                                    // 间距变化时更新相对坐标显示
+                                    if (mouse_area.pickNode) {
+                                        updateRelativePosition(mouse_area.pickNode);
+                                    }
+                                    // 间距变化时发送数据给飞控
+                                    if (text !== "" && Number(text) > 0) {
+                                        for (var g = 1; g <= group_num; g++) {
+                                            send_all_airplane_pos(g, 0);
+                                        }
+                                    }
+                                }
+                            }
+                            Label {
+                                text: "米"
+                                color: textColor
+                                font.pixelSize: 12
+                            }
+                            Item { width: 10 }
+                            Label {
+                                text: "相对主机:" + (relativeMainName !== "" ? relativeMainName : "-")
+                                color: "#88c0d0"
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        RowLayout {
+                        CustomButton {
+                            text: "选定主机"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            color: root.primaryColor
+                            onClicked: {
+                                if (mouse_area.pickNode === null) {
+                                    return
+                                }
+                                mouse_area.pickNode.set_main = 1   // 需对同组其他主机进行排他
+
+                                main_node_name[mouse_area.pickNode.group_id - 1] = mouse_area.pickNode.objectName
+                                set_main_name(mouse_area.pickNode)
+                                updateRelativePosition(mouse_area.pickNode)  // 更新相对坐标
+                                    if (!mouse_area.pickNode.is_connected) return
+                                    mouse_area.pickNode.is_main = true
+
+                                    set_main_behavior(mouse_area.pickNode,1)  //要发位置
+                                    planArrChanged()  // 刷新高度调整框
+                            }
+                        }
+                        }
+                    }
+                }
+                //  起飞  降落
+                GroupBox {
+                    title: "起降命令"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    background: Rectangle {
+                        color: "transparent"
+                        border.color: "#4c566a"
+                        radius: 4
+                    }
+
+                    label: Label {
+                        text: parent.title
+                        color: primaryColor
+                        font.bold: true
+                        leftPadding: 5
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 15
+
+                        CustomButton {
+                            text: "起飞"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            color: secondaryColor  // 电光绿
+                            isPrimary: true  // 主要操作，实心填充+强发光
+                            onClicked: {
+                                executeCommandToEnabledGroups(1, 0, 0, 0, 0)
+                            }
+                        }
+                        CustomButton {
+                            text: "降落"
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            color: root.dangerColor  // 霓虹红
+                            isPrimary: true  // 主要操作，实心填充+强发光
+                            onClicked: {
+                                executeCommandToEnabledGroups(0, 0, 1, 0, 0)
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+
+        // 飞机高度调整区域 - 在蓝色框和底部状态栏之间
+        Rectangle {
+            id: droneHeightArea
+            anchors {
+                left: controlPanel.right
+                right: parent.right
+                bottom: bottomBar.top
+                margins: 12
+                bottomMargin: 0
+            }
+            height: 270
+            color: "transparent"
+
+            // 设置绝对高度弹窗 - FUI风格
+            Popup {
+                id: setHeightDialog
+                modal: true
+                anchors.centerIn: Overlay.overlay
+                width: 380
+                height: 200
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                property int targetGroupId: 1
+
+                background: Rectangle {
+                    color: "#1A1E2E"
+                    border.color: primaryColor
+                    border.width: 2
+                    radius: 0
+                    opacity: 0.98
+
+                    // 外发光
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        color: "transparent"
+                        border.color: primaryColor
+                        border.width: 1
+                        radius: 0
+                        opacity: 0.4
+                    }
+                }
+
+                contentItem: Column {
+                    anchors.fill: parent
+                    spacing: 0
+
+                    // 标题栏
+                    Rectangle {
+                        width: parent.width
+                        height: 45
+                        color: "#252A3A"
+                        radius: 0
+                        border.color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.3)
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "[ 设置绝对高度 ]"
+                            font.pixelSize: 14
+                            font.bold: true
+                            font.family: "Monospace"
+                            color: primaryColor
+
+                            // 文字发光
+                            style: Text.Normal
+                            styleColor: primaryColor
+                        }
+                    }
+
+                    // 内容区域
+                    Item {
+                        width: parent.width
+                        height: parent.height - 45 - 55
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 15
+
+                            Text {
+                                text: "已选择 " + heightSelectedDrones.length + " 架飞机"
+                                font.pixelSize: 12
+                                font.family: "Monospace"
+                                color: primaryColor
+                                anchors.horizontalCenter: parent.horizontalCenter
+                            }
+
+                            Row {
+                                spacing: 15
+                                anchors.horizontalCenter: parent.horizontalCenter
+
+                                Text {
+                                    text: "绝对高度:"
+                                    font.pixelSize: 13
+                                    font.family: "Monospace"
+                                    color: textColor
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                TextField {
+                                    id: heightInput
+                                    width: 100
+                                    height: 32
+                                    text: "10"
+                                    horizontalAlignment: Text.AlignHCenter
+                                    font.pixelSize: 13
+                                    font.family: "Monospace"
+                                    font.bold: true
+                                    validator: DoubleValidator { bottom: -100; top: 500; decimals: 1 }
+                                    color: textColor
+                                    background: Rectangle {
+                                        color: "#252A3A"
+                                        border.color: heightInput.activeFocus ? primaryColor : Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.5)
+                                        border.width: 1
+                                        radius: 0
+                                    }
+                                }
+
+                                Text {
+                                    text: "米"
+                                    font.pixelSize: 13
+                                    font.family: "Monospace"
+                                    color: textColor
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+                    }
+
+                    // 按钮区域
+                    Item {
+                        width: parent.width
+                        height: 55
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 20
+
+                            Button {
+                                width: 90
+                                height: 34
+                                text: "确定"
+                                background: Rectangle {
+                                    color: parent.pressed ? Qt.lighter(secondaryColor, 1.3) :
+                                           parent.hovered ? Qt.rgba(secondaryColor.r, secondaryColor.g, secondaryColor.b, 0.3) : "transparent"
+                                    radius: 0
+                                    border.color: secondaryColor
+                                    border.width: 1
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    font.pixelSize: 12
+                                    font.family: "Monospace"
+                                    font.bold: true
+                                    color: secondaryColor
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: {
+                                    var newHeight = parseFloat(heightInput.text);
+                                    if (!isNaN(newHeight)) {
+                                        var mainH = groupMainHeight[setHeightDialog.targetGroupId.toString()] || 0;
+                                        var count = heightSelectedDrones.length;
+                                        for (var i = 0; i < heightSelectedDrones.length; i++) {
+                                            var drone = heightSelectedDrones[i];
+                                            setDroneAbsoluteHeight(drone.objectName, newHeight, setHeightDialog.targetGroupId);
+                                            var relH = newHeight - mainH;
+                                            drone.model_z = relH;
+                                            if (drone.is_connected) {
+                                                swarm_send.set_absolute_altitude(drone.objectName, newHeight);
+                                            }
+                                        }
+                                        updateGroupScale(setHeightDialog.targetGroupId);
+                                        var newManualSet = JSON.parse(JSON.stringify(groupHeightManuallySet));
+                                        newManualSet[setHeightDialog.targetGroupId.toString()] = true;
+                                        groupHeightManuallySet = newManualSet;
+                                        addMessage("已设置 " + count + " 架飞机高度为 " + newHeight + " 米", "success");
+                                        heightSelectedDrones = [];
+                                    }
+                                    setHeightDialog.close();
+                                }
+                            }
+
+                            Button {
+                                width: 90
+                                height: 34
+                                text: "取消"
+                                background: Rectangle {
+                                    color: parent.pressed ? Qt.lighter(dangerColor, 1.3) :
+                                           parent.hovered ? Qt.rgba(dangerColor.r, dangerColor.g, dangerColor.b, 0.3) : "transparent"
+                                    radius: 0
+                                    border.color: dangerColor
+                                    border.width: 1
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    font.pixelSize: 12
+                                    font.family: "Monospace"
+                                    font.bold: true
+                                    color: dangerColor
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: {
+                                    heightSelectedDrones = [];
+                                    setHeightDialog.close();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 左侧：飞机高度调整框 (占4/5)
+            Rectangle {
+                id: droneStatusBar
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                width: parent.width * 4 / 5 - 6
+                color: "#1E293B"  // 深灰蓝
+                radius: 0
+                border.width: 0  // 去掉边框
+                clip: true
+
+                // 可滚动的飞机区域
+                Flickable {
+                    id: droneStatusFlickable
+                    anchors.fill: parent
+                    anchors.margins: 5
+                    contentWidth: droneHeightContent.width
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    ScrollBar.horizontal: ScrollBar {
+                        policy: droneStatusFlickable.contentWidth > droneStatusFlickable.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        height: 8
+                    }
+
+                    Row {
+                        id: droneHeightContent
+                        spacing: 0
+                        height: droneStatusFlickable.height > 0 ? droneStatusFlickable.height : 280
+
+                        // 动态生成各组
+                        Repeater {
+                            id: groupHeightRepeater
+                            model: 4
+
+                            delegate: Item {
+                                id: groupHeightItem
+                                property int groupId: index + 1
+                                property var groupDrones: []
+                                property int droneCount: 0
+                                property real scaleMax: groupScaleMax[groupId.toString()] || 5
+                                property real scaleMin: groupScaleMin[groupId.toString()] || -5
+                                property real scaleRange: Math.max(scaleMax - scaleMin, 1)
+                                property real mainHeight: groupMainHeight[groupId.toString()] || 0
+
+                                function updateGroupDrones() {
+                                    var newDrones = [];
+                                    for (var i = 0; i < plan_arr.length; i++) {
+                                        if (plan_arr[i].group_id === groupId && plan_arr[i].visible) {
+                                            newDrones.push(plan_arr[i]);
+                                        }
+                                    }
+                                    groupDrones = newDrones;
+                                    droneCount = newDrones.length;
+                                }
+
+                                visible: droneCount > 0
+                                width: visible ? (30 + droneCount * 40 + 10 + (groupId > 1 ? 8 : 0)) : 0
+                                height: droneHeightContent.height > 0 ? droneHeightContent.height : 130
+
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 0
+
+                                    // 组分隔线 - 使用Text元素（和加号一样的方式）
+                                    Item {
+                                        visible: groupHeightItem.groupId > 1 && groupHeightItem.visible
+                                        width: 8
+                                        height: parent.height
+
+                                        Repeater {
+                                            model: Math.ceil(parent.height / 20)
+                                            Text {
+                                                x: 0
+                                                y: index * 20
+                                                text: "|"
+                                                font.pixelSize: 20
+                                                font.bold: true
+                                                color: "#FFFFFF"
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        width: parent.width - (groupHeightItem.groupId > 1 ? 8 : 0)
+                                        height: parent.height
+
+                                        // 组标题和设置高度按钮 - 优化布局
+                                        Column {
+                                            width: parent.width
+                                            spacing: 2
+
+                                            // 第一行：组号
+                                            Text {
+                                                text: "G" + groupId
+                                                font.pixelSize: 10
+                                                font.bold: true
+                                                font.family: "Monospace"
+                                                color: groupId === 1 ? "#00E5FF" : (groupId === 2 ? "#00FF88" : (groupId === 3 ? "#FF8C00" : "#FFD700"))  // 第三组改为橙色
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                            }
+
+                                            // 第二行：设置高度按钮和主机高度
+                                            Row {
+                                                width: parent.width
+                                                spacing: 3
+
+                                                Rectangle {
+                                                    width: 40
+                                                    height: 14
+                                                    radius: 0
+                                                    color: heightSelectedDrones.length > 0 ? Qt.rgba(primaryColor.r, primaryColor.g, primaryColor.b, 0.2) : "transparent"
+                                                    border.color: heightSelectedDrones.length > 0 ? primaryColor : Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.3)
+                                                    border.width: 1
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "SET"
+                                                        font.pixelSize: 6
+                                                        font.family: "Monospace"
+                                                        font.bold: true
+                                                        color: heightSelectedDrones.length > 0 ? primaryColor : Qt.rgba(textColor.r, textColor.g, textColor.b, 0.5)
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        onClicked: {
+                                                            var selected = [];
+                                                            for (var i = 0; i < heightSelectedDrones.length; i++) {
+                                                                if (heightSelectedDrones[i].group_id === groupId) {
+                                                                    selected.push(heightSelectedDrones[i]);
+                                                                }
+                                                            }
+                                                            if (selected.length > 0) {
+                                                                heightSelectedDrones = selected;
+                                                                setHeightDialog.targetGroupId = groupId;
+                                                                setHeightDialog.open();
+                                                            } else {
+                                                                console.log("请先右键选择本组的飞机");
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: mainHeight.toFixed(1) + "m"
+                                                    font.pixelSize: 7
+                                                    font.family: "Monospace"
+                                                    color: Qt.rgba(textColor.r, textColor.g, textColor.b, 0.6)
+                                                }
+                                            }
+                                        }
+
+                                        // 刻度尺和飞机区域
+                                        Row {
+                                            width: parent.width
+                                            height: parent.height - 32  // 调整为32，因为标题区域变高了
+                                            spacing: 0
+
+                                            // 刻度尺 - FUI风格
+                                            Rectangle {
+                                                id: scaleArea
+                                                width: 30
+                                                height: parent.height
+                                                color: "transparent"
+
+                                                Repeater {
+                                                    model: Math.ceil(scaleRange) + 1
+                                                    delegate: Item {
+                                                        property real scaleValue: scaleMax - index
+                                                        property real yPos: (index / scaleRange) * (scaleArea.height - 10)
+                                                        // 计算刻度间隔，太密集时只显示部分刻度
+                                                        property int scaleStep: scaleRange > 20 ? 5 : (scaleRange > 10 ? 2 : 1)
+                                                        property bool showLabel: (Math.abs(scaleValue) % scaleStep === 0) || scaleValue === 0
+
+                                                        x: 0
+                                                        y: yPos + 5
+                                                        width: 30
+                                                        height: 1
+
+                                                        Rectangle {
+                                                            anchors.right: parent.right
+                                                            width: showLabel ? 8 : 4
+                                                            height: 1
+                                                            color: scaleValue === 0 ? dangerColor : Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.3)
+                                                        }
+
+                                                        Text {
+                                                            visible: showLabel
+                                                            anchors.right: parent.right
+                                                            anchors.rightMargin: 10
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            text: scaleValue.toFixed(0)
+                                                            font.pixelSize: 7
+                                                            font.family: "Monospace"
+                                                            color: scaleValue === 0 ? dangerColor : Qt.rgba(textColor.r, textColor.g, textColor.b, 0.6)
+                                                        }
+                                                    }
+                                                }
+
+                                                Rectangle {
+                                                    x: 0
+                                                    y: ((scaleMax - 0) / scaleRange) * (parent.height - 10) + 5
+                                                    width: parent.width
+                                                    height: 1
+                                                    color: dangerColor
+                                                    opacity: 0.5
+                                                }
+                                            }
+
+                                            // 飞机列区域
+                                            Row {
+                                                width: parent.width - 30
+                                                height: parent.height
+                                                spacing: 2
+
+                                                Repeater {
+                                                    model: groupHeightItem.groupDrones.length
+
+                                                    delegate: Item {
+                                                        id: droneColumn
+                                                        property var droneNode: groupHeightItem.groupDrones[index] || null
+                                                        property real droneAbsHeight: droneNode ? getDroneAbsoluteHeight(droneNode.objectName, groupId) : mainHeight
+                                                        property real droneRelHeight: droneAbsHeight - mainHeight
+                                                        property bool isSelected: heightSelectedDrones.indexOf(droneNode) >= 0
+                                                        property bool isDragging: false
+
+                                                        width: 38
+                                                        height: parent.height
+
+                                                        Rectangle {
+                                                            anchors.fill: parent
+                                                            color: "transparent"
+                                                            border.color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.2)
+                                                            border.width: 1
+
+                                                            Rectangle {
+                                                                x: 0
+                                                                y: ((scaleMax - 0) / scaleRange) * (parent.height - 10) + 5
+                                                                width: parent.width
+                                                                height: 1
+                                                                color: dangerColor
+                                                                opacity: 0.3
+                                                            }
+
+                                                            Rectangle {
+                                                                id: droneIcon
+                                                                width: 34
+                                                                height: 20
+                                                                radius: 0
+                                                                x: 2
+                                                                y: Math.max(0, Math.min(parent.height - height - 5, ((scaleMax - droneRelHeight) / scaleRange) * (parent.height - 10) + 5 - height/2))
+
+                                                                color: isSelected ? Qt.rgba((droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).r,
+                                                                    (droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).g,
+                                                                    (droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).b, 0.5) :
+                                                                    Qt.rgba((droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).r,
+                                                                    (droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).g,
+                                                                    (droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))).b, 0.3)
+
+                                                                border.color: droneNode && (droneNode.is_main || droneNode.set_main) ? dangerColor :
+                                                                    (groupId === 1 ? modelColor1 : (groupId === 2 ? modelColor2 : (groupId === 3 ? modelColor3 : modelColor4)))
+                                                                border.width: isSelected ? 2 : 1
+
+                                                                // 发光效果
+                                                                Rectangle {
+                                                                    anchors.fill: parent
+                                                                    anchors.margins: -2
+                                                                    color: "transparent"
+                                                                    border.color: parent.border.color
+                                                                    border.width: 1
+                                                                    radius: 0
+                                                                    opacity: isSelected ? 0.6 : 0.3
+                                                                }
+
+                                                                Text {
+                                                                    anchors.centerIn: parent
+                                                                    text: droneNode ? droneNode.objectName : ""
+                                                                    font.pixelSize: 8
+                                                                    font.bold: true
+                                                                    font.family: "Monospace"
+                                                                    color: "#FFFFFF"  // 明确的纯白色
+                                                                }
+
+                                                                Text {
+                                                                    anchors.top: parent.bottom
+                                                                    anchors.topMargin: 1
+                                                                    anchors.horizontalCenter: parent.horizontalCenter
+                                                                    text: droneAbsHeight.toFixed(1) + "m"
+                                                                    font.pixelSize: 9
+                                                                    font.family: "Monospace"
+                                                                    color: "#A0A0A0"  // 明确的灰色
+                                                                }
+
+                                                                // 电池电量显示
+                                                                Text {
+                                                                    id: batteryText
+                                                                    anchors.top: parent.bottom
+                                                                    anchors.topMargin: 12
+                                                                    anchors.horizontalCenter: parent.horizontalCenter
+
+                                                                    property var currentVehicle: {
+                                                                        if (!droneNode || !droneNode.is_connected) return null;
+                                                                        var vehicleId = parseInt(droneNode.objectName);
+                                                                        if (QGroundControl.multiVehicleManager.my_vehicles) {
+                                                                            return QGroundControl.multiVehicleManager.my_vehicles[vehicleId];
+                                                                        }
+                                                                        var vehicles = QGroundControl.multiVehicleManager.vehicles;
+                                                                        for (var i = 0; i < vehicles.count; i++) {
+                                                                            var v = vehicles.get(i);
+                                                                            if (v && v.id === vehicleId) return v;
+                                                                        }
+                                                                        return null;
+                                                                    }
+                                                                    property real batteryPercent: {
+                                                                        if (!currentVehicle) return -1;
+                                                                        if (currentVehicle.battery && currentVehicle.battery.percentRemaining) {
+                                                                            var val = currentVehicle.battery.percentRemaining.value;
+                                                                            if (val !== undefined && val >= 0) return val;
+                                                                        }
+                                                                        if (currentVehicle.batteries && currentVehicle.batteries.count > 0) {
+                                                                            var battery = currentVehicle.batteries.get(0);
+                                                                            if (battery && battery.percentRemaining) {
+                                                                                var val2 = battery.percentRemaining.value;
+                                                                                if (val2 !== undefined && val2 >= 0) return val2;
+                                                                            }
+                                                                        }
+                                                                        return -1;
+                                                                    }
+
+                                                                    text: batteryPercent >= 0 ? batteryPercent.toFixed(0) + "%" : (droneNode && droneNode.is_connected ? "N/A" : "--")
+                                                                    font.pixelSize: 10
+                                                                    font.family: "Monospace"
+                                                                    font.bold: true
+                                                                    color: {
+                                                                        if (batteryPercent >= 0) {
+                                                                            if (batteryPercent > 50) return "#00FF88";
+                                                                            else if (batteryPercent > 20) return "#FFD700";
+                                                                            else return "#FF3366";
+                                                                        }
+                                                                        return "#A0A0A0";
+                                                                    }
+
+                                                                    // 定时刷新电池数据
+                                                                    Timer {
+                                                                        interval: 1000
+                                                                        running: droneNode && droneNode.is_connected
+                                                                        repeat: true
+                                                                        onTriggered: {
+                                                                            batteryText.currentVehicle = batteryText.currentVehicle;
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: dragArea
+                                                                    anchors.fill: parent
+                                                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                                    drag.target: parent
+                                                                    drag.axis: Drag.YAxis
+                                                                    drag.minimumY: 0
+                                                                    drag.maximumY: droneColumn.height - parent.height - 5
+
+                                                                    onPressed: function(mouse) {
+                                                                        if (mouse.button === Qt.RightButton) {
+                                                                            if (droneNode) {
+                                                                                var idx = heightSelectedDrones.indexOf(droneNode);
+                                                                                var newSelected = heightSelectedDrones.slice();
+                                                                                if (idx >= 0) {
+                                                                                    newSelected.splice(idx, 1);
+                                                                                } else {
+                                                                                    if (newSelected.length === 0 || newSelected[0].group_id === droneNode.group_id) {
+                                                                                        newSelected.push(droneNode);
+                                                                                    }
+                                                                                }
+                                                                                heightSelectedDrones = newSelected;
+                                                                            }
+                                                                        } else {
+                                                                            isDragging = true;
+                                                                        }
+                                                                    }
+
+                                                                    onReleased: {
+                                                                        if (isDragging && droneNode) {
+                                                                            var newY = droneIcon.y;
+                                                                            var newRelH = scaleMax - ((newY + droneIcon.height/2 - 5) / (droneColumn.height - 10)) * scaleRange;
+                                                                            newRelH = Math.round(newRelH * 10) / 10;
+
+                                                                            // 计算新的绝对高度
+                                                                            var newAbsH = mainHeight + newRelH;
+
+                                                                            // 存储绝对高度
+                                                                            setDroneAbsoluteHeight(droneNode.objectName, newAbsH, groupId);
+                                                                            droneNode.model_z = newRelH;
+
+                                                                            // 发送绝对高度给飞机
+                                                                            if (droneNode.is_connected) {
+                                                                                swarm_send.set_absolute_altitude(droneNode.objectName, newAbsH);
+                                                                            }
+
+                                                                            console.log("拖动设置飞机", droneNode.objectName, "绝对高度为", newAbsH, "米, 相对高度", newRelH, "米");
+                                                                            updateGroupScale(groupId);
+                                                                        }
+                                                                        isDragging = false;
+                                                                    }
+
+                                                                    onPositionChanged: {
+                                                                        if (isDragging && droneNode) {
+                                                                            var newY = droneIcon.y;
+                                                                            var newRelH = scaleMax - ((newY + droneIcon.height/2 - 5) / (droneColumn.height - 10)) * scaleRange;
+                                                                            droneNode.model_z = Math.round(newRelH * 10) / 10;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Component.onCompleted: updateGroupDrones()
+
+                                Connections {
+                                    target: root
+                                    function onGroup1CountChanged() { if (groupId === 1) groupHeightItem.updateGroupDrones(); }
+                                    function onGroup2CountChanged() { if (groupId === 2) groupHeightItem.updateGroupDrones(); }
+                                    function onGroup3CountChanged() { if (groupId === 3) groupHeightItem.updateGroupDrones(); }
+                                    function onGroup4CountChanged() { if (groupId === 4) groupHeightItem.updateGroupDrones(); }
+                                    function onPlanArrChanged() { groupHeightItem.updateGroupDrones(); }
+                                    function onGroupMainHeightChanged() {
+                                        groupHeightItem.mainHeight = groupMainHeight[groupId.toString()] || 0;
+                                        groupHeightItem.updateGroupDrones();
+                                    }
+                                    function onGroupScaleMaxChanged() {
+                                        groupHeightItem.scaleMax = groupScaleMax[groupId.toString()] || 5;
+                                        groupHeightItem.scaleRange = Math.max(groupHeightItem.scaleMax - groupHeightItem.scaleMin, 1);
+                                    }
+                                    function onGroupScaleMinChanged() {
+                                        groupHeightItem.scaleMin = groupScaleMin[groupId.toString()] || -5;
+                                        groupHeightItem.scaleRange = Math.max(groupHeightItem.scaleMax - groupHeightItem.scaleMin, 1);
+                                    }
+                                    function onDroneAbsoluteHeightChanged() {
+                                        // 绝对高度变化时更新显示
+                                        groupHeightItem.updateGroupDrones();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 无飞机时的提示
+                Text {
+                    id: noPlaneText
+                    anchors.centerIn: parent
+                    text: "暂无筹划飞机"
+                    font.pixelSize: 14
+                    color: "#88c0d0"
+                    visible: plan_arr.length === 0
+
+                    Connections {
+                        target: root
+                        function onPlanArrChanged() {
+                            noPlaneText.visible = plan_arr.length === 0;
+                        }
+                    }
+                }
+            }
+
+            // 右侧：交互消息区域 (占1/5) - 无边框卡片
+            Rectangle {
+                id: messageArea
+                anchors {
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                width: parent.width * 1 / 5 - 6
+                color: "#1E293B"  // 深灰蓝
+                radius: 0
+                border.width: 0  // 去掉边框
+
+                // 标题 - 数字读数风格
+                Rectangle {
+                    id: messageHeader
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                    }
+                    height: 25
+                    color: "#252A3A"
+                    radius: 0
+                    border.width: 0
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "[ SYSTEM LOG ]"
+                        font.pixelSize: 10
+                        font.bold: true
+                        font.family: "Monospace"
+                        color: textColorDim  // 暗灰色标签
+                    }
+                }
+
+                // 消息列表（可滚动）
+                ScrollView {
+                    id: messageScrollView
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: messageHeader.bottom
+                        bottom: parent.bottom
+                        margins: 5
+                        topMargin: 2
+                    }
+                    clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                    ListView {
+                        id: messageListView
+                        anchors.fill: parent
+                        model: messageListModel
+                        spacing: 3
+                        delegate: Rectangle {
+                            width: messageListView.width
+                            height: msgText.implicitHeight + 6
+                            color: "transparent"
+                            border.color: index % 2 === 0 ? "transparent" : root.borderColor
+                            border.width: index % 2 === 0 ? 0 : 1
+                            radius: 0
+                            opacity: index % 2 === 0 ? 0.7 : 0.9
+
+                            Text {
+                                id: msgText
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    verticalCenter: parent.verticalCenter
+                                    margins: 5
+                                }
+                                text: "> " + model.message
+                                font.pixelSize: 9
+                                font.family: "Monospace"
+                                color: "#00FF88"  // 统一使用电光绿
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        // 自动滚动到底部
+                        onCountChanged: {
+                            if (count > 0) {
+                                positionViewAtEnd();
+                            }
+                        }
+                    }
+                }
+
+                // 无消息时的提示
+                Text {
+                    anchors.centerIn: parent
+                    text: "[ NO DATA ]"
+                    font.pixelSize: 11
+                    font.family: "Monospace"
+                    color: root.borderColor
+                    opacity: 0.5
+                    visible: messageListModel.count === 0
+                }
+            }
+        }
+
+        // 底部状态栏 - 无边框卡片风格
+        Rectangle {
+            id: bottomBar
+            width: parent.width
+            height: 40
+            anchors.bottom: parent.bottom
+            color: "#1E293B"  // 深灰蓝
+            radius: 0
+            border.width: 0  // 去掉边框
+
+            // 顶部分隔线（极细）
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.2)
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+
+                Label {
+                    text: "[ SYSTEM READY ]"
+                    color: root.secondaryColor
+                    font.pixelSize: 12
+                    font.family: "Monospace"
+                    font.bold: true
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // 时间显示
+                Label {
+                    text: Qt.formatDateTime(new Date(), "hh:mm:ss")
+                    color: root.textColor
+                    font.pixelSize: 11
+                    font.family: "Monospace"
+                    opacity: 0.7
+
+                    Timer {
+                        interval: 1000
+                        running: true
+                        repeat: true
+                        onTriggered: parent.text = Qt.formatDateTime(new Date(), "hh:mm:ss")
+                    }
+                }
+            }
+        }
+    }
+
+    // ========== 自定义控件 ==========
+
+    // 自定义按钮 - 商业级FUI风格（实心填充+发光）
+    component CustomButton : Button {
+        property color color: primaryColor
+        property bool isPrimary: false  // 是否为主要操作（起飞/降落）
+        width: 80
+        height: 36
+        contentItem: Text {
+            text: parent.text
+            color: parent.isPrimary ? "#000000" : parent.color
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 12
+            font.bold: true
+            font.family: "Sans Serif"
+        }
+        background: Rectangle {
+            // 主操作：实心填充，次操作：半透明背景
+            color: parent.isPrimary ?
+                (parent.down ? Qt.lighter(parent.color, 1.2) : parent.color) :
+                (parent.down ? Qt.rgba(parent.color.r, parent.color.g, parent.color.b, 0.3) :
+                 parent.hovered ? Qt.rgba(parent.color.r, parent.color.g, parent.color.b, 0.2) :
+                 Qt.rgba(parent.color.r, parent.color.g, parent.color.b, 0.1))
+            radius: 0
+            border.width: parent.isPrimary ? 0 : 1
+            border.color: parent.color
+
+            // 发光效果（主操作更强）
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -2
+                color: "transparent"
+                border.color: parent.parent.color
+                border.width: 1
+                radius: 0
+                opacity: parent.parent.isPrimary ? (parent.parent.hovered ? 0.8 : 0.5) :
+                        (parent.parent.hovered ? 0.4 : 0)
+                visible: parent.parent.isPrimary || parent.parent.hovered
+            }
+        }
+    }
+    component RadiusButton : Button {
+        id: roundButton
+        property color color: "#00E5FF"
+        width: 20
+        height: 20
+
+        // 确保按钮保持固定尺寸，不受布局影响
+        Layout.preferredWidth: 20
+        Layout.preferredHeight: 20
+        Layout.minimumWidth: 20
+        Layout.minimumHeight: 20
+        Layout.maximumWidth: 20
+        Layout.maximumHeight: 20
+
+        background: Rectangle {
+            width: 20
+            height: 20
+            radius: 10
+            color: roundButton.down ? Qt.lighter(roundButton.color, 1.3) :
+                   Qt.rgba(roundButton.color.r, roundButton.color.g, roundButton.color.b, 0.3)
+            border.width: 2
+            border.color: roundButton.color
+
+            // 发光效果
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -2
+                radius: 12
+                color: "transparent"
+                border.color: parent.border.color
+                border.width: 1
+                opacity: 0.5
+            }
+        }
+    }
+
+    // 自定义文本框 - 无边框数字读数风格
+    component CustomTextField : TextField {
+        id: textField
+        height: 36
+        color: textColor
+        font.pixelSize: 13
+        font.family: "Monospace"
+        font.bold: true
+        selectionColor: primaryColor
+        selectedTextColor: "#000000"
+        placeholderTextColor: Qt.rgba(textColor.r, textColor.g, textColor.b, 0.3)
+        horizontalAlignment: Text.AlignHCenter
+
+        background: Rectangle {
+            color: textField.activeFocus ? Qt.rgba(primaryColor.r, primaryColor.g, primaryColor.b, 0.1) : "transparent"
+            radius: 0
+            border.color: textField.activeFocus ? primaryColor : Qt.rgba(borderColor.r, borderColor.g, borderColor.b, 0.3)
+            border.width: 1
+
+            // 底部发光线
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 2
+                color: primaryColor
+                opacity: textField.activeFocus ? 0.8 : 0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 200 }
+                }
+            }
+        }
+
+        // 输入验证
+        validator: IntValidator { bottom: 0; top: 999 }
+
+        // 限制只能输入数字
+        inputMethodHints: Qt.ImhDigitsOnly
+    }
+
+    // 自定义下拉框
+    component CustomComboBox : ComboBox {
+        id: comboControl
+        height: 36
+        contentItem: Text {
+            text: comboControl.displayText
+            color: textColor
+            font.pixelSize: 14
+            horizontalAlignment: Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 10
+        }
+        background: Rectangle {
+            color: controlColor
+            radius: 6
+            border.color: comboControl.activeFocus ? primaryColor : "#4c566a"
+            border.width: 1
+        }
+        popup: Popup {
+            y: comboControl.height
+            width: comboControl.width
+            implicitHeight: contentItem.implicitHeight
+            padding: 1
+
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: comboControl.popup.visible ? comboControl.delegateModel : null
+                currentIndex: comboControl.highlightedIndex
+
+                ScrollIndicator.vertical: ScrollIndicator {}
+            }
+
+            background: Rectangle {
+                color: controlColor
+                border.color: primaryColor
+                radius: 6
+            }
+        }
+
+        delegate: ItemDelegate {
+            width: comboControl.width
+            contentItem: Text {
+                text: modelData
+                color: textColor
+                font.pixelSize: 14
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 10
+            }
+            background: Rectangle {
+                color: highlighted ? primaryColor : "transparent"
+                radius: 4
+            }
+            highlighted: comboControl.highlightedIndex === index
+        }
+
+        indicator: Canvas {
+            width: 10
+            height: 6
+            // 调整位置：靠右、垂直居中，右侧留12像素边距
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.rightMargin: 12  // 用 rightMargin 代替 rightPadding，设置右侧边距
+
+            onPaint: {
+                var ctx = getContext("2d");
+                ctx.resetTransform();
+                ctx.clearRect(0, 0, width, height);
+                ctx.fillStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(width, 0);
+                ctx.lineTo(width / 2, height);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+    }
+
+    // ========== 弹窗组件 ==========
+
+    // 警告弹窗
+    Popup {
+        id: popup
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: 160
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            color: "#3b4252"
+            radius: 12
+            border.color: dangerColor
+            border.width: 2
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 20
+
+            Label {
+                text: "⚠️ 警告"
+                font.bold: true
+                font.pixelSize: 18
+                color: dangerColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Label {
+                text: "超出机架数量范围，请输入合理值!"
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+                color: textColor
+            }
+
+            CustomButton {
+                text: "确定"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: popup.close()
+                color: dangerColor
+            }
+        }
+    }
+
+    // 其他弹窗 (保持原有功能)
+    Popup {
+        id: group_popup
+        // 内容与popup类似，可复用样式
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: 160
+        modal: true
+        background: Rectangle {
+            color: "#3b4252"
+            radius: 12
+            border.color: accentColor
+            border.width: 2
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 20
+            Label {
+                text: "⚠️ 提示"
+                font.bold: true
+                font.pixelSize: 18
+                color: accentColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+            Label {
+                text: "此分组数值目前状态不可用!"
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+                color: textColor
+            }
+            CustomButton {
+                text: "确定"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: group_popup.close()
+                color: primaryColor
+            }
+        }
+    }
+
+    Popup {
+        id: group_popup2
+        // 内容与popup类似，可复用样式
+    }
+
+    Popup {
+        id: group_popu4
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: 160
+        modal: true
+        background: Rectangle {
+            color: "#3b4252"
+            radius: 12
+            border.color: dangerColor
+            border.width: 2
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 20
+            Label {
+                text: "⚠️ 错误"
+                font.bold: true
+                font.pixelSize: 18
+                color: dangerColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+            Label {
+                text: "筹划上限为50架!"
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+                color: textColor
+            }
+            CustomButton {
+                text: "确定"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: group_popu4.close()
+                color: dangerColor
+            }
+        }
+    }
+
+    Popup {
+        id: devide_grp_pop
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: 160
+        modal: true
+        background: Rectangle {
+            color: "#3b4252"
+            radius: 12
+            border.color: accentColor
+            border.width: 2
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 20
+            Label {
+                text: "⚠️ 提示"
+                font.bold: true
+                font.pixelSize: 18
+                color: root.accentColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+            Label {
+                text: "分组上限为4组，请合理设置分组!"
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+                color: textColor
+            }
+            CustomButton {
+                text: "确定"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: devide_grp_pop.close()
+                color: root.primaryColor
+            }
+        }
+    }
+
+    // 没有开关打开的提示弹窗
+    Popup {
+        id: noGroupEnabledPopup
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: 160
+        modal: true
+        background: Rectangle {
+            color: "#3b4252"
+            radius: 12
+            border.color: accentColor
+            border.width: 2
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 20
+            Label {
+                text: "⚠️ 提示"
+                font.bold: true
+                font.pixelSize: 18
+                color: root.accentColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+            Label {
+                text: "请打开待执行组的开关"
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+                color: textColor
+            }
+            CustomButton {
+                text: "确定"
+                Layout.alignment: Qt.AlignHCenter
+                onClicked: noGroupEnabledPopup.close()
+                color: root.primaryColor
+            }
+        }
+    }
+
+
+    property var    _sysid_list: []
+    property var    idpos_map: {0:0}
+    property var    hasset_map: {0:0}
+    property bool ifpick: false
+    property int myIntx:0
+    property int myInty:0
+    property int lastIntx: 0
+    property int lastInty: 0
+    property bool if_release: false
+    property var main_node_name: []
+    property var  modelmp: {0:0}
+    property var form_arr: []
+    property int separate_main: 1
+    property int group_num: 1
+    property var plan_id: []
+    property var plan_arr: []
+    property var select_merge: []
+    property var arr_to_change_pos: []
+    property var grp_pos_mp: {0:0} // 组别对应的屏幕位置
+
+    // 高度显示相关属性
+    property var groupMainHeight: {"1": 0, "2": 0, "3": 0, "4": 0}  // 每组主机的绝对高度(米)
+    property var groupScaleMax: {"1": 5, "2": 5, "3": 5, "4": 5}    // 每组刻度尺最大值(米)
+    property var groupScaleMin: {"1": -5, "2": -5, "3": -5, "4": -5} // 每组刻度尺最小值(米)
+    property var heightSelectedDrones: []  // 高度区域多选的飞机列表
+    property var droneAbsoluteHeight: ({})  // 存储每个飞机的绝对高度 {objectName: height}
+    property var groupHeightManuallySet: {"1": false, "2": false, "3": false, "4": false}  // 标记每组是否手动设置过高度
+
+    // 获取飞机的绝对高度
+    function getDroneAbsoluteHeight(objectName, groupId) {
+        if (droneAbsoluteHeight[objectName] !== undefined) {
+            return droneAbsoluteHeight[objectName];
+        }
+        // 默认返回主机高度
+        return groupMainHeight[groupId.toString()] || 0;
+    }
+
+    // 设置飞机的绝对高度
+    function setDroneAbsoluteHeight(objectName, height, groupId) {
+        var newHeights = JSON.parse(JSON.stringify(droneAbsoluteHeight));
+        newHeights[objectName] = height;
+        droneAbsoluteHeight = newHeights;
+
+        // 标记该组已手动设置过高度
+        var newManual = JSON.parse(JSON.stringify(groupHeightManuallySet));
+        newManual[groupId.toString()] = true;
+        groupHeightManuallySet = newManual;
+    }
+
+    // 计算飞机相对于主机的高度
+    function getDroneRelativeHeight(objectName, groupId) {
+        var absH = getDroneAbsoluteHeight(objectName, groupId);
+        var mainH = groupMainHeight[groupId.toString()] || 0;
+        return absH - mainH;
+    }
+
+    // 更新组的刻度范围
+    function updateGroupScale(groupId) {
+        var maxH = 5;
+        var minH = -5;
+        var mainH = groupMainHeight[groupId.toString()] || 0;
+
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === groupId && plan_arr[i].visible) {
+                var absH = getDroneAbsoluteHeight(plan_arr[i].objectName, groupId);
+                var relH = absH - mainH;
+                if (relH > maxH) maxH = Math.ceil(relH) + 1;
+                if (relH < minH) minH = Math.floor(relH) - 1;
+            }
+        }
+
+        var newMax = JSON.parse(JSON.stringify(groupScaleMax));
+        var newMin = JSON.parse(JSON.stringify(groupScaleMin));
+        newMax[groupId.toString()] = maxH;
+        newMin[groupId.toString()] = minH;
+        groupScaleMax = newMax;
+        groupScaleMin = newMin;
+    }
+
+    // 设置主机高度（从航线获取）
+    function setMainHeight(groupId, height) {
+        var newMainH = JSON.parse(JSON.stringify(groupMainHeight));
+        newMainH[groupId.toString()] = height;
+        groupMainHeight = newMainH;
+
+        // 如果该组没有手动设置过高度，则给所有从机设置相同的绝对高度
+        if (!groupHeightManuallySet[groupId.toString()]) {
+            for (var i = 0; i < plan_arr.length; i++) {
+                if (plan_arr[i].group_id === groupId && plan_arr[i].visible) {
+                    var newHeights = JSON.parse(JSON.stringify(droneAbsoluteHeight));
+                    newHeights[plan_arr[i].objectName] = height;
+                    droneAbsoluteHeight = newHeights;
+
+                    // 发送绝对高度给飞机
+                    if (plan_arr[i].is_connected) {
+                        swarm_send.set_absolute_altitude(plan_arr[i].objectName, height);
+                    }
+                }
+            }
+        }
+
+        updateGroupScale(groupId);
+        console.log("设置第" + groupId + "组主机高度为: " + height + "米");
+    }
+
+    // 当前选中模型相对于主机的坐标
+    property int relativeEast: 0   // 东(正) 西(负)
+    property int relativeNorth: 0  // 北(正) 南(负)
+    property int relativeAlt: 0    // 高度差
+    property string relativeMainName: ""  // 相对的主机名称
+
+    // 计算相对于主机的坐标 (参考caculate_pos的计算方式)
+    function updateRelativePosition(node) {
+        if (!node) {
+            relativeEast = 0;
+            relativeNorth = 0;
+            relativeAlt = 0;
+            relativeMainName = "";
+            return;
+        }
+
+        // 获取主机名称
+        var mainName = main_node_name[node.group_id - 1];
+        if (!mainName || mainName === "" || mainName === 0) {
+            relativeEast = 0;
+            relativeNorth = 0;
+            relativeAlt = 0;
+            relativeMainName = "";
+            return;
+        }
+
+        relativeMainName = mainName;
+
+        // 如果是主机本身，坐标为0
+        if (node.objectName === mainName) {
+            relativeEast = 0;
+            relativeNorth = 0;
+            relativeAlt = 0;
+            return;
+        }
+
+        // 从plan_arr中查找主机节点
+        var mainNode = null;
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].objectName === mainName) {
+                mainNode = plan_arr[i];
+                break;
+            }
+        }
+
+        if (!mainNode) {
+            relativeEast = 0;
+            relativeNorth = 0;
+            relativeAlt = 0;
+            return;
+        }
+
+        // 获取当前节点位置 - 使用model_x/y/z，这些在移动时会实时更新
+        var nodeX = node.model_x || 0;
+        var nodeY = node.model_y || 0;
+        var nodeZ = node.model_z || 0;
+
+        // 获取主机位置
+        var mainX = mainNode.model_x || 0;
+        var mainY = mainNode.model_y || 0;
+        var mainZ = mainNode.model_z || 0;
+
+        // 参考caculate_pos的计算: -(y差)*间距, (x差)*间距, -(z差)
+        // 东西 = (x差) * 间距
+        // 南北 = -(y差) * 间距 (屏幕Y向下为正，所以取反得到北为正)
+        // 高度 = -(z差)
+        var spacing = Number(input5.text) || 1;
+        relativeEast = (nodeX - mainX) * spacing;
+        relativeNorth = -(nodeY - mainY) * spacing;
+        relativeAlt = (nodeZ - mainZ);
+    }
+
+    onUpdate_other_airplane: function(par,set,gr){ // 只在主机更新时,同组的有些模型还没加载出来,没加载出来的模型的位置会遗漏
+
+                if (par === 2 && set === 0) { //只更新位置,所有
+                    update_all_pos()
+                    updateGroupCounts()  // 更新各组数量显示
+                } else if (par === 2 && set === 1) {// 是最后一个且是主机
+                    for (var j = 0; j < plan_arr.length; j++) {
+                        if (plan_arr[j].is_connected && plan_arr[j].set_main) {
+                                set_main_behavior(plan_arr[j],par)
+                        }
+                    }
+                    updateGroupCounts()  // 更新各组数量显示
+                }
+                if (par === 1) {// 是主机
+                    for (var h = 0; h < plan_arr.length; h++) {
+                        if(plan_arr[h].is_connected && plan_arr[h].set_main) {
+                            set_main_behavior(plan_arr[h],0) // 不发位置
+                        }
+                    }
+                    updateGroupCounts()  // 更新各组数量显示
+                }
+
+    }
+    function my_delay(){
+        for(var i = 0;i<2000;i++){
+            for(var j = 0; j <2000;j++){
+
+            }
+        }
+    }
+
+    function merge_grp(){ // 只是变更分组
+        arr_to_change_pos.length = 0
+        for(var i = 1; i < select_merge.length; i++) {
+            for(var j = 0; j < plan_arr.length; j++) {
+                if (select_merge[i].group_id === plan_arr[j].group_id && select_merge[i] !== plan_arr[j]){ // 主机改了后   后面的就无法识别了,类似引用
+                   // console.log("mg",plan_arr[j].group_id,plan_arr[j].objectName)
+                    plan_arr[j].group_id = select_merge[0].group_id  // 所选择主机的同组的从机
+                    if(plan_arr[j].is_connected)swarm_send.store_airplane_group(plan_arr[j].objectName, plan_arr[j].group_id,true)
+                    arr_to_change_pos.push(plan_arr[j])
+                }
+            }
+            select_merge[i].group_id = select_merge[0].group_id
+            arr_to_change_pos.push(select_merge[i])
+            if(select_merge[i].is_connected)swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id,true)
+        }
+    }
+
+    function update_all_pos(){
+        console.log("update",_sysid_list.length)
+        my_delay()
+        my_delay()
+        for(var j = 0; j <  _sysid_list.length;j++)
+            swarm_send.store_airplane_group(modelmp[_sysid_list[j]].objectName, modelmp[_sysid_list[j]].group_id, true)//把已经存在的从机记录组别
+
+        for(var i = 1; i <= main_node_name.length; i++){
+            if(hasset_map[i]===1 && main_node_name[i - 1] !== 0){ // 如果这个组的主机已经加载
+                my_delay()
+                swarm_send.set_main_airplane(main_node_name[i - 1], i, 0, 0, 0)
+                my_delay()
+
+                send_all_airplane_pos(i,1)// 最后一个   且
+            }
+
+
+        }
+    }
+    function send_all_airplane_pos(grp_n,send_f) { // 需要改为只发送同组的  待解决
+
+        for(var m = 0; m < plan_arr.length; m++) {
+            if(plan_arr[m].objectName === main_node_name[grp_n - 1] && plan_arr[m].is_connected !== true){
+                return // 如果主机没有连接，直接返回
+            }
+        }
+
+        for (var n = 0; n < _sysid_list.length; n++) {
+                if (modelmp[_sysid_list[n]].group_id === modelmp[main_node_name[grp_n - 1]].group_id) { // 说明是同一组
+                    // 获取该飞机的绝对高度
+                    var absHeight = getDroneAbsoluteHeight(_sysid_list[n], grp_n);
+
+                    // 发送绝对高度给每个飞机（包括主机）
+                    swarm_send.set_absolute_altitude(_sysid_list[n], absHeight);
+
+                    if ( if_main_node(modelmp[_sysid_list[n]].objectName) ) {
+                        // 主机：XY偏移为0
+                        swarm_send.caculate_pos(_sysid_list[n], 0, 0, 0, send_f)
+                        continue;
+                    }
+                    if(send_f)for(var k  = 0; k < 10000000;k++){}// 避免数据拥堵
+                    // 从机：发送XY偏移，Z偏移设为0（因为使用绝对高度）
+                    swarm_send.caculate_pos(_sysid_list[n],
+                                              -(idpos_map[_sysid_list[n]][1] - idpos_map[main_node_name[grp_n - 1]][1]) * input5.text,
+                                              (idpos_map[_sysid_list[n]][0] - idpos_map[main_node_name[grp_n - 1]][0]) * input5.text,
+                                              0, send_f)  // Z偏移设为0，使用绝对高度
+                }
+            }
+    }
+
+    function will_crush(node) {
+        for(var n = 0; n < _sysid_list.length; n++)  {
+            if (idpos_map[_sysid_list[n]][0] === idpos_map[node.objectName][0] &&
+                    idpos_map[_sysid_list[n]][1] === idpos_map[node.objectName][1] &&
+                    idpos_map[_sysid_list[n]][2] === idpos_map[node.objectName][2]
+                    && Number(_sysid_list[n]) !== Number(node.objectName)) {
+                return true // 检测到有
+            }
+        }
+        return false
+    }
+    function set_main_color(nodeOrName) {
+        // 支持传入node对象或objectName字符串
+        var targetNode = null;
+        var targetGroupId = 0;
+
+        if (typeof nodeOrName === 'string' || typeof nodeOrName === 'number') {
+            // 传入的是objectName，需要找到对应的node
+            for (var i = 0; i < plan_arr.length; i++) {
+                if (plan_arr[i].objectName === String(nodeOrName)) {
+                    targetNode = plan_arr[i];
+                    targetGroupId = plan_arr[i].group_id;
+                    break;
+                }
+            }
+        } else {
+            targetNode = nodeOrName;
+            targetGroupId = nodeOrName.group_id;
+        }
+
+        if (!targetNode || !targetGroupId) return;
+
+        // 设置主机颜色，并将同组其他模型设为从机颜色
+        for (var n = 0; n < plan_arr.length; n++) {
+            if (plan_arr[n].group_id === targetGroupId) {
+                if (if_main_node(plan_arr[n].objectName)) {
+                    plan_arr[n].is_main = true;
+                } else {
+                    plan_arr[n].is_main = false;
+                }
+            }
+        }
+    }
+    function set_main_name(node) {
+        for (var n = 0; n < plan_arr.length; n++) {
+            if (plan_arr[n].group_id === node.group_id) { // 只对这一组的颜色进行排他
+                if (if_main_node(plan_arr[n].objectName) ) {
+                    plan_arr[n].set_main = 1
+                    continue;
+                }
+                plan_arr[n].set_main = 0
+            }
+        }
+    }
+
+    function trans_pos_to_grp(pos){
+        for(var ke in grp_pos_mp) {
+            if(grp_pos_mp[ke] === pos)
+                return ke
+        }
+        return 0
+    }
+
+    // 将指定组的模型移动到指定屏幕位置，带碰撞检测，并居中显示
+    function moveGroupToPositionWithCollision(groupId, screenPos) {
+        console.log("moveGroupToPositionWithCollision: groupId=", groupId, "screenPos=", screenPos);
+
+        // 根据屏幕位置计算起始坐标和边界
+        // 位置: 1=左上, 2=右上, 3=左下, 4=右下
+        var areaLeft = 0;
+        var areaTop = 0;
+        var areaRight = 0;
+        var areaBottom = 0;
+        var halfWidth = Math.floor(control.width / 2 / 40);
+        var halfHeight = Math.floor(control.height / 2 / 40);
+        var fullWidth = Math.floor(control.width / 40) - 1;
+        var fullHeight = Math.floor(control.height / 40) - 1;
+
+        if(screenPos === 1) {
+            areaLeft = 0; areaTop = 0;
+            areaRight = halfWidth - 1; areaBottom = halfHeight - 1;
+        } else if(screenPos === 2) {
+            areaLeft = halfWidth + 1; areaTop = 0;
+            areaRight = fullWidth; areaBottom = halfHeight - 1;
+        } else if(screenPos === 3) {
+            areaLeft = 0; areaTop = halfHeight + 1;
+            areaRight = halfWidth - 1; areaBottom = fullHeight;
+        } else if(screenPos === 4) {
+            areaLeft = halfWidth + 1; areaTop = halfHeight + 1;
+            areaRight = fullWidth; areaBottom = fullHeight;
+        }
+
+        var areaWidth = areaRight - areaLeft + 1;
+        var areaHeight = areaBottom - areaTop + 1;
+
+        console.log("区域范围: areaLeft=", areaLeft, "areaTop=", areaTop, "areaRight=", areaRight, "areaBottom=", areaBottom);
+
+        // 收集该组的所有模型
+        var groupModels = [];
+        for(var i = 0; i < plan_arr.length; i++) {
+            if(plan_arr[i].group_id === groupId) {
+                groupModels.push(plan_arr[i]);
+            }
+        }
+
+        var groupCount = groupModels.length;
+        if (groupCount === 0) {
+            console.log("moveGroupToPositionWithCollision: 组", groupId, "没有飞机");
+            return;
+        }
+
+        // 计算模型排列所需的行数和列数
+        var cols = Math.min(groupCount, areaWidth);  // 每行最多放满区域宽度
+        var rows = Math.ceil(groupCount / cols);     // 需要的行数
+
+        // 计算居中的起始位置
+        var startX = areaLeft + Math.floor((areaWidth - cols) / 2);
+        var startY = areaTop + Math.floor((areaHeight - rows) / 2);
+
+        console.log("居中参数: cols=", cols, "rows=", rows, "startX=", startX, "startY=", startY);
+
+        // 逐个放置模型到居中位置
+        var xx = startX;
+        var yy = startY;
+        var lim = startX + cols;  // 当前行的右边界
+
+        for(var j = 0; j < groupModels.length; j++) {
+            var model = groupModels[j];
+
+            // 检测碰撞，如果当前位置有其他组的飞机，则跳过
+            while(transform_crush(xx, yy, groupId) && xx < lim) {
+                xx++;
+            }
+
+            // 如果当前行放满了，换到下一行
+            if(xx >= lim) {
+                yy++;
+                xx = startX;
+                // 重新检测碰撞
+                while(transform_crush(xx, yy, groupId) && xx < lim) {
+                    xx++;
+                }
+            }
+
+            console.log("放置模型", model.objectName, "到位置:", xx, yy);
+            screen_pos_to_world_pos(xx, yy, model);
+
+            // 移动到下一个位置
+            xx++;
+            if(xx >= lim) {
+                xx = startX;
+                yy++;
+            }
+        }
+    }
+
+    // 直接根据组号移动该组所有模型到指定屏幕位置
+    function moveGroupModels(groupId, screenPos, totalGroups) {
+        var xx = 0;
+        var yy = 0;
+        var mstart = 0;
+        var lim = 0;
+
+        console.log("moveGroupModels: groupId=", groupId, "screenPos=", screenPos, "totalGroups=", totalGroups);
+
+        // 根据屏幕位置和总组数计算起始坐标
+        // 位置: 1=左上, 2=右上, 3=左下, 4=右下
+        if(screenPos === 1) {
+            xx = 0;
+            yy = 0;
+            mstart = 0;
+            lim = Math.floor(control.width / 2 / 40) - 1;
+        } else if(screenPos === 2) {
+            mstart = Math.floor(control.width / 2 / 40) + 1;
+            xx = mstart;
+            yy = 0;
+            lim = Math.floor(control.width / 40) - 2;
+        } else if(screenPos === 3) {
+            xx = 0;
+            yy = Math.floor(control.height / 2 / 40) + 1;
+            mstart = 0;
+            lim = Math.floor(control.width / 2 / 40) - 1;
+        } else if(screenPos === 4) {
+            mstart = Math.floor(control.width / 2 / 40) + 1;
+            xx = mstart;
+            yy = Math.floor(control.height / 2 / 40) + 1;
+            lim = Math.floor(control.width / 40) - 2;
+        }
+
+        console.log("位置参数: xx=", xx, "yy=", yy, "lim=", lim, "mstart=", mstart);
+
+        // 直接根据group_id移动模型
+        for(var i = 0; i < plan_arr.length; i++) {
+            if(plan_arr[i].group_id === groupId) {
+                if(xx <= lim) {
+                    screen_pos_to_world_pos(xx, yy, plan_arr[i]);
+                    xx++;
+                } else {
+                    yy++;
+                    xx = mstart;
+                    screen_pos_to_world_pos(xx, yy, plan_arr[i]);
+                    xx++;
+                }
+                console.log("移动模型", plan_arr[i].objectName, "到位置:", xx-1, yy);
+            }
+        }
+    }
+
+    function move_model(n,sumn) {// n 指屏幕位置
+        var xx = 0
+        var yy = 0
+        var mstart = 0
+        var lim = 0
+
+        console.log("move_model调用: n=", n, "sumn=", sumn);
+
+        // 先统计该组有多少个模型
+        var groupId = Number(trans_pos_to_grp(n));
+
+        // 如果找不到对应的组，直接返回
+        if (groupId === 0) {
+            console.log("move_model: 位置", n, "没有对应的组");
+            return;
+        }
+
+        var groupCount = 0;
+        for (var c = 0; c < plan_arr.length; c++) {
+            if (plan_arr[c].group_id === groupId) {
+                groupCount++;
+            }
+        }
+
+        // 如果该组没有飞机，直接返回
+        if (groupCount === 0) {
+            console.log("move_model: 组", groupId, "没有飞机");
+            return;
+        }
+
+        // 计算区域的边界
+        var areaLeft = 0, areaRight = 0, areaTop = 0, areaBottom = 0;
+        var areaWidth = 0, areaHeight = 0;
+
+        if (sumn === 2) {
+            // 分成2组：左右分布
+            if (n === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (n === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (sumn === 3) {
+            // 分成3组：上左、上右、下左
+            if (n === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (n === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (n === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (sumn === 4) {
+            // 分成4组：四个象限
+            if (n === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (n === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (n === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (n === 4) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        }
+
+        areaWidth = areaRight - areaLeft + 1;
+        areaHeight = areaBottom - areaTop + 1;
+
+        // 计算模型排列所需的行数和列数
+        var cols = Math.min(groupCount, areaWidth);  // 每行最多放满区域宽度
+        var rows = Math.ceil(groupCount / cols);     // 需要的行数
+
+        // 计算居中的起始位置
+        var startX = areaLeft + Math.floor((areaWidth - cols) / 2);
+        var startY = areaTop + Math.floor((areaHeight - rows) / 2);
+
+        console.log("区域: left=", areaLeft, "right=", areaRight, "top=", areaTop, "bottom=", areaBottom);
+        console.log("模型数:", groupCount, "列数:", cols, "行数:", rows);
+        console.log("居中起始位置: startX=", startX, "startY=", startY);
+
+        xx = startX;
+        yy = startY;
+        lim = startX + cols;  // 当前行的右边界
+        mstart = startX;      // 换行时回到的起始X
+
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === groupId) {
+                if(xx < lim) {
+                    screen_pos_to_world_pos(xx, yy, plan_arr[i]);
+                    xx++;
+                } else {
+                    yy++;
+                    xx = mstart;
+                    screen_pos_to_world_pos(xx, yy, plan_arr[i]);
+                    xx++;
+                }
+                console.log("放置模型", plan_arr[i].objectName, "在位置:", xx-1, yy);
+            }
+        }
+    }
+
+    function set_main_behavior(node,send) { //
+
+        if(!send) {
+            my_delay()
+            my_delay()
+        }
+        swarm_send.set_main_airplane(main_node_name[node.group_id - 1], node.group_id,
+                                     0,
+                                     0,
+                                     0)
+
+        set_main_color(node)
+        hasset_map[node.group_id]=1
+
+        if(send !== 0) { // 失去继承设置主机的意义了?
+            update_all_pos()
+        }
+        console.log("set_main_behavior ",main_node_name[node.group_id - 1],node.group_id,send)
+    }
+
+    function show_position(node){
+        var map_from_1 = control.mapFrom3DScene(node.scenePosition) // 屏幕坐标
+
+        myIntx = (map_from_1.x - 20) % 40 > 25 ? (map_from_1.x - 20) / 40 + 1 : (map_from_1.x - 20) / 40
+        myInty = (map_from_1.y - 20) % 40 > 25 ? (map_from_1.y - 20) / 40 + 1 : (map_from_1.y - 20) / 40
+
+        node.model_x = myIntx
+        node.model_y = myInty
+    }
+    function screen_pos_to_world_pos(xx,yy,thisnode){ // 间距
+        thisnode.visible = true
+        xx = xx * 40 + 20  // 像素中心
+        yy = yy * 40 + 20
+        var map_from_1 = control.mapFrom3DScene(thisnode.scenePosition) // 屏幕坐标
+
+        var x_off = 0
+        var y_off = 0
+        var pos_temp = 0
+        var map_to = 0
+        while(Math.abs(xx - map_from_1.x) > 1 || Math.abs(yy - map_from_1.y) > 1) {
+            x_off = xx - map_from_1.x
+            y_off = yy - map_from_1.y
+        //    console.log(x_off,y_off,map_from_1.x,map_from_1.y)
+            pos_temp = Qt.vector3d((map_from_1.x + x_off), (map_from_1.y + y_off), map_from_1.z);
+            map_to = control.mapTo3DScene(pos_temp) // 世界坐标
+            thisnode.x = map_to.x
+            thisnode.y = map_to.y
+            map_from_1 = control.mapFrom3DScene(thisnode.scenePosition) // 屏幕坐标
+        }
+        myIntx = (map_from_1.x - 20) % 40 > 25 ? (map_from_1.x - 20) / 40 + 1 : (map_from_1.x - 20) / 40
+        myInty = (map_from_1.y - 20) % 40 > 25 ? (map_from_1.y - 20) / 40 + 1 : (map_from_1.y - 20) / 40
+        thisnode.model_x = myIntx
+        thisnode.model_y = myInty
+        if (thisnode.is_connected) {
+            idpos_map[Number(thisnode.objectName)][0] = myIntx
+            idpos_map[Number(thisnode.objectName)][1] = myInty
+        }
+    }
+
+    function display_changed_pos(grp_id){
+        var i = 0;
+        for(;i<plan_arr.length;i++) {
+            if(plan_arr[i].group_id === grp_id && plan_arr[i].set_main)break
+        }
+        var x_0 = plan_arr[i].is_connected? idpos_map[plan_arr[i].objectName][0]:plan_arr[i].model_x // 是主机
+        var y_0 = plan_arr[i].is_connected? idpos_map[plan_arr[i].objectName][1]:plan_arr[i].model_y
+        x_0++
+
+        var x_lim = (root.width -20 ) / 40
+        var y_lim = (root.height -20 ) / 40
+        while(transform_crush(x_0,y_0,mouse_area.pickNode.group_id)) {
+           // if() 需判断临界时换行
+            x_0++
+        }
+        screen_pos_to_world_pos(x_0,y_0,mouse_area.pickNode)
+    }
+    function show_line(n){ // 函数是否还有调用
+        for(var i = 0; i < plan_arr.length;i++) {
+            if(plan_arr[i].group_id === n){
+                return true
+            }
+        }
+        return false
+    }
+
+    function grp_has_pos(pos) {
+        for(var ke in grp_pos_mp){
+            if(grp_pos_mp[ke] === pos)
+                return true
+        }
+        return false
+    }
+
+    function devide_screen(grp){//仅在独立分组时用
+        if(group_num === 2){
+            if((grp_has_pos(1) && grp_has_pos(2)) || (grp_has_pos(1) && grp_has_pos(4)) || (grp_has_pos(3) && grp_has_pos(2)) || (grp_has_pos(3) && grp_has_pos(4))) {
+                canv.visible = true
+                canv2.visible = true
+                canv3.visible = false
+                canv4.visible = false
+
+                // 保持队形移动到位置2
+                var grpId2 = trans_pos_to_grp(2);
+                if (grpId2 > 0) {
+                    moveGroupKeepFormation(grpId2, 2);
+                }
+            }
+        }
+
+        if(group_num === 4 || group_num === 3){
+            canv.visible = true
+            canv4.visible = true
+            canv2.visible = true
+            canv3.visible = true
+            if(grp_has_pos(1) === false) {
+                grp_pos_mp[grp] = 1
+                moveGroupKeepFormation(grp, 1)
+            } else if (grp_has_pos(2) === false) {
+                grp_pos_mp[grp] = 2
+                moveGroupKeepFormation(grp, 2)
+            } else if (grp_has_pos(3) === false) {
+                grp_pos_mp[grp] = 3
+                moveGroupKeepFormation(grp, 3)
+            } else if (grp_has_pos(4) === false) {
+                grp_pos_mp[grp] = 4
+                moveGroupKeepFormation(grp, 4)
+            }
+        }
+    }
+
+    function find_max_pos(grp, move_grp){ // 传入待合入的组别
+        var max_x = 0
+        var max_y = 0
+        var towards = 0
+
+        var merge_limx = 0
+        var merge_limy = 0
+        for(var j = 0; j < plan_arr.length; j++) {
+            if(plan_arr[j].group_id === grp) {
+                max_x = plan_arr[j].is_connected ? idpos_map[plan_arr[j].objectName][0]:plan_arr[j].model_x
+                max_y = plan_arr[j].is_connected ? idpos_map[plan_arr[j].objectName][1]:plan_arr[j].model_y
+                break
+            }
+        }
+        for(var j2 = 0; j2 < plan_arr.length; j2++) {
+            if(plan_arr[j2].group_id === move_grp) {
+                merge_limx = plan_arr[j2].is_connected ? idpos_map[plan_arr[j2].objectName][0]:plan_arr[j2].model_x
+                merge_limy = plan_arr[j2].is_connected ? idpos_map[plan_arr[j2].objectName][1]:plan_arr[j2].model_y
+                break
+            }
+        }
+        var xx = 0
+        var yy = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+
+            if(plan_arr[i].group_id === grp) { // grp就是主机的组别
+                xx = plan_arr[i].is_connected ? idpos_map[plan_arr[i].objectName][0]:plan_arr[i].model_x  // model_x  全是0？
+                yy = plan_arr[i].is_connected ? idpos_map[plan_arr[i].objectName][1]:plan_arr[i].model_y
+                 if (grp_pos_mp[grp] ===  1 && grp_pos_mp[move_grp] === 2 ){ // 给右
+                    if(max_x < xx) {max_x = xx;max_y = yy}
+                    towards = 4
+                } else if ((grp_pos_mp[grp] ===  1 && grp_pos_mp[move_grp] === 3)) { // 给下排
+                    if(max_y < yy) max_y = yy
+                    towards = 2
+                }
+
+                if(grp_pos_mp[grp] ===  2 && grp_pos_mp[move_grp] === 1) { // 给左
+                    if(max_x > xx) max_x = xx
+                    towards = 3
+                } else if((grp_pos_mp[grp] ===  2 && grp_pos_mp[move_grp] === 3)||(grp_pos_mp[grp] ===  2 && grp_pos_mp[move_grp] === 4)) { // 给下
+                    if(max_y < yy) max_y = yy
+                    towards = 2
+                }
+
+                if(grp_pos_mp[grp] ===  3 && grp_pos_mp[move_grp] === 4) {// 给右面
+                    if(max_x < xx) max_x = xx
+                    towards = 4
+                } else if ((grp_pos_mp[grp] ===  3 && grp_pos_mp[move_grp] === 1) || (grp_pos_mp[grp] ===  3 && grp_pos_mp[move_grp] === 2)){ // 给上
+                    if(max_y > yy )max_y = yy
+                    towards = 1
+                }
+                if(grp_pos_mp[grp] ===  4 && grp_pos_mp[move_grp] === 2) { // 给上
+                    if(max_y > yy) max_y = yy
+                    towards = 1
+                } else if ((grp_pos_mp[grp] ===  4 && grp_pos_mp[move_grp] === 1) || (grp_pos_mp[grp] ===  4 && grp_pos_mp[move_grp] === 3)){// 给左
+                    if(max_x > xx) max_x = xx
+                    towards = 3
+                }
+            }
+
+        }
+        for(i = 0; i < plan_arr.length; i++) {
+            if(plan_arr[i].group_id === move_grp){
+                xx = plan_arr[i].is_connected ? idpos_map[plan_arr[i].objectName][0]:plan_arr[i].model_x
+                yy = plan_arr[i].is_connected ? idpos_map[plan_arr[i].objectName][1]:plan_arr[i].model_y
+                if (towards === 1) {
+                    if(merge_limy < yy)merge_limy = yy
+                }
+                if (towards === 2) {
+                    if(merge_limy > yy)merge_limy = yy
+                }
+                if (towards === 3) {
+                    if(merge_limx < xx)merge_limx = xx
+                }
+                if (towards === 4) {
+                    if(merge_limx > xx)merge_limx = xx
+                }
+            }
+        }
+
+        wait_to_merge_pos(max_x,max_y,merge_limx,merge_limy,towards,grp,move_grp)
+    }
+    // 在更改分组前移动  或者
+    function wait_to_merge_pos(max_x,max_y,merge_limx,merge_limy,towards,main_grp,move_grp){
+        if((grp_pos_mp[main_grp] === 1 && 3 === grp_pos_mp[move_grp]) || (grp_pos_mp[main_grp] === 3 && 1 === grp_pos_mp[move_grp])) {
+            canv3.visible = false
+        }
+        if((grp_pos_mp[main_grp] === 1 && 2 === grp_pos_mp[move_grp]) || (grp_pos_mp[main_grp] === 2 && 1 === grp_pos_mp[move_grp])) {
+            canv.visible = false
+        }
+        if((grp_pos_mp[main_grp] === 4 && 3 === grp_pos_mp[move_grp]) || (grp_pos_mp[main_grp] === 3 && 4 === grp_pos_mp[move_grp])) {
+            canv2.visible = false
+        }
+        if((grp_pos_mp[main_grp] === 2 && 4 === grp_pos_mp[move_grp]) || (grp_pos_mp[main_grp] === 4 && 2 === grp_pos_mp[move_grp])) {
+            canv4.visible = false
+        }
+        if((grp_pos_mp[main_grp] === 1 && 4 === grp_pos_mp[move_grp]) || (grp_pos_mp[main_grp] === 4 && 1 === grp_pos_mp[move_grp])) {
+            canv4.visible = false
+        }
+        if(grp_pos_mp[main_grp] === 2 && 3 === grp_pos_mp[move_grp]) {
+
+        }
+        var x_0 = 0
+        var y_0 = 0
+        var half_width = (root.width - 20) / 80
+        var half_height = (root.height - 20) / 80
+        for (var i = 0; i < plan_arr.length; i++) {
+            if(plan_arr[i].group_id === move_grp) { // move 第一组
+                x_0 = plan_arr[i].is_connected ? _sysid_list[plan_arr[i].objectName][0] :plan_arr[i].model_x
+                y_0 = plan_arr[i].is_connected ? _sysid_list[plan_arr[i].objectName][1] :plan_arr[i].model_y
+                if(towards === 1) { // 上方
+
+                    if ((grp_pos_mp[plan_arr[i].group_id] === 1 && grp_pos_mp[main_grp] === 3) ||
+                            (grp_pos_mp[plan_arr[i].group_id] === 2 && grp_pos_mp[main_grp] === 4)) {
+                        screen_pos_to_world_pos(x_0, y_0 - (merge_limy - max_y) - 1,plan_arr[i]) //y + offset, offset = max_y - y
+                    }
+                }
+                if(towards === 2) { // 下方
+                    if ((grp_pos_mp[plan_arr[i].group_id] === 3 && grp_pos_mp[main_grp] === 1) ||
+                            (grp_pos_mp[plan_arr[i].group_id] === 4 && grp_pos_mp[main_grp] === 2)) {
+                        screen_pos_to_world_pos(x_0,y_0 + (max_y - merge_limy) + 1,plan_arr[i]) //y + offset, offset = max_y - y
+                    }
+                }
+                if(towards === 3) { // 左方
+                    if ((grp_pos_mp[plan_arr[i].group_id] === 1 && grp_pos_mp[main_grp] === 2) ||
+                            (grp_pos_mp[plan_arr[i].group_id] === 3 && grp_pos_mp[main_grp] === 4)) {
+                        screen_pos_to_world_pos(x_0 + (max_x - merge_limx) - 1,y_0,plan_arr[i]) //y + offset, offset = max_y - y
+                    }
+                }
+                if(towards === 4) { // 右方
+                    if ((grp_pos_mp[plan_arr[i].group_id] === 2 && grp_pos_mp[main_grp] === 1) ||
+                            (grp_pos_mp[plan_arr[i].group_id] === 4 && grp_pos_mp[main_grp] === 3)) {
+                        screen_pos_to_world_pos(x_0 - (merge_limx - max_x) + 1,y_0,plan_arr[i]) //y + offset, offset = max_y - y
+                    }
+                }
+            }
+        }
+    }
+
+    function if_main_node(objname) {
+        for(var i = 0; i < main_node_name.length; i++) {
+            if (main_node_name[i] === objname) {
+                return true
+            }
+        }
+        return false
+    }
+    function reset_main_name(old,newname){
+        for(var i = 0; i < main_node_name.length; i++) {
+            if (main_node_name[i] === old) {
+                main_node_name[i] = newname
+                return
+            }
+        }
+    }
+    function get_pos(node) {
+        var map_from_1 = control.mapFrom3DScene(node.scenePosition) // 屏幕坐标
+        myIntx = (map_from_1.x - 20) % 40 > 25 ? (map_from_1.x - 20) / 40 + 1 : (map_from_1.x - 20) / 40
+        myInty = (map_from_1.y - 20) % 40 > 25 ? (map_from_1.y - 20) / 40 + 1 : (map_from_1.y - 20) / 40
+        node.model_x = myIntx
+        node.model_y = myInty
+    }
+    function plan_to_visible() {
+        for (var i = 0; i < plan_id.length; i++) {
+            plan_id[i].visible = false
+            plan_id[i].pickable = false
+        }
+        plan_arr.length = 0
+        my_delay()
+        for (i = 0; i < Number(input_plan.text); i++) {
+            plan_id[i].visible = true
+            plan_id[i].pickable = true
+            plan_arr.push(plan_id[i])
+        }
+
+        // 将模型居中排列
+        var modelCount = plan_arr.length;
+        if (modelCount > 0) {
+            // 计算整个区域的大小
+            var areaWidth = Math.floor(control.width / 40) - 1;
+            var areaHeight = Math.floor(control.height / 40) - 1;
+
+            // 计算模型排列所需的行数和列数
+            var cols = Math.min(modelCount, areaWidth);
+            var rows = Math.ceil(modelCount / cols);
+
+            // 计算居中的起始位置
+            var startX = Math.floor((areaWidth - cols) / 2);
+            var startY = Math.floor((areaHeight - rows) / 2);
+
+            console.log("筹划居中排列: 模型数=", modelCount, "列数=", cols, "行数=", rows, "起始位置=", startX, startY);
+
+            var xx = startX;
+            var yy = startY;
+            var lim = startX + cols;
+
+            for (var j = 0; j < plan_arr.length; j++) {
+                if (xx < lim) {
+                    screen_pos_to_world_pos(xx, yy, plan_arr[j]);
+                    xx++;
+                } else {
+                    yy++;
+                    xx = startX;
+                    screen_pos_to_world_pos(xx, yy, plan_arr[j]);
+                    xx++;
+                }
+            }
+        }
+
+        // 刷新高度调整框
+        updateGroupCounts();
+        planArrChanged();
+    }
+
+    // 窗口大小变化时重新居中已筹划的飞机（保持原有队形）
+    function repositionPlanedAircraft() {
+        if (plan_arr.length === 0) {
+            return;  // 没有筹划的飞机，不需要处理
+        }
+
+        console.log("repositionPlanedAircraft: group_num=", group_num);
+
+        // 如果只有一个组，保持队形移动到中心
+        if (group_num === 1) {
+            moveGroupKeepFormation(1, 1);
+        } else {
+            // 多个组时，每个组保持队形移动到各自区域中心
+            for (var grpKey in grp_pos_mp) {
+                var grpId = Number(grpKey);
+                var pos = grp_pos_mp[grpKey];
+                if (grpId > 0 && pos > 0) {
+                    moveGroupKeepFormation(grpId, pos);
+                }
+            }
+        }
+    }
+
+    // 保持队形移动组到指定区域中心
+    // groupId: 组ID, pos: 区域位置(1-4)
+    function moveGroupKeepFormation(groupId, pos) {
+        // 收集该组的所有模型
+        var groupModels = [];
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === groupId) {
+                groupModels.push(plan_arr[i]);
+            }
+        }
+
+        if (groupModels.length === 0) {
+            return;
+        }
+
+        // 计算当前组的边界框
+        var minX = Infinity, maxX = -Infinity;
+        var minY = Infinity, maxY = -Infinity;
+        for (var j = 0; j < groupModels.length; j++) {
+            var mx = groupModels[j].model_x;
+            var my = groupModels[j].model_y;
+            if (mx < minX) minX = mx;
+            if (mx > maxX) maxX = mx;
+            if (my < minY) minY = my;
+            if (my > maxY) maxY = my;
+        }
+
+        // 计算当前队形的宽度和高度
+        var formationWidth = maxX - minX + 1;
+        var formationHeight = maxY - minY + 1;
+
+        // 计算当前队形的中心
+        var currentCenterX = (minX + maxX) / 2;
+        var currentCenterY = (minY + maxY) / 2;
+
+        // 计算目标区域的边界
+        var areaLeft = 0, areaRight = 0, areaTop = 0, areaBottom = 0;
+
+        if (group_num === 1) {
+            areaLeft = 0;
+            areaRight = Math.floor(control.width / 40) - 1;
+            areaTop = 0;
+            areaBottom = Math.floor(control.height / 40) - 1;
+        } else if (group_num === 2) {
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (group_num === 3) {
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (group_num === 4) {
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (pos === 4) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        }
+
+        // 计算目标区域的中心
+        var targetCenterX = (areaLeft + areaRight) / 2;
+        var targetCenterY = (areaTop + areaBottom) / 2;
+
+        // 计算偏移量
+        var offsetX = Math.round(targetCenterX - currentCenterX);
+        var offsetY = Math.round(targetCenterY - currentCenterY);
+
+        console.log("moveGroupKeepFormation: groupId=", groupId, "pos=", pos);
+        console.log("当前中心:", currentCenterX, currentCenterY, "目标中心:", targetCenterX, targetCenterY);
+        console.log("偏移量:", offsetX, offsetY);
+
+        // 移动所有模型（保持相对位置）
+        for (var k = 0; k < groupModels.length; k++) {
+            var newX = groupModels[k].model_x + offsetX;
+            var newY = groupModels[k].model_y + offsetY;
+            screen_pos_to_world_pos(newX, newY, groupModels[k]);
+        }
+    }
+
+    // 信号：plan_arr 变化时触发
+    signal planArrChanged()
+
+    function plan_to_out_main(node) {
+        for (var i = 0; i < plan_id.length; i++) {
+            if (node.group_id === plan_id[i].group_id && node.objectName !== plan_id[i].objectName && plan_id[i].visible === true) {
+                plan_id[i].set_main = 0
+            }
+        }
+    }
+    function mymove(xx,yy,thisnode){
+
+        performMove(xx, yy, thisnode);
+    }
+
+    function performMove(xx, yy, thisnode) {
+        // 实际执行移动的函数
+        thisnode.visible = false
+        // 只在初始化时添加到plan_id，避免重复添加
+        if (plan_id.indexOf(thisnode) === -1) {
+            plan_id.push(thisnode)
+        }
+        xx = xx * 40 + 20  // 像素中心
+        yy = yy * 40 + 20
+
+        var map_from_1 = control.mapFrom3DScene(thisnode.scenePosition) // 屏幕坐标
+
+        // 确保屏幕坐标有效
+        if (isNaN(map_from_1.x) || isNaN(map_from_1.y)) {
+            return;
+        }
+
+        var x_off = 0
+        var y_off = 0
+        var pos_temp = 0
+        var map_to = 0
+        var maxIterations = 100; // 添加最大迭代次数限制，避免无限循环
+        var iterations = 0;
+
+        while((Math.abs(xx - map_from_1.x) > 1 || Math.abs(yy - map_from_1.y) > 1) && iterations < maxIterations) {
+            x_off = xx - map_from_1.x
+            y_off = yy - map_from_1.y
+            pos_temp = Qt.vector3d((map_from_1.x + x_off), (map_from_1.y + y_off), map_from_1.z);
+            map_to = control.mapTo3DScene(pos_temp) // 世界坐标
+
+            // 检查世界坐标是否有效
+            if (!isNaN(map_to.x) && !isNaN(map_to.y)) {
+                thisnode.x = map_to.x
+                thisnode.y = map_to.y
+            }
+
+            map_from_1 = control.mapFrom3DScene(thisnode.scenePosition) // 屏幕坐标
+            iterations++;
+        }
+
+        // 只有在坐标有效时才更新model_x和model_y
+        if (!isNaN(map_from_1.x) && !isNaN(map_from_1.y)) {
+            myIntx = (map_from_1.x - 20) % 40 > 25 ? (map_from_1.x - 20) / 40 + 1 : (map_from_1.x - 20) / 40
+            myInty = (map_from_1.y - 20) % 40 > 25 ? (map_from_1.y - 20) / 40 + 1 : (map_from_1.y - 20) / 40
+            thisnode.model_x = myIntx
+            thisnode.model_y = myInty
+        }
+
+    }
+
+    function transform_crush(a,b,grp_id) {
+        for (var i = 0; i < _sysid_list.length; i++) {
+            if (idpos_map[_sysid_list[i]][0] === a &&
+                    idpos_map[_sysid_list[i]][1] === b) {
+                return true // 检测到有
+            }
+        }
+        for(var j = 0; j < plan_arr.length;j++) {
+            if(plan_arr[j].is_connected === false && plan_arr[j].model_x === a && plan_arr[j].model_y === b)return true
+        }
+        return false
+    }
+
+    // 计算队形变换时的区域中心起始位置
+    // 返回 {x: 起始X, y: 起始Y, areaWidth: 区域宽度, areaHeight: 区域高度}
+    function getFormationAreaCenter(groupId, formationWidth, formationHeight) {
+        var areaLeft = 0, areaRight = 0, areaTop = 0, areaBottom = 0;
+
+        // 获取该组对应的位置
+        var pos = grp_pos_mp[groupId] || 0;
+
+        // 如果只有一个组或者找不到位置映射，使用整个区域
+        if (group_num === 1 || pos === 0) {
+            areaLeft = 0;
+            areaRight = Math.floor(control.width / 40) - 1;
+            areaTop = 0;
+            areaBottom = Math.floor(control.height / 40) - 1;
+        } else if (group_num === 2) {
+            // 分成2组：左右分布
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (group_num === 3) {
+            // 分成3组：上左、上右、下左
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        } else if (group_num === 4) {
+            // 分成4组：四个象限
+            if (pos === 1) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 2) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = 0;
+                areaBottom = Math.floor(control.height / 2 / 40) - 1;
+            } else if (pos === 3) {
+                areaLeft = 0;
+                areaRight = Math.floor(control.width / 2 / 40) - 1;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            } else if (pos === 4) {
+                areaLeft = Math.floor(control.width / 2 / 40) + 1;
+                areaRight = Math.floor(control.width / 40) - 2;
+                areaTop = Math.floor(control.height / 2 / 40) + 1;
+                areaBottom = Math.floor(control.height / 40) - 1;
+            }
+        }
+
+        var areaWidth = areaRight - areaLeft + 1;
+        var areaHeight = areaBottom - areaTop + 1;
+
+        // 计算居中的起始位置
+        var startX = areaLeft + Math.floor((areaWidth - formationWidth) / 2);
+        var startY = areaTop + Math.floor((areaHeight - formationHeight) / 2);
+
+        // 确保起始位置不小于区域左上角
+        if (startX < areaLeft) startX = areaLeft;
+        if (startY < areaTop) startY = areaTop;
+
+        console.log("getFormationAreaCenter: groupId=", groupId, "pos=", pos, "group_num=", group_num);
+        console.log("区域: left=", areaLeft, "right=", areaRight, "top=", areaTop, "bottom=", areaBottom);
+        console.log("队形尺寸: width=", formationWidth, "height=", formationHeight);
+        console.log("居中起始位置: startX=", startX, "startY=", startY);
+
+        return {x: startX, y: startY, areaWidth: areaWidth, areaHeight: areaHeight};
+    }
+
+    // 三角形
+    function triangle_swarm()
+    {
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+
+        var n = form_arr.length;
+        var rows = 0;
+        var tempN = n;
+
+        // 计算行数
+        while (tempN > 0) {
+            rows++;
+            tempN = tempN - (rows * 2 - 1);
+        }
+
+        // 计算队形的宽度和高度
+        var formationWidth = 2 * rows - 1;  // 最宽的一行
+        var formationHeight = rows;
+
+        // 获取居中的起始位置
+        var areaInfo = getFormationAreaCenter(Number(input4.text), formationWidth, formationHeight);
+        var x_0 = areaInfo.x;  // 区域左边界
+        var y_0 = areaInfo.y;
+
+        var index = 0;
+        var line = 0
+        for (i = 1; i <= rows; ++i) {
+            // 计算当前行的起始x位置（三角形每行居中）
+            var x1 = x_0 + (rows - i);  // 从左边界开始，加上偏移使其居中
+
+            line++
+            for (var j = 0; j < 2 * i - 1; ++j) {
+                if (index < n) {
+                    if(line !== rows) {
+                        screen_pos_to_world_pos(x1 + j, y_0, form_arr[index++])
+                    } else {// 对最后一行的特殊处理
+                        var last_line_num = form_arr.length - index
+                        screen_pos_to_world_pos(x1 + j, y_0, form_arr[index++])
+
+                        if (last_line_num !== 1) {// x1是第一顶点，x1 + 2*i-1
+                                var ste = 2 * (i - 1) / (last_line_num - 1)
+                                var step =  Math.floor(ste) // 取最大整数
+
+                                for(var k = 1; k < last_line_num;k++) {
+                                    if(index !== form_arr.length - 1)
+                                        screen_pos_to_world_pos(x1 + k * step, y_0, form_arr[index++])
+                                    else
+                                       screen_pos_to_world_pos(x1 + 2*(i-1), y_0, form_arr[index++])
+                                }
+                                break
+                        }
+                    }
+                }
+            }
+
+            y_0++
+        }
+
+        send_all_airplane_pos(input4.text,0)
+
+    }
+    //正方形
+    function rectangle_swarm()
+    {
+
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+        if (form_arr.length < 4) {
+            console.log("本组飞机数量 airplane count :",form_arr.length)
+            return
+        }
+
+        var n = form_arr.length;
+
+        // 计算正方形的边长
+        var side = Math.ceil(Math.sqrt(n));
+        if (side < 2) side = 2; // 最小边长为2
+
+        // 获取居中的起始位置
+        var areaInfo = getFormationAreaCenter(Number(input4.text), side, side);
+        var x_0 = areaInfo.x;
+        var y_0 = areaInfo.y;
+
+        var index = 0;
+
+        // 填充四个顶点
+        index += 4;
+
+        screen_pos_to_world_pos(x_0,y_0,form_arr[0])
+        screen_pos_to_world_pos(x_0,y_0 + side - 1,form_arr[1])
+        screen_pos_to_world_pos(x_0 + side - 1,y_0,form_arr[2])
+        screen_pos_to_world_pos(x_0 + side - 1,y_0 + side - 1,form_arr[3])
+
+        // 填充边
+        // 上边（从左到右）
+        for (var i = 1; i < side - 1; ++i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + i,y_0,form_arr[index])
+            index++;
+        }
+
+        // 右边（从上到下）
+        for (i = 1; i < side - 1; ++i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + side - 1,y_0 + i,form_arr[index])
+            index++;
+        }
+
+        // 下边（从右到左）
+        for (i = side - 2; i >= 1; --i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + i,y_0 + side - 1,form_arr[index])
+            index++;
+        }
+
+        // 左边（从下到上）
+        for (i = side - 2; i >= 1; --i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0,y_0 + i,form_arr[index])
+            index++;
+        }
+
+        // 填充内部
+        for (i = 1; i < side - 1; ++i) {
+            for (var j = 1; j < side - 1; ++j) {
+                if (index >= n) break;
+                screen_pos_to_world_pos(x_0+j,y_0 + i,form_arr[index])
+                index++;
+            }
+        }
+
+        send_all_airplane_pos(input4.text,0)
+    }
+    // 菱形
+    function diamond_swarm() {
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+        if (form_arr.length < 4) {
+            console.log("本组飞机数量 airplane count :",form_arr.length)
+            return
+        }
+
+        var n = form_arr.length
+        // 计算菱形的高度
+        var height = 2 // 最小高度为2（4个顶点）
+        while (4 + 4 * (height - 2) < n) {
+            height++
+        }
+
+        var size = 2 * height - 1 // 菱形的总行数
+
+        // 获取居中的起始位置
+        var areaInfo = getFormationAreaCenter(Number(input4.text), size, size);
+        var x_0 = areaInfo.x;
+        var y_0 = areaInfo.y;
+
+        var index = 0;
+
+        // 填充四个顶点
+        index += 4
+        screen_pos_to_world_pos(x_0 + height - 1,y_0 ,form_arr[0])
+        screen_pos_to_world_pos(x_0,y_0 + height - 1,form_arr[1])
+        screen_pos_to_world_pos(x_0 + size - 1,y_0 + height - 1,form_arr[2])
+        screen_pos_to_world_pos(x_0 + height - 1,y_0 + size - 1,form_arr[3])
+
+        // 填充边
+        // 上部分（从上到下）
+        for (i = 1; i < height - 1; ++i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + height - 1 - i,y_0 + i,form_arr[index])  // 左上边
+            index++;
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + height - 1 + i,y_0 + i,form_arr[index]) // 右上边
+            index++;
+        }
+
+        // 下部分（从上到下）
+        for (i = 1; i < height - 1; ++i) {
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + height - 1 - i,y_0 + size - 1 - i,form_arr[index]) // 左下边
+            index++;
+            if (index >= n) break;
+            screen_pos_to_world_pos(x_0 + height - 1 + i,y_0 + size - 1 - i,form_arr[index]) // 右下边
+            index++;
+        }
+        // 填充内部
+        for (i = 1; i < size - 1; ++i) {
+            for (var j = 1; j < size - 1; ++j) {
+                if (index >= n) {
+                    break;
+                }
+                screen_pos_to_world_pos(x_0 + j,y_0 + i,form_arr[index])
+                index++;
+            }
+        }
+
+        send_all_airplane_pos(input4.text,0)
+    }
+    // 圆形
+    function circle_swarm() {
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+
+        var n = form_arr.length;
+
+        // 调整半径计算，使圆形编队的间距与正方形编队一致
+        // 圆周长 = 2πr，飞机数量 = n，间距应为 1（与正方形一致）
+        // 因此 r = n / (2π)
+        var radius = n / (2 * Math.PI);
+        if(radius < 1) radius = 1      // 最小半径
+        if(radius >= 4) radius = 4     // 最大半径限制
+
+        // 圆形的直径（队形尺寸）
+        var diameter = Math.ceil(radius * 2) + 1;
+
+        // 获取居中的起始位置
+        var areaInfo = getFormationAreaCenter(Number(input4.text), diameter, diameter);
+        var x_1 = areaInfo.x;
+        var y_1 = areaInfo.y;
+
+        var angleStep = 2 * Math.PI / n; // 每个点之间的角度差
+        var index = 0
+
+        // 圆心位置
+        var centerX = x_1 + radius;
+        var centerY = y_1 + radius;
+
+        for (i = 0; i < n; ++i) {
+            var angle = i * angleStep;
+            var x = centerX + radius * Math.cos(angle);
+            var y = centerY + radius * Math.sin(angle);
+            if(index >= n) break
+            screen_pos_to_world_pos(x, y, form_arr[index++])
+        }
+
+        send_all_airplane_pos(input4.text,0)
+    }
+
+    // 直线型（内置队形）  支持所有机体数量，有几个排几个
+    function stright_line_swarm() {
+
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+
+        var n = form_arr.length;
+        // 东西一字形：宽度为n，高度为1
+        var areaInfo = getFormationAreaCenter(Number(input4.text), n, 1);
+        var x_0 = areaInfo.x;
+        var y_0 = areaInfo.y;
+
+        for(var i1 = 0; i1 < form_arr.length; i1++) {
+            screen_pos_to_world_pos(x_0 + i1, y_0, form_arr[i1])
+        }
+        send_all_airplane_pos(input4.text,0)
+    }
+
+    function stright_NS_line_swarm() {
+        form_arr.length = 0
+        for(var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === Number(input4.text)) {
+                form_arr.push(plan_arr[i])
+            }
+        }
+
+        var n = form_arr.length;
+        // 南北一字形：宽度为1，高度为n
+        var areaInfo = getFormationAreaCenter(Number(input4.text), 1, n);
+        var x_0 = areaInfo.x;
+        var y_0 = areaInfo.y;
+
+        for(var i2 = 0; i2 < form_arr.length; i2++) {
+            screen_pos_to_world_pos(x_0, y_0 + i2, form_arr[i2])
+        }
+
+        send_all_airplane_pos(input4.text,0)
+    }
+}
