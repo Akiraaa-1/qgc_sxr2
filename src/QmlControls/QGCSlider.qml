@@ -19,6 +19,11 @@ Slider {
 
     property real _implicitBarLength: Math.round(ScreenTools.defaultFontPixelWidth * 20)
     property real _barHeight: Math.round(ScreenTools.defaultFontPixelHeight / 3)
+    property color trackColor: qgcPal.button
+    property color trackBorderColor: qgcPal.buttonText
+    property color handleColor: qgcPal.button
+    property color handleBorderColor: qgcPal.buttonText
+    property color labelColor: qgcPal.buttonText
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
@@ -30,9 +35,9 @@ Slider {
         width: control.horizontal ? control.availableWidth : implicitWidth
         height: control.horizontal ? implicitHeight : control.availableHeight
         radius: control._barHeight / 2
-        color: qgcPal.button
+        color: control.trackColor
         border.width: 1
-        border.color: qgcPal.buttonText
+        border.color: control.trackBorderColor
     }
 
     handle: Rectangle {
@@ -44,8 +49,8 @@ Slider {
                control.topPadding + control.visualPosition * (control.availableHeight - height)
         implicitWidth: _radius * 2
         implicitHeight: _radius * 2
-        color: qgcPal.button
-        border.color: qgcPal.buttonText
+        color: control.handleColor
+        border.color: control.handleBorderColor
         border.width: 1
         radius: _radius
 
@@ -57,7 +62,7 @@ Slider {
             anchors.centerIn: parent
             font.family: ScreenTools.normalFontFamily
             font.pointSize: ScreenTools.smallFontPointSize
-            color: qgcPal.buttonText
+            color: control.labelColor
         }
     }
 
@@ -68,7 +73,7 @@ Slider {
         anchors.bottom: parent.bottom
         text: control.from.toFixed(1)
         font.pointSize: ScreenTools.smallFontPointSize
-        color: qgcPal.buttonText
+        color: control.labelColor
         visible: control.showBoundaryValues
     }
 
@@ -79,7 +84,7 @@ Slider {
         anchors.bottom: parent.bottom
         text: control.to.toFixed(1)
         font.pointSize: ScreenTools.smallFontPointSize
-        color: qgcPal.buttonText
+        color: control.labelColor
         visible: control.showBoundaryValues
     }
 }

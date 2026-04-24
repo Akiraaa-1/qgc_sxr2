@@ -7,6 +7,7 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.FlightMap
+import QGroundControl.PlanView
 
 TransectStyleComplexItemEditor {
     transectAreaDefinitionComplete: missionItem.surveyAreaPolygon.isValid
@@ -18,6 +19,8 @@ TransectStyleComplexItemEditor {
     property real   _margin:        ScreenTools.defaultFontPixelWidth / 2
     property var    _missionItem:   missionItem
 
+    PlanEditorTheme { id: theme }
+
     Component {
         id: _transectValuesComponent
 
@@ -27,8 +30,8 @@ TransectStyleComplexItemEditor {
             rowSpacing:         _margin
             columns:            2
 
-            QGCLabel { text: qsTr("Angle") }
-            FactTextField {
+            QGCLabel { text: qsTr("Angle"); color: theme.secondaryTextColor }
+            PlanFactTextField {
                 fact:                   missionItem.gridAngle
                 Layout.fillWidth:       true
                 onUpdated:              angleSlider.value = missionItem.gridAngle.value
@@ -42,6 +45,11 @@ TransectStyleComplexItemEditor {
                 Layout.fillWidth:       true
                 Layout.columnSpan:      2
                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                trackColor:             theme.inputColor
+                trackBorderColor:       theme.borderColor
+                handleColor:            theme.textColor
+                handleBorderColor:      theme.borderColor
+                labelColor:             theme.secondaryTextColor
                 onValueChanged:         missionItem.gridAngle.value = value
                 Component.onCompleted:  value = missionItem.gridAngle.value
                 live: true
@@ -50,8 +58,9 @@ TransectStyleComplexItemEditor {
             QGCLabel {
                 text:       qsTr("Turnaround dist")
                 visible:    !forPresets
+                color:      theme.secondaryTextColor
             }
-            FactTextField {
+            PlanFactTextField {
                 Layout.fillWidth:   true
                 fact:               missionItem.turnAroundDistance
                 visible:            !forPresets

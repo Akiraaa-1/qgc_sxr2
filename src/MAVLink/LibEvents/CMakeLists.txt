@@ -30,3 +30,8 @@ CPMAddPackage(
 # warnings when its headers are compiled as part of QGC source code.
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE libevents)
 target_include_directories(${CMAKE_PROJECT_NAME} SYSTEM PRIVATE ${libevents_SOURCE_DIR}/libs/cpp)
+
+if(TARGET ClusterModule)
+    target_link_libraries(ClusterModule PRIVATE libevents)
+    target_include_directories(ClusterModule SYSTEM PRIVATE ${libevents_SOURCE_DIR}/libs/cpp)
+endif()

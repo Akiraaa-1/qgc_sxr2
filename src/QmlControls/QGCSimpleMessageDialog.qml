@@ -5,6 +5,8 @@ import QGroundControl
 import QGroundControl.Controls
 
 QGCPopupDialog {
+    QGCPopupStyle { id: popupStyle }
+
     property alias  text:           label.text
     property var    acceptFunction: null        // Mainly used by MainRootWindow.showMessage to specify accept function in call
     property var    closeFunction:  null
@@ -26,6 +28,7 @@ QGCPopupDialog {
             id:                     label
             Layout.preferredWidth:  Math.max(mainWindow.width / (ScreenTools.isMobile ? 2 : 3), headerMinWidth)
             wrapMode:               Text.WordWrap
+            color:                  popupStyle.secondaryTextColor
         }
     }
 }

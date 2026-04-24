@@ -14,6 +14,7 @@ Rectangle {
     property alias  model:              repeater.model
     property real   maxHeight           ///< Maximum height for control, determines whether text is hidden to make control shorter
     property var    fontSize:           ScreenTools.smallFontPointSize
+    property bool   showText:           true
 
     property var _dropPanel: dropPanel
 
@@ -55,6 +56,7 @@ Rectangle {
                     height:             width
                     radius:             ScreenTools.defaultFontPixelWidth / 2
                     fontPointSize:      _root.fontSize
+                    showText:           _root.showText
                     toolStripAction:    modelData
                     dropPanel:          _dropPanel
                     onDropped: (index) => _root.dropped(index)

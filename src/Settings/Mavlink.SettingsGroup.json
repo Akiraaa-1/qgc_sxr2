@@ -84,6 +84,16 @@
             "keywords": "system id,mavlink id"
         },
         {
+            "name": "vehicleHeartbeatTimeout",
+            "shortDesc": "Seconds without vehicle heartbeat before communication is considered lost.",
+            "type": "uint32",
+            "default": 4,
+            "min": 2,
+            "max": 15,
+            "label": "Vehicle heartbeat timeout",
+            "keywords": "heartbeat timeout,communication lost"
+        },
+        {
             "name": "noInitialDownloadWhenFlying",
             "shortDesc": "Skip downloading parameters and missions when connecting to a vehicle already in flight.",
             "longDesc": "When enabled, parameter and mission plan downloads are skipped when connecting to a vehicle that is already flying. This prevents bandwidth-heavy transfers from disrupting an active flight.",

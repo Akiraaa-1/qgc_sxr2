@@ -15,8 +15,11 @@ Item {
     property alias  pageComponent:          pageLoader.sourceComponent
     property string pageName:               vehicleComponent ? vehicleComponent.name : ""
     property string pageDescription:        vehicleComponent ? vehicleComponent.description : ""
-    property real   availableWidth:         width - pageLoader.x
+    property real   availableWidth:         centerPageLoader ? width : (width - pageLoader.x)
     property real   availableHeight:        height - pageLoader.y
+    property bool   centerPageLoader:       false
+    property bool   centerDescriptionText:  false
+    property real   headerRightInset:       0
     property bool   showAdvanced:           false
     property alias  advanced:               advancedCheckBox.checked
     property string sectionNameFilter:       ""
@@ -42,6 +45,14 @@ Item {
     property bool   _disableDueToFlying:    vehicleComponent ? (!_vehicleIsRover && !vehicleComponent.allowSetupWhileFlying && _vehicleFlying) : false
     property string _disableReason:         _disableDueToArmed ? qsTr("armed") : qsTr("flying")
     property real   _margins:               ScreenTools.defaultFontPixelHeight * 0.5
+    readonly property string _sensorsCalibDescription: "Configure and calibrate gyroscope, accelerometer, magnetometer, and airspeed sensors."
+    readonly property string _powerDescription: "Configure battery parameters, ESC calibration, and UAVCAN bus settings."
+    readonly property string _safetyDescription: "Configure failsafe actions, geofence, return to launch, and land mode settings."
+    readonly property bool _centerPageDescription: false
+    readonly property bool _shouldCenterDescription: centerDescriptionText
+        || pageDescription === _sensorsCalibDescription
+        || pageDescription === _powerDescription
+        || pageDescription === _safetyDescription
 
     Component.onCompleted: {
         if(pageLoader.item && pageLoader.item.setupPageCompleted) {
@@ -60,7 +71,8 @@ Item {
 
         RowLayout {
             id:                 headingRow
-            width:              availableWidth
+            width:              Math.max(0, (setupView._shouldCenterDescription ? setupView.width : availableWidth) - setupView.headerRightInset)
+            height:             visible ? implicitHeight : 0
             spacing:            _margins
             layoutDirection:    Qt.RightToLeft
             visible:            showAdvanced || (pageDescription !== "" && !ScreenTools.isShortScreen)
@@ -79,6 +91,7 @@ Item {
                     Layout.fillWidth:   true
                     wrapMode:           Text.WordWrap
                     text:               pageDescription
+                    horizontalAlignment: setupView._shouldCenterDescription ? Text.AlignHCenter : Text.AlignLeft
                     visible:            pageDescription !== "" && !ScreenTools.isShortScreen
                 }
 
@@ -96,6 +109,9 @@ Item {
             id:                 pageLoader
             anchors.topMargin:  _margins
             anchors.top:        headingRow.bottom
+            x:                  (setupView.centerPageLoader && pageLoader.item)
+                                    ? Math.max(0, (setupView.width - pageLoader.item.width) / 2)
+                                    : 0
         }
 
         // Overlay to display when vehicle is armed and this setup page needs

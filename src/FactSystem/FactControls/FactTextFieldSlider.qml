@@ -24,13 +24,32 @@ Rectangle {
     property var    sliderMin:          undefined ///< explicit slider minimum, overrides fact.userMin/min
     property var    sliderMax:          undefined ///< explicit slider maximum, overrides fact.userMax/max
     property color  backgroundColor:    _ftfsBackgroundColor
+    property color  labelColor:         qgcPal.text
+    property color  textFieldBackgroundColor: qgcPal.textField
+    property color  textFieldBorderColor: qgcPal.buttonBorder
+    property color  textFieldFocusBorderColor: textFieldBorderColor
+    property color  textFieldColor:     qgcPal.textFieldText
+    property bool   textFieldShowFocusGlow: false
+    property color  checkBoxTextColor:  qgcPal.text
+    property color  checkBoxBoxColor:   control.enabled ? "white" : "transparent"
+    property color  checkBoxBorderColor: qgcPal.buttonBorder
+    property color  checkBoxCheckColor: qgcPal.buttonHighlight
+    property color  checkBoxHoverColor: qgcPal.buttonHighlight
+    property color  sliderTrackColor:    qgcPal.windowShade
+    property color  sliderTrackBorderColor: qgcPal.buttonBorder
+    property color  sliderHandleColor:   qgcPal.button
+    property color  sliderHandleBorderColor: qgcPal.buttonBorder
+    property color  sliderLabelColor:    qgcPal.text
+    property real   controlRadius:      ScreenTools.defaultBorderRadius
+    property int    stateAnimationDuration: 200
 
     signal enableCheckboxClicked
 
     id:             control
     implicitHeight: mainLayout.implicitHeight
     color:          backgroundColor
-    radius:         ScreenTools.defaultBorderRadius
+    radius:         controlRadius
+    Behavior on color { ColorAnimation { duration: stateAnimationDuration } }
 
     property bool _loadComplete:            false
     property bool _showSlider:              _sliderMin !== undefined && _sliderMax !== undefined
@@ -80,6 +99,12 @@ Rectangle {
                 Layout.fillWidth:   visible
                 text:               control.label
                 visible:            control.showEnableCheckbox
+                textColor:          control.checkBoxTextColor
+                boxBackgroundColor: control.checkBoxBoxColor
+                boxBorderColor:     control.checkBoxBorderColor
+                checkColor:         control.checkBoxCheckColor
+                hoverColor:         control.checkBoxHoverColor
+                stateAnimationDuration: control.stateAnimationDuration
 
                 onClicked: control.enableCheckboxClicked()
             }
@@ -90,6 +115,12 @@ Rectangle {
                 label:              control.showEnableCheckbox ? "" : control.label
                 fact:               control.fact
                 enabled:            !control.showEnableCheckbox || enableCheckbox.checked
+                labelColor:         control.labelColor
+                textFieldBackgroundColor: control.textFieldBackgroundColor
+                textFieldBorderColor: control.textFieldBorderColor
+                textFieldFocusBorderColor: control.textFieldFocusBorderColor
+                textFieldColor:     control.textFieldColor
+                textFieldShowFocusGlow: control.textFieldShowFocusGlow
             }
         }
 
@@ -111,6 +142,11 @@ Rectangle {
                 from:               control._sliderMin
                 to:                 control._sliderMax
                 showBoundaryValues: true
+                trackColor:         control.sliderTrackColor
+                trackBorderColor:   control.sliderTrackBorderColor
+                handleColor:        control.sliderHandleColor
+                handleBorderColor:  control.sliderHandleBorderColor
+                labelColor:         control.sliderLabelColor
 
                 onMoved: {
                     if (control._loadComplete) {

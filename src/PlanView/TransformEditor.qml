@@ -13,12 +13,17 @@ Rectangle {
 
     width:  parent ? parent.width : 0
     height: mainColumn.height + (_margins * 2)
-    color:  QGroundControl.globalPalette.windowShadeDark
+    color:  theme.panelColor
+    radius: theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
     property real _margins:        ScreenTools.defaultFontPixelWidth / 2
     property real _textFieldWidth: ScreenTools.defaultFontPixelWidth * 20
     property real _labelWidth:     ScreenTools.defaultFontPixelWidth * 14
     property bool _hasHome:        missionController ? missionController.plannedHomePosition.isValid : false
+
+    PlanEditorTheme { id: theme }
 
     TransformPositionController {
         id: positionController
@@ -47,7 +52,7 @@ Rectangle {
         spacing:         ScreenTools.defaultFontPixelHeight * 0.5
 
         // ── Offset Mission ──
-        SectionHeader {
+        PlanSectionHeader {
             id:               offsetSection
             Layout.fillWidth: true
             text:             qsTr("Offset Mission")
@@ -59,7 +64,7 @@ Rectangle {
             spacing:          _margins
             visible:          offsetSection.checked
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      eastField
                 label:                   qsTr("East")
                 fact:                    positionController.offsetEast
@@ -67,7 +72,7 @@ Rectangle {
                 Layout.fillWidth:        true
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      northField
                 label:                   qsTr("North")
                 fact:                    positionController.offsetNorth
@@ -75,7 +80,7 @@ Rectangle {
                 Layout.fillWidth:        true
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      upField
                 label:                   qsTr("Up")
                 fact:                    positionController.offsetUp
@@ -83,12 +88,12 @@ Rectangle {
                 Layout.fillWidth:        true
             }
 
-            QGCCheckBox {
+            PlanCheckBox {
                 id:   offsetTakeoffCheck
                 text: qsTr("Also move takeoff items")
             }
 
-            QGCCheckBox {
+            PlanCheckBox {
                 id:   offsetLandingCheck
                 text: qsTr("Also move landing items")
             }
@@ -99,9 +104,10 @@ Rectangle {
                 wrapMode:            Text.WordWrap
                 font.pointSize:      ScreenTools.smallFontPointSize
                 text:                qsTr("Note: Home altitude is not modified.")
+                color:               theme.secondaryTextColor
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Apply Offset")
                 enabled:          !eastField.textField.validationError
@@ -121,7 +127,7 @@ Rectangle {
         }
 
         // ── Reposition Mission ──
-        SectionHeader {
+        PlanSectionHeader {
             id:               repositionSection
             Layout.fillWidth: true
             text:             qsTr("Reposition Mission")
@@ -140,6 +146,7 @@ Rectangle {
                 font.pointSize:   ScreenTools.smallFontPointSize
                 text:             qsTr("Home position must be set to reposition the mission.")
                 visible:          !_hasHome
+                color:            theme.secondaryTextColor
             }
 
             property bool _showGeographic: coordinateSystemCombo.currentIndex === 0
@@ -153,9 +160,10 @@ Rectangle {
 
                 QGCLabel {
                     text: qsTr("Coordinate System")
+                    color: theme.secondaryTextColor
                 }
 
-                QGCComboBox {
+                PlanComboBox {
                     id:               coordinateSystemCombo
                     Layout.fillWidth: true
                     model:            globals.activeVehicle
@@ -164,7 +172,7 @@ Rectangle {
                 }
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      latitudeField
                 label:                   qsTr("Latitude")
                 fact:                    positionController.latitude
@@ -173,7 +181,7 @@ Rectangle {
                 visible:                 repositionContent._showGeographic
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      longitudeField
                 label:                   qsTr("Longitude")
                 fact:                    positionController.longitude
@@ -182,7 +190,7 @@ Rectangle {
                 visible:                 repositionContent._showGeographic
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Move to Position")
                 enabled:          _hasHome && !latitudeField.textField.validationError && !longitudeField.textField.validationError
@@ -193,7 +201,7 @@ Rectangle {
                 }
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      zoneField
                 label:                   qsTr("Zone")
                 fact:                    positionController.zone
@@ -202,7 +210,7 @@ Rectangle {
                 visible:                 repositionContent._showUTM
             }
 
-            LabelledFactComboBox {
+            PlanLabelledFactComboBox {
                 label:            qsTr("Hemisphere")
                 fact:             positionController.hemisphere
                 indexModel:       false
@@ -210,7 +218,7 @@ Rectangle {
                 visible:          repositionContent._showUTM
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      eastingField
                 label:                   qsTr("Easting")
                 fact:                    positionController.easting
@@ -219,7 +227,7 @@ Rectangle {
                 visible:                 repositionContent._showUTM
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      northingField
                 label:                   qsTr("Northing")
                 fact:                    positionController.northing
@@ -228,7 +236,7 @@ Rectangle {
                 visible:                 repositionContent._showUTM
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Move to Position")
                 enabled:          _hasHome && !zoneField.textField.validationError && !eastingField.textField.validationError && !northingField.textField.validationError
@@ -239,7 +247,7 @@ Rectangle {
                 }
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      mgrsField
                 label:                   qsTr("MGRS")
                 fact:                    positionController.mgrs
@@ -248,7 +256,7 @@ Rectangle {
                 visible:                 repositionContent._showMGRS
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Move to Position")
                 enabled:          _hasHome && !mgrsField.textField.validationError
@@ -259,7 +267,7 @@ Rectangle {
                 }
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Move to Vehicle Position")
                 enabled:          _hasHome
@@ -272,7 +280,7 @@ Rectangle {
         }
 
         // ── Rotate Mission ──
-        SectionHeader {
+        PlanSectionHeader {
             id:               rotateSection
             Layout.fillWidth: true
             text:             qsTr("Rotate Mission")
@@ -292,7 +300,7 @@ Rectangle {
                 visible:          !_hasHome
             }
 
-            LabelledFactTextField {
+            PlanLabelledFactTextField {
                 id:                      degreesCWField
                 label:                   qsTr("Clockwise")
                 fact:                    positionController.rotateDegreesCW
@@ -300,12 +308,12 @@ Rectangle {
                 Layout.fillWidth:        true
             }
 
-            QGCCheckBox {
+            PlanCheckBox {
                 id:   rotateTakeoffCheck
                 text: qsTr("Also move takeoff items")
             }
 
-            QGCCheckBox {
+            PlanCheckBox {
                 id:   rotateLandingCheck
                 text: qsTr("Also move landing items")
             }
@@ -318,7 +326,7 @@ Rectangle {
                 text:                qsTr("Note: Complex items are rotated by moving their reference coordinate: their geometry and orientation are not changed.")
             }
 
-            QGCButton {
+            PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Apply Rotation")
                 enabled:          _hasHome && !degreesCWField.textField.validationError

@@ -14,8 +14,157 @@ Item {
     property var    _activeVehicleColor:  "green"
     property var    _activeVehicle:       QGroundControl.multiVehicleManager.activeVehicle
     property var    selectedVehicles:     QGroundControl.multiVehicleManager.selectedVehicles
+    property int    _expandedVehicleId:   -1
+    property var    _clusterFeedbackByVehicleId: ({})
 
     implicitHeight: vehicleList.contentHeight
+
+    function _vehicleParameterManager(vehicle) {
+        return vehicle ? vehicle.parameterManager : null
+    }
+
+    function _clusterParameterReady(vehicle) {
+        const parameterManager = _vehicleParameterManager(vehicle)
+        return !!(parameterManager && parameterManager.parametersReady)
+    }
+
+    function _clusterParameterExists(vehicle, paramName) {
+        const parameterManager = _vehicleParameterManager(vehicle)
+        return !!(parameterManager && parameterManager.parametersReady && parameterManager.parameterExists(-1, paramName))
+    }
+
+    function _clusterFact(vehicle, paramName) {
+        if (!_clusterParameterExists(vehicle, paramName)) {
+            return null
+        }
+
+        return vehicle.parameterManager.getParameter(-1, paramName)
+    }
+
+    function _clusterGroup(vehicle) {
+        const fact = _clusterFact(vehicle, "SWARM_GROUP_ID")
+        if (!fact) {
+            return 0
+        }
+
+        const value = Number(fact.rawValue)
+        return isNaN(value) ? 0 : Math.max(0, Math.round(value))
+    }
+
+    function _clusterLeader(vehicle) {
+        const fact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (!fact) {
+            return false
+        }
+
+        const value = Number(fact.rawValue)
+        return !isNaN(value) && value > 0
+    }
+
+    function _clusterSyncState(vehicle) {
+        if (!vehicle) {
+            return qsTr("Unavailable")
+        }
+
+        const parameterManager = _vehicleParameterManager(vehicle)
+        if (!parameterManager) {
+            return qsTr("Unavailable")
+        }
+
+        if (!parameterManager.parametersReady) {
+            return qsTr("Waiting")
+        }
+
+        if (_clusterParameterExists(vehicle, "SWARM_GROUP_ID") || _clusterParameterExists(vehicle, "SWARM_SET_LEADER")) {
+            return qsTr("Ready")
+        }
+
+        return qsTr("Param Missing")
+    }
+
+    function _clusterFeedback(vehicle) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return ""
+        }
+
+        const value = _clusterFeedbackByVehicleId["" + vehicle.id]
+        return value === undefined ? "" : value
+    }
+
+    function _setClusterFeedback(vehicle, message) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return
+        }
+
+        const nextMap = Object.assign({}, _clusterFeedbackByVehicleId)
+        nextMap["" + vehicle.id] = message
+        _clusterFeedbackByVehicleId = nextMap
+    }
+
+    function _toggleClusterExpanded(vehicle) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return
+        }
+
+        _expandedVehicleId = (_expandedVehicleId === vehicle.id) ? -1 : vehicle.id
+    }
+
+    function _setClusterGroup(vehicle, groupId) {
+        if (!vehicle) {
+            return
+        }
+
+        const groupFact = _clusterFact(vehicle, "SWARM_GROUP_ID")
+        if (!groupFact) {
+            _setClusterFeedback(vehicle, qsTr("SWARM_GROUP_ID unavailable"))
+            return
+        }
+
+        groupFact.setRawValue(groupId)
+
+        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (leaderFact) {
+            leaderFact.setRawValue(0)
+        }
+
+        _setClusterFeedback(vehicle, qsTr("Group %1 sent").arg(groupId))
+    }
+
+    function _clearClusterGroup(vehicle) {
+        if (!vehicle) {
+            return
+        }
+
+        const groupFact = _clusterFact(vehicle, "SWARM_GROUP_ID")
+        if (!groupFact) {
+            _setClusterFeedback(vehicle, qsTr("SWARM_GROUP_ID unavailable"))
+            return
+        }
+
+        groupFact.setRawValue(0)
+
+        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (leaderFact) {
+            leaderFact.setRawValue(0)
+        }
+
+        _setClusterFeedback(vehicle, qsTr("Cluster assignment cleared"))
+    }
+
+    function _setClusterLeader(vehicle, leader) {
+        if (!vehicle) {
+            return
+        }
+
+        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (!leaderFact) {
+            _setClusterFeedback(vehicle, qsTr("SWARM_SET_LEADER unavailable"))
+            return
+        }
+
+        leaderFact.setRawValue(leader ? 1 : 0)
+        _setClusterFeedback(vehicle, leader ? qsTr("Leader flag sent") : qsTr("Leader flag cleared"))
+    }
 
     function armAvailable() {
         for (var i = 0; i < selectedVehicles.count; i++) {
@@ -122,6 +271,12 @@ Item {
             border.color:   qgcPal.text
 
             property var    _vehicle:   object
+            readonly property bool _clusterExpanded: _vehicle && _vehicle.id === _expandedVehicleId
+            readonly property int _clusterGroupId: _clusterGroup(_vehicle)
+            readonly property bool _clusterLeaderFlag: _clusterLeader(_vehicle)
+            readonly property bool _clusterGroupAvailable: _clusterParameterExists(_vehicle, "SWARM_GROUP_ID")
+            readonly property bool _clusterLeaderAvailable: _clusterParameterExists(_vehicle, "SWARM_SET_LEADER")
+            readonly property bool _clusterActionsAvailable: _clusterGroupAvailable || _clusterLeaderAvailable
 
             QGCMouseArea {
                 anchors.fill:       parent
@@ -137,6 +292,26 @@ Item {
                     anchors.horizontalCenter:   parent.horizontalCenter
                     anchors.margins:    _margin
                     spacing:            _margin
+
+                    QGCButton {
+                        text: _clusterExpanded ? qsTr("v") : qsTr(">")
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.5
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                        leftPadding: 0
+                        rightPadding: 0
+                        topPadding: 0
+                        bottomPadding: 0
+                        fontWeight: Font.DemiBold
+                        backgroundColor: Qt.rgba(0, 0, 0, 0.12)
+                        borderColor: Qt.rgba(1, 1, 1, 0.14)
+                        textColor: qgcPal.text
+
+                        onClicked: {
+                            QGroundControl.multiVehicleManager.activeVehicle = _vehicle
+                            _toggleClusterExpanded(_vehicle)
+                        }
+                    }
 
                     IntegratedCompassAttitude {
                         id: compassWidget
@@ -200,6 +375,115 @@ Item {
                         id:                     control
                         settingsGroup:          factValueGrid.vehicleCardSettingsGroup
                         specificVehicleForCard: _vehicle
+                    }
+                }
+
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: vehicleList.width - (_margin * 2)
+                    visible: _clusterExpanded
+                    color: Qt.rgba(0, 0, 0, 0.12)
+                    radius: _margin
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.10)
+                    implicitHeight: clusterPanelColumn.implicitHeight + (_margin * 2)
+
+                    ColumnLayout {
+                        id: clusterPanelColumn
+                        anchors.fill: parent
+                        anchors.margins: _margin
+                        spacing: _margin
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: _margin
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("Cluster")
+                                font.bold: true
+                                color: qgcPal.text
+                            }
+
+                            QGCLabel {
+                                text: _clusterGroupId > 0 ? qsTr("Group %1").arg(_clusterGroupId) : qsTr("Unassigned")
+                                color: qgcPal.text
+                            }
+
+                            QGCLabel {
+                                text: _clusterLeaderFlag ? qsTr("Leader") : qsTr("Member")
+                                color: qgcPal.text
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScreenTools.defaultFontPixelWidth
+
+                            QGCLabel {
+                                text: qsTr("Sync")
+                                color: qgcPal.text
+                            }
+
+                            QGCLabel {
+                                text: _clusterSyncState(_vehicle)
+                                color: qgcPal.text
+                                opacity: 0.8
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                            Repeater {
+                                model: [1, 2, 3, 4]
+
+                                QGCButton {
+                                    required property int modelData
+                                    text: qsTr("G%1").arg(modelData)
+                                    Layout.fillWidth: true
+                                    heightFactor: 0.35
+                                    primary: _clusterGroupId === modelData
+                                    enabled: _clusterGroupAvailable
+                                    onClicked: _setClusterGroup(_vehicle, modelData)
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                            QGCButton {
+                                text: qsTr("Clear")
+                                Layout.fillWidth: true
+                                heightFactor: 0.35
+                                enabled: _clusterGroupAvailable && _clusterGroupId > 0
+                                onClicked: _clearClusterGroup(_vehicle)
+                            }
+
+                            QGCButton {
+                                text: _clusterLeaderFlag ? qsTr("Unset Leader") : qsTr("Set Leader")
+                                Layout.fillWidth: true
+                                heightFactor: 0.35
+                                primary: _clusterLeaderFlag
+                                enabled: _clusterLeaderAvailable && _clusterGroupId > 0
+                                onClicked: _setClusterLeader(_vehicle, !_clusterLeaderFlag)
+                            }
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            visible: _clusterFeedback(_vehicle) !== "" || !_clusterActionsAvailable
+                            text: _clusterActionsAvailable
+                                ? _clusterFeedback(_vehicle)
+                                : qsTr("Cluster parameters are not exposed by the current vehicle firmware.")
+                            color: qgcPal.text
+                            opacity: 0.8
+                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
+                        }
                     }
                 }
             }

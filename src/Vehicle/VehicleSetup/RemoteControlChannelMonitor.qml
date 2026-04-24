@@ -25,6 +25,7 @@ GridLayout {
     required property int channelValueMax
 
     property bool twoColumn: false
+    property bool useDarkStyle: false
 
     /// Should be called by consumers whenever a raw channel value changes
     function rawChannelValueChanged(channel, channelValue) {
@@ -41,10 +42,12 @@ GridLayout {
     rowSpacing: 0
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     QGCLabel {
         Layout.columnSpan: parent.columns
         text: qsTr("Raw Channel Monitor")
+        color: control.useDarkStyle ? popupStyle.primaryTextColor : qgcPal.text
     }
 
     Repeater {
@@ -59,6 +62,7 @@ GridLayout {
 
             QGCLabel {
                 text: index + 1
+                color: control.useDarkStyle ? popupStyle.secondaryTextColor : qgcPal.text
             }
 
             Loader {
@@ -68,6 +72,7 @@ GridLayout {
                     mode: RemoteControlChannelValueDisplay.RawValue
                     channelValueMin: control.channelValueMin
                     channelValueMax: control.channelValueMax
+                    useDarkStyle: control.useDarkStyle
                 }
             }
         }

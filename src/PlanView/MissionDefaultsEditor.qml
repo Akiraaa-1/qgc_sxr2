@@ -23,9 +23,13 @@ Rectangle {
 
     width:  parent ? parent.width : 0
     height: mainColumn.height + ScreenTools.defaultFontPixelHeight
-    color:  qgcPal.windowShadeDark
+    color:  theme.panelColor
+    radius: theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
     QGCPalette { id: qgcPal; colorGroupEnabled: _root.enabled }
+    PlanEditorTheme { id: theme }
 
     Connections {
         target: _root._controllerVehicle
@@ -52,7 +56,7 @@ Rectangle {
         anchors.margins: ScreenTools.defaultFontPixelWidth
         spacing: ScreenTools.defaultFontPixelHeight * 0.5
 
-        LabelledButton {
+        PlanLabelledButton {
             Layout.fillWidth: true
             label: qsTr("Alt Frame")
             buttonText: QGroundControl.altitudeFrameExtraUnits(_root.missionController.globalAltitudeFrame)
@@ -81,13 +85,13 @@ Rectangle {
             }
         }
 
-        FactTextFieldSlider {
+        PlanFactTextFieldSlider {
             Layout.fillWidth: true
             label: qsTr("Waypoints Altitude")
             fact: QGroundControl.settingsManager.appSettings.defaultMissionItemAltitude
         }
 
-        FactTextFieldSlider {
+        PlanFactTextFieldSlider {
             Layout.fillWidth: true
             label: qsTr("Flight Speed")
             fact: _root._settingsItem ? _root._settingsItem.speedSection.flightSpeed : null
@@ -103,7 +107,7 @@ Rectangle {
         }
 
         // ── Vehicle Speeds ──
-        SectionHeader {
+        PlanSectionHeader {
             id: vehicleSpeedsSectionHeader
             Layout.fillWidth: true
             text: qsTr("Vehicle Speeds")
@@ -125,14 +129,16 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 font.pointSize: ScreenTools.smallFontPointSize
                 text: qsTr("The following speed values are used to calculate total mission time. They do not affect the flight speed for the mission.")
+                color: theme.secondaryTextColor
             }
 
             QGCLabel {
                 text: qsTr("Cruise speed")
                 visible: _root._showCruiseSpeed
                 Layout.fillWidth: true
+                color: theme.secondaryTextColor
             }
-            FactTextField {
+            PlanFactTextField {
                 fact: QGroundControl.settingsManager.appSettings.offlineEditingCruiseSpeed
                 visible: _root._showCruiseSpeed
                 Layout.preferredWidth: _root._fieldWidth
@@ -142,8 +148,9 @@ Rectangle {
                 text: qsTr("Hover speed")
                 visible: _root._showHoverSpeed
                 Layout.fillWidth: true
+                color: theme.secondaryTextColor
             }
-            FactTextField {
+            PlanFactTextField {
                 fact: QGroundControl.settingsManager.appSettings.offlineEditingHoverSpeed
                 visible: _root._showHoverSpeed
                 Layout.preferredWidth: _root._fieldWidth

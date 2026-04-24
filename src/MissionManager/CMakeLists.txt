@@ -92,7 +92,11 @@ qt_add_resources(${CMAKE_PROJECT_NAME} json_mission_manager
     FILES ${JSON_FILES}
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem
+)
 
 # qt_add_qml_module(QGC
 #     URI QGroundControl.MissionManager

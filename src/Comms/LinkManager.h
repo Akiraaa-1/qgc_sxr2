@@ -164,6 +164,7 @@ private:
 
 public:
     static QStringList serialBaudRates();
+    Q_INVOKABLE void refreshSerialPorts();
     QStringList serialPortStrings();
     QStringList serialPorts();
 

@@ -892,6 +892,9 @@ bool LinkManager::_portAlreadyConnected(const QString &portName)
 
 void LinkManager::_updateSerialPorts()
 {
+    const QStringList previousPortList = _commPortList;
+    const QStringList previousDisplayList = _commPortDisplayList;
+
     _commPortList.clear();
     _commPortDisplayList.clear();
     const QList<QGCSerialPortInfo> portList = QGCSerialPortInfo::availablePorts();
@@ -900,6 +903,19 @@ void LinkManager::_updateSerialPorts()
         _commPortList += port;
         _commPortDisplayList += SerialConfiguration::cleanPortDisplayName(port);
     }
+
+    if (_commPortList != previousPortList) {
+        emit commPortsChanged();
+    }
+
+    if (_commPortDisplayList != previousDisplayList) {
+        emit commPortStringsChanged();
+    }
+}
+
+void LinkManager::refreshSerialPorts()
+{
+    _updateSerialPorts();
 }
 
 QStringList LinkManager::serialPortStrings()

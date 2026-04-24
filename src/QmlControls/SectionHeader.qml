@@ -16,6 +16,7 @@ CheckBox {
     property ButtonGroup    buttonGroup:    null
 
     property real _sectionSpacer: ScreenTools.defaultFontPixelWidth / 2  // spacing between section headings
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
     onButtonGroupChanged: {
         if (buttonGroup) {
@@ -24,6 +25,7 @@ CheckBox {
     }
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+    QGCPopupStyle { id: popupStyle }
 
     contentItem: ColumnLayout {
         Item {
@@ -34,7 +36,9 @@ CheckBox {
 
         QGCLabel {
             text:               control.text
-            color:              control.color
+            color:              control._popupStyled
+                                    ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
+                                    : control.color
             Layout.fillWidth:   true
 
             QGCColoredImage {
@@ -43,7 +47,7 @@ CheckBox {
                 width:                  parent.height / 2
                 height:                 width
                 source:                 "/qmlimages/arrow-down.png"
-                color:                  qgcPal.text
+                color:                  control._popupStyled ? popupStyle.secondaryTextColor : qgcPal.text
                 visible:                !control.checked
             }
         }
@@ -51,7 +55,7 @@ CheckBox {
         Rectangle {
             Layout.fillWidth:   true
             height:             1
-            color:              qgcPal.text
+            color:              control._popupStyled ? popupStyle.borderColor : qgcPal.text
         }
     }
 

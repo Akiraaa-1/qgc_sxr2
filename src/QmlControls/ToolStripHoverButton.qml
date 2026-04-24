@@ -22,9 +22,10 @@ Button {
     property alias  fontPointSize:      innerText.font.pointSize
     property alias  imageSource:        innerImage.source
     property alias  contentWidth:       innerText.contentWidth
+    property bool   showText:           true
 
     property bool forceImageScale11: false
-    property real imageScale:        forceImageScale11 && (text == "") ? 0.8 : 0.6
+    property real imageScale:        forceImageScale11 && (text == "" || !showText) ? 0.8 : (!showText ? 0.72 : 0.6)
     property real contentMargins:    innerText.height * 0.1
 
     property color _currentContentColor:  (checked || pressed) ? qgcPal.buttonHighlightText : qgcPal.text
@@ -109,7 +110,7 @@ Button {
 
             QGCLabel {
                 id:                         innerText
-                text:                       control.text
+                text:                       control.showText ? control.text : ""
                 color:                      _currentContentColor
                 anchors.horizontalCenter:   parent.horizontalCenter
                 font.bold:                  !innerImage.visible && !innerImageColorful.visible
@@ -117,6 +118,10 @@ Button {
             }
         }
     }
+
+    ToolTip.visible: !control.showText && control.hovered && control.text !== ""
+    ToolTip.delay: 300
+    ToolTip.text: control.text
 
     background: Rectangle {
         id:     buttonBkRect

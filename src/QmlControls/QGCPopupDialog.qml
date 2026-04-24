@@ -40,6 +40,7 @@ Popup {
     modal:              true
     focus:              true
     margins:            0
+    property bool _qgcPopupChrome: true
 
     default property alias dialogContent: dialogContentParent.data
 
@@ -53,6 +54,7 @@ Popup {
 
     property real maxContentAvailableWidth:    mainWindow.width - _contentMargin * 6
     property real maxContentAvailableHeight:   mainWindow.height - titleRowLayout.height - _contentMargin * 7
+    readonly property real _outerMargin:       _contentMargin * 2
 
     readonly property real headerMinWidth: titleLabel.implicitWidth + rejectButton.width + acceptButton.width + titleRowLayout.spacing * 2
 
@@ -66,13 +68,24 @@ Popup {
     property bool   _rejectAllowed:     rejectButton.visible
     property int    _previousValidationErrorCount: 0
 
-    background: QGCMouseArea {
+    QGCPopupStyle { id: popupStyle }
+
+    background: Item {
         width:  mainWindow.width
         height: mainWindow.height
 
-        onClicked: {
-            if (closePolicy & Popup.CloseOnPressOutside) {
-                _reject()
+        Rectangle {
+            anchors.fill: parent
+            color: popupStyle.overlayColor
+        }
+
+        QGCMouseArea {
+            anchors.fill: parent
+
+            onClicked: {
+                if (root.closePolicy & Popup.CloseOnPressOutside) {
+                    root._reject()
+                }
             }
         }
     }
@@ -126,7 +139,7 @@ Popup {
         }
     }
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: parent.enabled }
+    QGCPalette { id: qgcPal; colorGroupEnabled: root.enabled }
 
     function setupDialogButtons(buttons) {
         acceptButton.visible = false
@@ -198,75 +211,93 @@ Popup {
         acceptButton.enabled = false
     }
 
-    Rectangle {
-        x:              mainLayout.x - _contentMargin
-        y:              mainLayout.y - _contentMargin
-        width:          mainLayout.width + _contentMargin * 2
-        height:         mainLayout.height + _contentMargin * 2
-        color:          _qgcPal.windowShade
-        radius:         root.padding / 2
-        border.width:   1
-        border.color:   _qgcPal.windowShadeLight
+    Item {
+        id:             dialogChrome
+        x:              mainLayout.x - root._contentMargin * 1.5
+        y:              mainLayout.y - root._contentMargin * 1.5
+        width:          mainLayout.width + root._contentMargin * 3
+        height:         mainLayout.height + root._contentMargin * 3
+
+        Rectangle {
+            anchors.fill: parent
+            radius:         popupStyle.cornerRadius
+            color:          popupStyle.popupBackground
+            border.width:   1
+            border.color:   popupStyle.borderColor
+        }
     }
 
     ColumnLayout {
         id:                 mainLayout
-        anchors.centerIn:   parent
-        x:                  _contentMargin
-        y:                  _contentMargin
-        spacing:            _contentMargin
+        x:                  Math.max(root._outerMargin, (root.width - width) / 2)
+        y:                  Math.max(root._outerMargin, (root.height - height) / 2)
+        width:              Math.min(root.maxContentAvailableWidth, Math.max(root.headerMinWidth, dialogPanel.totalContentWidth))
+        spacing:            root._contentMargin
 
         RowLayout {
             id:                     titleRowLayout
             Layout.fillWidth:       true
-            spacing:                _contentMargin
+            Layout.preferredWidth:  mainLayout.width
+            spacing:                root._contentMargin
 
             QGCLabel {
                 id:                 titleLabel
                 Layout.fillWidth:   true
                 text:               root.title
                 font.pointSize:     ScreenTools.mediumFontPointSize
+                font.bold:          true
+                color:              popupStyle.primaryTextColor
                 verticalAlignment:	Text.AlignVCenter
             }
 
             QGCButton {
                 id:                     rejectButton
-                onClicked:              _reject()
+                onClicked:              root._reject()
                 Layout.minimumWidth:    height * 1.5
             }
 
             QGCButton {
                 id:                     acceptButton
                 primary:                true
-                onClicked:              _accept()
+                onClicked:              root._accept()
                 Layout.minimumWidth:    height * 1.5
             }
         }
 
         Rectangle {
+            id:                     dialogPanel
             Layout.fillWidth:       true
-            Layout.preferredWidth:  Math.min(maxAvailableWidth, totalContentWidth)
+            Layout.preferredWidth:  Math.min(maxAvailableWidth, Math.max(root.headerMinWidth, totalContentWidth))
             Layout.preferredHeight: Math.min(maxAvailableHeight, totalContentHeight)
-            color:                  _qgcPal.window
+            color:                  popupStyle.panelBackground
+            radius:                 popupStyle.cornerRadius
+            border.width:           1
+            border.color:           popupStyle.borderColor
+            clip:                   true
 
-            property real totalContentWidth:    dialogContentParent.childrenRect.width + _contentMargin * 2
-            property real totalContentHeight:   dialogContentParent.childrenRect.height + _contentMargin * 2
-            property real maxAvailableWidth:    mainWindow.width - _contentMargin * 4
-            property real maxAvailableHeight:   mainWindow.height - titleRowLayout.height - _contentMargin * 5
+            property real totalContentWidth:    dialogContentParent.childrenRect.width + root._contentMargin * 2
+            property real totalContentHeight:   dialogContentParent.childrenRect.height + root._contentMargin * 2
+            property real maxAvailableWidth:    mainWindow.width - root._contentMargin * 4
+            property real maxAvailableHeight:   mainWindow.height - titleRowLayout.height - root._contentMargin * 5
 
             QGCFlickable {
-                anchors.margins:    _contentMargin
+                id:                 contentFlickable
+                anchors.margins:    root._contentMargin
                 anchors.fill:       parent
                 contentWidth:       dialogContentParent.childrenRect.width
                 contentHeight:      dialogContentParent.childrenRect.height
+                clip:               true
+                boundsBehavior:     Flickable.StopAtBounds
+                interactive:        (contentHeight > height) || (contentWidth > width)
 
                 Item {
                     id:     dialogContentParent
+                    width:  Math.max(childrenRect.width, contentFlickable.width)
                     focus:  true
 
                     Keys.onPressed: (event) => {
-                        if (event.key === Qt.Key_Escape && _rejectAllowed) {
-                            _reject()
+                        if (event.key === Qt.Key_Escape && root._rejectAllowed) {
+                            root._reject()
                             event.accepted = true
                         }
                     }

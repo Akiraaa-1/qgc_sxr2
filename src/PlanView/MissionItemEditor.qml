@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 /// Mission item edit control
 Rectangle {
@@ -20,16 +21,16 @@ Rectangle {
 
     id:             _root
     height:         _currentItem ? (editorLoader.y + editorLoader.height + _innerMargin) : (topRowLayout.y + topRowLayout.height + _margin)
-    color:          _currentItem ? qgcPal.buttonHighlight : qgcPal.windowShade
-    radius:         _radius
+    color:          theme.panelColor
+    radius:         theme.radius
     opacity:        _currentItem ? 1.0 : 0.7
-    border.width:   _readyForSave ? 0 : 2
-    border.color:   qgcPal.warningText
+    border.width:   _readyForSave ? 1 : 2
+    border.color:   _readyForSave ? (_currentItem ? theme.accentColor : theme.borderColor) : qgcPal.warningText
 
     property var    _masterController:          missionItem.masterController
     property var    _missionController:         _masterController.missionController
     property bool   _currentItem:               missionItem.isCurrentItem
-    property color  _outerTextColor:            _currentItem ? qgcPal.buttonHighlightText : qgcPal.text
+    property color  _outerTextColor:            _currentItem ? theme.textColor : theme.secondaryTextColor
     property bool   _noMissionItemsAdded:       _missionController.visualItems ? _missionController.visualItems.count <= 1 : true
     property real   _sectionSpacer:             ScreenTools.defaultFontPixelWidth / 2  // spacing between section headings
     property bool   _singleComplexItem:         _missionController.complexMissionItemNames.length === 1
@@ -42,13 +43,20 @@ Rectangle {
     readonly property real  _hamburgerSize:     commandPicker.height * 0.75
     readonly property real  _trashSize:         commandPicker.height * 0.75
     readonly property bool  _waypointsOnlyMode: QGroundControl.corePlugin.options.missionWaypointsOnly
+    readonly property real  _editorAvailableWidth: Math.max(0, _root.width - (editorLoader.anchors.margins * 2))
+
+    PlanEditorTheme { id: theme }
+
+    Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+    Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
+    Behavior on opacity { NumberAnimation { duration: theme.stateAnimationDuration } }
 
     // setSource() injects missionItem before internal bindings activate
     function _loadEditor() {
         if (missionItem.isCurrentItem) {
             editorLoader.setSource(missionItem.editorQml, {
                 missionItem:    _root.missionItem,
-                availableWidth: _root.width - (editorLoader.anchors.margins * 2)
+                availableWidth: Qt.binding(() => _root._editorAvailableWidth)
             })
         } else {
             editorLoader.setSource("")
@@ -115,7 +123,7 @@ Rectangle {
             height:                 width
             border.width:           1
             border.color:           qgcPal.warningText
-            color:                  "white"
+            color:                  theme.inputColor
             radius:                 width / 2
             visible:                !_readyForSave
 
@@ -138,7 +146,7 @@ Rectangle {
             fillMode:               Image.PreserveAspectFit
             mipmap:                 true
             smooth:                 true
-            color:                  qgcPal.buttonHighlightText
+            color:                  theme.secondaryTextColor
             visible:                _currentItem && missionItem.sequenceNumber !== 0
             source:                 "/res/TrashDelete.svg"
 
@@ -148,21 +156,33 @@ Rectangle {
             }
         }
 
-        Item {
+        Rectangle {
             id:                     commandPicker
             anchors.verticalCenter: parent.verticalCenter
             height:                 ScreenTools.implicitComboBoxHeight
-            width:                  innerLayout.width
+            width:                  innerLayout.implicitWidth + (_margin * 2)
             visible:                !commandLabel.visible
+            color:                  commandPickerMouseArea.pressed ? theme.panelPressedColor : (commandPickerMouseArea.containsMouse ? theme.panelHoverColor : theme.inputColor)
+            radius:                 theme.radius
+            border.width:           1
+            border.color:           theme.borderColor
+
+            Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+            Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
             RowLayout {
                 id:                     innerLayout
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.fill:           parent
+                anchors.leftMargin:     _margin
+                anchors.rightMargin:    _margin
                 spacing:                _padding
 
                 property real _padding: ScreenTools.comboBoxPadding
 
-                QGCLabel { text: missionItem.commandName }
+                QGCLabel {
+                    text:   missionItem.commandName
+                    color:  theme.textColor
+                }
 
                 QGCColoredImage {
                     height:             ScreenTools.defaultFontPixelWidth
@@ -170,13 +190,15 @@ Rectangle {
                     fillMode:           Image.PreserveAspectFit
                     smooth:             true
                     antialiasing:       true
-                    color:              qgcPal.text
+                    color:              theme.secondaryTextColor
                     source:             "/qmlimages/arrow-down.png"
                 }
             }
 
             QGCMouseArea {
+                id:         commandPickerMouseArea
                 fillItem:   parent
+                hoverEnabled: true
                 onClicked:  commandDialogFactory.open()
             }
 
@@ -216,13 +238,17 @@ Rectangle {
 
         DropPanel {
             id: hamburgerMenuDropPanel
+            backgroundColor: theme.popupColor
+            borderColor: theme.borderColor
+            borderWidth: 1
+            panelRadius: theme.radius
             onClosed: destroy()
 
             sourceComponent: Component {
                 ColumnLayout {
                     spacing: ScreenTools.defaultFontPixelHeight / 2
 
-                    QGCButton {
+                    PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Move to vehicle position")
                         enabled:            _activeVehicle && missionItem.specifiesCoordinate
@@ -235,7 +261,7 @@ Rectangle {
                         property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
                     }
 
-                    QGCButton {
+                    PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Move to previous item position")
                         enabled:            _missionController.previousCoordinate.isValid
@@ -245,7 +271,7 @@ Rectangle {
                         }
                     }
 
-                    QGCButton {
+                    PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Edit position...")
                         enabled:            missionItem.specifiesCoordinate
@@ -264,10 +290,10 @@ Rectangle {
                     Rectangle {
                         Layout.fillWidth:       true
                         Layout.preferredHeight: 1
-                        color:                  qgcPal.groupBorder
+                        color:                  theme.borderColor
                     }
 
-                    QGCCheckBoxSlider {
+                    PlanCheckBoxSlider {
                         Layout.fillWidth:   true
                         text:               qsTr("Show all values")
                         visible:            QGroundControl.corePlugin.showAdvancedUI
@@ -288,12 +314,13 @@ Rectangle {
                     Rectangle {
                         Layout.fillWidth:       true
                         Layout.preferredHeight: 1
-                        color:                  qgcPal.groupBorder
+                        color:                  theme.borderColor
                     }
 
                     QGCLabel {
                         text:       qsTr("Item #%1").arg(missionItem.sequenceNumber)
                         enabled:    false
+                        color:      theme.disabledTextColor
                     }
                 }
             }
@@ -310,7 +337,7 @@ Rectangle {
         sourceSize.height:      _hamburgerSize
         source:                 "qrc:/qmlimages/Hamburger.svg"
         visible:                missionItem.isCurrentItem && missionItem.sequenceNumber !== 0
-        color:                  qgcPal.buttonHighlightText
+        color:                  theme.secondaryTextColor
 
         QGCMouseArea {
             fillItem:   hamburger

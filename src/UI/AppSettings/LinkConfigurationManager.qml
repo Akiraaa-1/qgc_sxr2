@@ -107,12 +107,19 @@ SettingsGroupLayout {
         id: linkDialogComponent
 
         QGCPopupDialog {
+            id: linkDialog
             title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
             buttons:                Dialog.Save | Dialog.Cancel
             acceptButtonEnabled:    nameField.text !== ""
+            maxContentAvailableWidth: Math.min(mainWindow.width - (ScreenTools.defaultFontPixelWidth * 8), ScreenTools.defaultFontPixelWidth * 64)
+            maxContentAvailableHeight: mainWindow.height - (ScreenTools.defaultFontPixelHeight * 8)
 
             property var originalConfig
             property var editingConfig
+            readonly property real _dialogContentWidth: ScreenTools.defaultFontPixelWidth * 46
+            readonly property real _fieldLabelWidth: ScreenTools.defaultFontPixelWidth * 15
+
+            QGCPopupStyle { id: popupStyle }
 
             onAccepted: {
                 linkSettingsLoader.item.saveSettings()
@@ -128,63 +135,115 @@ SettingsGroupLayout {
             onRejected: _linkManager.cancelConfigurationEditing(editingConfig)
 
             ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight / 2
+                width: linkDialog._dialogContentWidth
+                spacing: ScreenTools.defaultFontPixelHeight * 0.75
 
-                RowLayout {
-                    Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelWidth
-
-                    QGCLabel { text: qsTr("Name") }
-                    QGCTextField {
-                        id:                 nameField
-                        Layout.fillWidth:   true
-                        text:               editingConfig.name
-                        placeholderText:    qsTr("Enter name")
-                    }
+                QGCLabel {
+                    Layout.fillWidth: true
+                    text: qsTr("Create and configure a communication link profile.")
+                    color: popupStyle.secondaryTextColor
+                    font.pointSize: ScreenTools.defaultFontPointSize - 1
+                    wrapMode: Text.WordWrap
                 }
 
-                QGCCheckBoxSlider {
-                    Layout.fillWidth:   true
-                    text:               qsTr("Automatically Connect on Start")
-                    checked:            editingConfig.autoConnect
-                    onCheckedChanged:   editingConfig.autoConnect = checked
-                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: formContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.8)
+                    color: popupStyle.panelBackground
+                    radius: popupStyle.cornerRadius
+                    border.width: 1
+                    border.color: popupStyle.borderColor
 
-                QGCCheckBoxSlider {
-                    Layout.fillWidth:   true
-                    text:               qsTr("High Latency")
-                    checked:            editingConfig.highLatency
-                    onCheckedChanged:   editingConfig.highLatency = checked
-                }
+                    ColumnLayout {
+                        id: formContent
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.8
 
-                LabelledComboBox {
-                    label:                  qsTr("Type")
-                    enabled:                originalConfig == null
-                    model:                  _linkManager.linkTypeStrings
-                    Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScreenTools.defaultFontPixelWidth
 
-                    onActivated: (index) => {
-                        if (index !== editingConfig.linkType) {
-                            var name = nameField.text
-                            editingConfig = _linkManager.createConfiguration(index, name)
+                            QGCLabel {
+                                Layout.preferredWidth: linkDialog._fieldLabelWidth
+                                text: qsTr("Name")
+                                color: popupStyle.primaryTextColor
+                                font.pointSize: ScreenTools.defaultFontPointSize
+                            }
+
+                            QGCTextField {
+                                id:                 nameField
+                                Layout.fillWidth:   true
+                                text:               editingConfig.name
+                                placeholderText:    qsTr("Enter name")
+                                borderRadius:       popupStyle.cornerRadius
+                                borderWidth:        1
+                                focusBorderWidth:   1
+                                showFocusGlow:      true
+                            }
                         }
-                    }
-                }
 
-                Loader {
-                    id:     linkSettingsLoader
-                    source: editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
-                    asynchronous: true
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: popupStyle.borderColor
+                            opacity: 0.8
+                        }
 
-                    property var subEditConfig:         editingConfig
-                    property int _firstColumnWidth:     ScreenTools.defaultFontPixelWidth * 12
-                    property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 30
-                    property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
-                    property int _colSpacing:           ScreenTools.defaultFontPixelWidth / 2
+                        QGCCheckBoxSlider {
+                            Layout.fillWidth:   true
+                            text:               qsTr("Automatically Connect on Start")
+                            checked:            editingConfig.autoConnect
+                            onCheckedChanged:   editingConfig.autoConnect = checked
+                        }
 
-                    onStatusChanged: {
-                        if (status === Loader.Error) {
-                            console.warn("Failed to load link settings page:", source)
+                        QGCCheckBoxSlider {
+                            Layout.fillWidth:   true
+                            text:               qsTr("High Latency")
+                            checked:            editingConfig.highLatency
+                            onCheckedChanged:   editingConfig.highLatency = checked
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: popupStyle.borderColor
+                            opacity: 0.8
+                        }
+
+                        LabelledComboBox {
+                            Layout.fillWidth:       true
+                            label:                  qsTr("Type")
+                            comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 18
+                            enabled:                originalConfig == null
+                            model:                  _linkManager.linkTypeStrings
+                            Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+
+                            onActivated: (index) => {
+                                if (index !== editingConfig.linkType) {
+                                    var name = nameField.text
+                                    editingConfig = _linkManager.createConfiguration(index, name)
+                                }
+                            }
+                        }
+
+                        Loader {
+                            id:     linkSettingsLoader
+                            Layout.fillWidth: true
+                            source: editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
+                            asynchronous: true
+
+                            property var subEditConfig:         editingConfig
+                            property int _firstColumnWidth:     linkDialog._fieldLabelWidth
+                            property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 24
+                            property int _rowSpacing:           ScreenTools.defaultFontPixelHeight * 0.55
+                            property int _colSpacing:           ScreenTools.defaultFontPixelWidth * 0.8
+
+                            onStatusChanged: {
+                                if (status === Loader.Error) {
+                                    console.warn("Failed to load link settings page:", source)
+                                }
+                            }
                         }
                     }
                 }

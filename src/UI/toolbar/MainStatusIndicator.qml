@@ -422,8 +422,7 @@ RowLayout {
                     QGCButton {
                         text: qsTr("Configure")
                         onClicked: {
-                            mainWindow.showVehicleConfig()
-                            mainWindow.closeIndicatorDrawer()
+                            mainWindow.closeIndicatorDrawer("returnToVehicleConfigMenu")
                         }
                     }
                 }

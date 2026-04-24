@@ -45,8 +45,12 @@ CPMAddPackage(
 
 if(mavlink_ADDED)
     add_dependencies(${CMAKE_PROJECT_NAME} mavlink)
+    if(TARGET ClusterModule)
+        add_dependencies(ClusterModule mavlink)
+    endif()
     target_include_directories(${CMAKE_PROJECT_NAME}
-        PRIVATE
+        BEFORE PRIVATE
+            ${mavlink_BINARY_DIR}/include
             ${mavlink_BINARY_DIR}/include/mavlink
             ${mavlink_BINARY_DIR}/include/mavlink/${QGC_MAVLINK_DIALECT}
     )
@@ -66,9 +70,12 @@ if(mavlink_ADDED)
     )
     add_custom_target(mavlink_enums DEPENDS "${MAVLINK_ENUMS_OUTPUT}")
     add_dependencies(${CMAKE_PROJECT_NAME} mavlink_enums)
+    if(TARGET ClusterModule)
+        add_dependencies(ClusterModule mavlink_enums)
+    endif()
     # Ensure AUTOMOC runs after MAVLinkEnums.h is generated
     set_property(TARGET ${CMAKE_PROJECT_NAME} APPEND PROPERTY AUTOGEN_TARGET_DEPENDS mavlink_enums)
-    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}")
+    target_include_directories(${CMAKE_PROJECT_NAME} BEFORE PRIVATE "${CMAKE_BINARY_DIR}")
 endif()
 
 # ----------------------------------------------------------------------------

@@ -80,6 +80,7 @@ public:
     Q_PROPERTY(double               missionHoverTime                READ missionHoverTime               NOTIFY missionHoverTimeChanged)
     Q_PROPERTY(double               missionCruiseTime               READ missionCruiseTime              NOTIFY missionCruiseTimeChanged)
     Q_PROPERTY(double               missionMaxTelemetry             READ missionMaxTelemetry            NOTIFY missionMaxTelemetryChanged)
+    Q_PROPERTY(double               missionBatteryPercentRemaining  READ missionBatteryPercentRemaining NOTIFY missionBatteryPercentRemainingChanged)
     Q_PROPERTY(int                  batteryChangePoint              READ batteryChangePoint             NOTIFY batteryChangePointChanged)
     Q_PROPERTY(int                  batteriesRequired               READ batteriesRequired              NOTIFY batteriesRequiredChanged)
     Q_PROPERTY(QGCGeoBoundingCube*  travelBoundingCube              READ travelBoundingCube             NOTIFY missionBoundingCubeChanged)
@@ -125,6 +126,13 @@ public:
     ///     @param makeCurrentItem: true: Make this item the current item
     /// @return Newly created item
     Q_INVOKABLE VisualMissionItem* insertLandItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
+
+    /// Add a new land-here item to the list
+    ///     @param coordinate: Coordinate for item
+    ///     @param visualItemIndex: index to insert at, -1 for end of list
+    ///     @param makeCurrentItem: true: Make this item the current item
+    /// @return Newly created item
+    Q_INVOKABLE VisualMissionItem* insertLandHereItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
 
     /// Add a new ROI mission item to the list
     ///     @param coordinate: Coordinate for item
@@ -286,6 +294,16 @@ public:
     double  missionCruiseDistance   (void) const { return _missionFlightStatus.cruiseDistance; }
     double  missionCruiseTime       (void) const { return _missionFlightStatus.cruiseTime; }
     double  missionMaxTelemetry     (void) const { return _missionFlightStatus.maxTelemetryDistance; }
+    double  missionBatteryPercentRemaining(void) const {
+        if ((_missionFlightStatus.mAhBattery == 0) || (_missionFlightStatus.ampMinutesAvailable <= 0.0)) {
+            return -1.0;
+        }
+
+        const double ampMinutesUsed = _missionFlightStatus.hoverAmpsTotal + _missionFlightStatus.cruiseAmpsTotal;
+        const double remainingPercent = 100.0 - ((ampMinutesUsed / _missionFlightStatus.ampMinutesAvailable) * 100.0);
+
+        return qBound(0.0, remainingPercent, 100.0);
+    }
 
     int  batteryChangePoint         (void) const { return _missionFlightStatus.batteryChangePoint; }    ///< -1 for not supported, 0 for not needed
     int  batteriesRequired          (void) const { return _missionFlightStatus.batteriesRequired; }     ///< -1 for not supported
@@ -318,6 +336,7 @@ signals:
     void missionCruiseDistanceChanged       (double missionCruiseDistance);
     void missionCruiseTimeChanged           (void);
     void missionMaxTelemetryChanged         (double missionMaxTelemetry);
+    void missionBatteryPercentRemainingChanged(double missionBatteryPercentRemaining);
     void complexMissionItemNamesChanged     (void);
     void resumeMissionIndexChanged          (void);
     void resumeMissionReady                 (void);

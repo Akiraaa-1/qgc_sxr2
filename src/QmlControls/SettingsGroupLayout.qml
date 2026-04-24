@@ -26,6 +26,7 @@ ColumnLayout {
     property bool   showBorder:         true
 
     property real _margins: ScreenTools.defaultFontPixelHeight / 2
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
     // We work with a y sorted list of children for divider visibility checks
     property var _ySortedChildren: {
@@ -35,6 +36,8 @@ ColumnLayout {
         arr.sort((a, b) => a.y - b.y)
         return arr
     }
+
+    QGCPopupStyle { id: popupStyle }
 
     ColumnLayout {
         Layout.leftMargin:  _margins
@@ -62,10 +65,10 @@ ColumnLayout {
         Layout.fillWidth:   true
         implicitWidth:      _contentLayout.implicitWidth + (showBorder ? _margins * 2 : 0)
         implicitHeight:     _contentLayout.implicitHeight + (showBorder ? _margins * 2: 0)
-        color:              "transparent"
-        border.color:       outerBorderColor
+        color:              control._popupStyled ? popupStyle.panelBackground : "transparent"
+        border.color:       control._popupStyled ? popupStyle.borderColor : outerBorderColor
         border.width:       showBorder ? 1 : 0
-        radius:             ScreenTools.defaultFontPixelHeight / 2
+        radius:             control._popupStyled ? popupStyle.cornerRadius : ScreenTools.defaultFontPixelHeight / 2
 
         Repeater {
             model: showDividers ? _ySortedChildren.length : 0
@@ -75,7 +78,7 @@ ColumnLayout {
                 y:          _contentItem ? (_contentItem.y + _contentItem.height + _margins + (showBorder ? _margins : 0)) : 0
                 width:      parent.width - (showBorder ? _margins * 2 : 0)
                 height:     1
-                color:      QGroundControl.globalPalette.groupBorder
+                color:      control._popupStyled ? popupStyle.borderColor : QGroundControl.globalPalette.groupBorder
                 visible:    _contentItem ? _isContentItemVisible() : false
 
                 property var _contentItem: index < _ySortedChildren.length ? _ySortedChildren[index] : undefined

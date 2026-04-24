@@ -19,6 +19,8 @@ AnalyzePage {
     property int    curCompID:          0
     property real   maxButtonWidth:     0
 
+    AnalyzePalette { id: analyzePalette }
+
     MAVLinkInspectorController {
         id: controller
     }
@@ -64,7 +66,7 @@ AnalyzePage {
             RowLayout {
                 Layout.alignment:   Qt.AlignRight
                 visible:            curSystem ? controller.systemNames.length > 1 || curSystem.compIDsStr.length > 2 : false
-                QGCComboBox {
+                AnalyzeComboBox {
                     id:             systemCombo
                     model:          controller.systemNames
                     sizeToContents: true
@@ -85,7 +87,7 @@ AnalyzePage {
                         }
                     }
                 }
-                QGCComboBox {
+                AnalyzeComboBox {
                     id:             cidCombo
                     model:          curSystem ? curSystem.compIDsStr : []
                     sizeToContents: true
@@ -110,48 +112,59 @@ AnalyzePage {
             height:                 availableHeight
             spacing:                ScreenTools.defaultFontPixelWidth
             //-- Messages (Buttons)
-            QGCFlickable {
-                id:                 buttonGrid
-                flickableDirection: Flickable.VerticalFlick
-                width:              maxButtonWidth
+            AnalyzeCard {
+                id:                 buttonPane
+                width:              maxButtonWidth + ScreenTools.defaultFontPixelWidth
                 height:             parent.height
-                contentWidth:       width
-                contentHeight:      buttonCol.height
-                ColumnLayout {
-                    id:             buttonCol
-                    anchors.left:   parent.left
-                    anchors.right:  parent.right
-                    spacing:        ScreenTools.defaultFontPixelHeight * 0.25
-                    Repeater {
-                        model:      curSystem ? curSystem.messages : []
-                        delegate:   MAVLinkMessageButton {
-                            text:       object.name + (object.fieldSelected ?  " *" : "")
-                            compID:     object.compId
-                            checked:    curSystem ? (curSystem.selected === index) : false
-                            messageHz:  object.actualRateHz
-                            visible:    curCompID === 0 || curCompID === compID
-                            onClicked: {
-                                curSystem.selected = index
+
+                QGCFlickable {
+                    id:                 buttonGrid
+                    anchors.fill:       parent
+                    anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
+                    flickableDirection: Flickable.VerticalFlick
+                    contentWidth:       width
+                    contentHeight:      buttonCol.height
+                    ColumnLayout {
+                        id:             buttonCol
+                        anchors.left:   parent.left
+                        anchors.right:  parent.right
+                        spacing:        ScreenTools.defaultFontPixelHeight * 0.25
+                        Repeater {
+                            model:      curSystem ? curSystem.messages : []
+                            delegate:   MAVLinkMessageButton {
+                                text:       object.name + (object.fieldSelected ?  " *" : "")
+                                compID:     object.compId
+                                checked:    curSystem ? (curSystem.selected === index) : false
+                                messageHz:  object.actualRateHz
+                                visible:    curCompID === 0 || curCompID === compID
+                                onClicked: {
+                                    curSystem.selected = index
+                                }
+                                Layout.fillWidth: true
                             }
-                            Layout.fillWidth: true
                         }
                     }
                 }
             }
             //-- Message Data
-            QGCFlickable {
-                id:                 messageGrid
+            AnalyzeCard {
+                id:                 messagePane
                 visible:            curMessage !== null && (curCompID === 0 || curCompID === curMessage.compId)
-                flickableDirection: Flickable.VerticalFlick
-                width:              parent.width - buttonGrid.width - ScreenTools.defaultFontPixelWidth
+                width:              parent.width - buttonPane.width - ScreenTools.defaultFontPixelWidth
                 height:             parent.height
-                contentWidth:       width
-                contentHeight:      messageCol.height
-                Column {
-                    id:                 messageCol
-                    width:              parent.width
-                    spacing:            ScreenTools.defaultFontPixelHeight * 0.25
-                    GridLayout {
+
+                QGCFlickable {
+                    id:                 messageGrid
+                    anchors.fill:       parent
+                    anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
+                    flickableDirection: Flickable.VerticalFlick
+                    contentWidth:       width
+                    contentHeight:      messageCol.height
+                    Column {
+                        id:                 messageCol
+                        width:              parent.width
+                        spacing:            ScreenTools.defaultFontPixelHeight * 0.25
+                        GridLayout {
                         columns:        2
                         columnSpacing:  ScreenTools.defaultFontPixelWidth
                         rowSpacing:     ScreenTools.defaultFontPixelHeight * 0.25
@@ -160,7 +173,7 @@ AnalyzePage {
                             Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 20
                         }
                         QGCLabel {
-                            color: qgcPal.buttonHighlight
+                            color: analyzePalette.accent
                             text: curMessage ? curMessage.name + ' (' + curMessage.id + ')' : ""
                         }
 
@@ -174,7 +187,7 @@ AnalyzePage {
                         QGCLabel { text: curMessage ? curMessage.actualRateHz.toFixed(1) + qsTr("Hz") : "" }
 
                         QGCLabel { text: qsTr("Set Rate:") }
-                        QGCComboBox {
+                        AnalyzeComboBox {
                             id: msgRateCombo
                             textRole: "text"
                             valueRole: "value"
@@ -215,9 +228,9 @@ AnalyzePage {
                             }
                         }
                     }
-                    Item { height: ScreenTools.defaultFontPixelHeight; width: 1 }
-                    //---------------------------------------------------------
-                    GridLayout {
+                        Item { height: ScreenTools.defaultFontPixelHeight; width: 1 }
+                        //---------------------------------------------------------
+                        GridLayout {
                         id:                 msgInfoGrid
                         columns:            5
                         columnSpacing:      ScreenTools.defaultFontPixelWidth  * 0.25
@@ -244,7 +257,7 @@ AnalyzePage {
                             Layout.columnSpan:  5
                             Layout.fillWidth:   true
                             height:             1
-                            color:              qgcPal.text
+                            color:              analyzePalette.border
                         }
                         //---------------------------------------------------------
 
@@ -281,7 +294,7 @@ AnalyzePage {
                         Repeater {
                             id: chart1Repeater
                             model:      curMessage ? curMessage.fields : []
-                            delegate:   QGCCheckBox {
+                            delegate:   AnalyzeCheckBox {
                                 Layout.row:         index + 2
                                 Layout.column:      3
                                 Layout.alignment:   Qt.AlignHCenter
@@ -301,7 +314,7 @@ AnalyzePage {
                         Repeater {
                             id: chart2Repeater
                             model:      curMessage ? curMessage.fields : []
-                            delegate:   QGCCheckBox {
+                            delegate:   AnalyzeCheckBox {
                                 Layout.row:         index + 2
                                 Layout.column:      4
                                 Layout.alignment:   Qt.AlignHCenter
@@ -318,21 +331,22 @@ AnalyzePage {
                                 Component.onCompleted: updateEnabledStatus(chart2Repeater, curMessage, chart2)
                             }
                         }
-                    }
-                    Item { height: ScreenTools.defaultFontPixelHeight * 0.25; width: 1 }
-                    MAVLinkChart {
+                        }
+                        Item { height: ScreenTools.defaultFontPixelHeight * 0.25; width: 1 }
+                        MAVLinkChart {
                         id:                     chart1
                         height:                 ScreenTools.defaultFontPixelHeight * 20
                         width:                  parent.width
                         inspectorController:    controller
                         chartIndex:             0
                     }
-                    MAVLinkChart {
+                        MAVLinkChart {
                         id:                     chart2
                         height:                 ScreenTools.defaultFontPixelHeight * 20
                         width:                  parent.width
                         inspectorController:    controller
                         chartIndex:             1
+                        }
                     }
                 }
             }

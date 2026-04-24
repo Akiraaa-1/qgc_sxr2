@@ -11,6 +11,7 @@ import QGroundControl.Controls
 /// standalone for custom uis. When using standadalone you can use the various show* bools to show/hide what you want.
 Item {
     id: _root
+    property bool _qgcPopupChrome: useDarkStyle
 
     property bool   showSensorCalibrationCompass:   true    ///< true: Show this calibration button
     property bool   showSensorCalibrationGyro:      true    ///< true: Show this calibration button
@@ -19,6 +20,7 @@ Item {
     property bool   showSensorCalibrationAirspeed:  true    ///< true: Show this calibration button
     property bool   showSetOrientations:            true    ///< true: Show this calibration button
     property bool   showNextButton:                 false   ///< true: Show Next button which will signal nextButtonClicked
+    property bool   useDarkStyle:                   false
 
     signal nextButtonClicked
 
@@ -240,6 +242,16 @@ Item {
                         FactComboBox {
                             sizeToContents: true
                             fact:           sens_board_rot
+                            backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
+                            borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                            focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
+                            textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                            popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
+                            popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
+                            delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
+                            delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
+                            showFocusBorder:        _root.useDarkStyle
+                            borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                         }
 
                         QGCLabel {
@@ -284,6 +296,11 @@ Item {
                 QGCButton {
                     text:       qsTr("Reboot Vehicle")
                     visible:    showRebootVehicleButton
+                    backgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.primaryButton
+                    borderColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
+                    textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.primaryButtonText
+                    backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                    showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                     onClicked: { controller.vehicle.rebootVehicle(); close() }
                 }
 
@@ -302,6 +319,16 @@ Item {
                     FactComboBox {
                         sizeToContents: true
                         fact:           sens_board_rot
+                        backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
+                        borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                        focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
+                        textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                        popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
+                        popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
+                        delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
+                        delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
+                        showFocusBorder:        _root.useDarkStyle
+                        borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                     }
                 }
 
@@ -322,6 +349,16 @@ Item {
                         FactComboBox {
                             sizeToContents: true
                             fact:           parent.calMagRotFact
+                            backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
+                            borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                            focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
+                            textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                            popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
+                            popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
+                            delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
+                            delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
+                            showFocusBorder:        _root.useDarkStyle
+                            borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                         }
                     }
                 }
@@ -347,68 +384,167 @@ Item {
         preCalibrationDialogFactory.open({ title: title })
     }
 
+    function _sectionMatches(filterValue, sourceName) {
+        const filterText = filterValue === undefined || filterValue === null ? "" : ("" + filterValue).trim()
+        if (filterText === "") {
+            return true
+        }
+
+        const translatedName = qsTr(sourceName)
+        return filterText === sourceName || filterText === translatedName
+    }
+
+    readonly property bool _recognizedSectionFilter:
+        _sectionMatches(sectionNameFilter, "Compass") ||
+        _sectionMatches(sectionNameFilter, "Gyroscope") ||
+        _sectionMatches(sectionNameFilter, "Accelerometer") ||
+        _sectionMatches(sectionNameFilter, "Level Horizon") ||
+        _sectionMatches(sectionNameFilter, "Airspeed") ||
+        _sectionMatches(sectionNameFilter, "Orientations")
+
+    readonly property string _effectiveSectionFilter: _recognizedSectionFilter ? sectionNameFilter : ""
+
     property bool _showOrientationPreview: !controller.calibrationActive &&
-        (sectionNameFilter === qsTr("Accelerometer") || sectionNameFilter === qsTr("Compass") || sectionNameFilter === qsTr("Gyroscope"))
+        (_effectiveSectionFilter !== "") &&
+        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") ||
+         _sectionMatches(_effectiveSectionFilter, "Compass") ||
+         _sectionMatches(_effectiveSectionFilter, "Gyroscope"))
 
     property bool _showAllSidesPreview: _showOrientationPreview &&
-        (sectionNameFilter === qsTr("Accelerometer") || sectionNameFilter === qsTr("Compass"))
+        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") || _sectionMatches(_effectiveSectionFilter, "Compass"))
 
     property bool _showDownOnlyPreview: _showOrientationPreview &&
-        sectionNameFilter === qsTr("Gyroscope")
+        _sectionMatches(_effectiveSectionFilter, "Gyroscope")
 
     property bool _showStatusPreview: !controller.calibrationActive &&
-        (sectionNameFilter === qsTr("Level Horizon") || sectionNameFilter === qsTr("Airspeed"))
+        (_effectiveSectionFilter !== "") &&
+        (_sectionMatches(_effectiveSectionFilter, "Level Horizon") || _sectionMatches(_effectiveSectionFilter, "Airspeed"))
+
+    readonly property color _panelColor:         "#2D2D2D"
+    readonly property color _inputColor:         "#252525"
+    readonly property color _borderColor:        "#333333"
+    readonly property color _primaryTextColor:   "#FFFFFF"
+    readonly property color _secondaryTextColor: "#B0B0B0"
+    readonly property color _accentColor:        "#2563EB"
+    readonly property real _cornerRadius:        8
+    readonly property real _buttonRowSpacing:    ScreenTools.defaultFontPixelWidth * 0.5
+    readonly property real _buttonPointSize:     Math.max(10, ScreenTools.defaultFontPointSize - 2)
+    readonly property real _buttonHeightFactor:  0.35
+    readonly property real _buttonHPadding:      ScreenTools.defaultFontPixelWidth * 0.75
+
+    readonly property int _visibleCalibrationButtonCount:
+        (sectionVisible(qsTr("Compass")) ? 1 : 0) +
+        (sectionVisible(qsTr("Gyroscope")) ? 1 : 0) +
+        (sectionVisible(qsTr("Accelerometer")) ? 1 : 0) +
+        (sectionVisible(qsTr("Level Horizon")) ? 1 : 0) +
+        (sectionVisible(qsTr("Airspeed")) ? 1 : 0) +
+        (sectionVisible(qsTr("Orientations")) ? 2 : 0) +
+        (showNextButton ? 1 : 0)
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
         // Calibration trigger buttons — one per section, shown based on sectionNameFilter
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+            spacing: _buttonRowSpacing
             visible: !controller.calibrationActive
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Calibrate Compass")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Compass")
+                visible:    sectionVisible(qsTr("Compass"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("compass", compassHelp, qsTr("Calibrate Compass"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Calibrate Gyroscope")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Gyroscope")
+                visible:    sectionVisible(qsTr("Gyroscope"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("gyro", gyroHelp, qsTr("Calibrate Gyro"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Calibrate Accelerometer")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Accelerometer")
+                visible:    sectionVisible(qsTr("Accelerometer"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("accel", accelHelp, qsTr("Calibrate Accelerometer"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Level Horizon")
                 enabled:    cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Level Horizon")
+                visible:    sectionVisible(qsTr("Level Horizon"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("level", levelHelp, qsTr("Level Horizon"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Calibrate Airspeed")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Airspeed")
+                visible:    sectionVisible(qsTr("Airspeed"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("airspeed", airspeedHelp, qsTr("Calibrate Airspeed"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Set Orientations")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Orientations")
+                visible:    sectionVisible(qsTr("Orientations"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked: {
                     setOrientationsDialogShowBoardOrientation = true
                     setOrientationsDialogFactory.open({ title: qsTr("Set Orientations"), showRebootVehicleButton: false })
@@ -417,15 +553,33 @@ Item {
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Factory Reset")
-                visible:    sectionNameFilter === "" || sectionNameFilter === qsTr("Orientations")
+                visible:    sectionVisible(qsTr("Orientations"))
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  controller.resetFactoryParameters()
             }
 
             QGCButton {
                 Layout.fillWidth: true
+                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
                 text:       qsTr("Next")
                 visible:    showNextButton
+                pointSize:  _buttonPointSize
+                heightFactor: _buttonHeightFactor
+                _horizontalPadding: _buttonHPadding
+                backgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.primaryButton
+                borderColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.primaryButtonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _root.nextButtonClicked()
             }
         }
@@ -443,6 +597,11 @@ Item {
 
             QGCButton {
                 text:       qsTr("Cancel")
+                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
+                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  controller.cancelCalibration()
             }
         }
@@ -458,15 +617,23 @@ Item {
                 readOnly:       true
                 visible:        !orientationCalArea.visible
                 text:           statusTextAreaDefaultText
-                color:          qgcPal.text
-                background: Rectangle { color: qgcPal.windowShade }
+                color:          _root.useDarkStyle ? _secondaryTextColor : qgcPal.text
+                background: Rectangle {
+                    color: _root.useDarkStyle ? _panelColor : qgcPal.windowShade
+                    border.width: _root.useDarkStyle ? 1 : 0
+                    border.color: _root.useDarkStyle ? _borderColor : "transparent"
+                    radius: _root.useDarkStyle ? _cornerRadius : 0
+                }
             }
 
             Rectangle {
                 id:         orientationCalArea
                 anchors.fill: parent
                 visible:    controller.showOrientationCalArea || _showOrientationPreview
-                color:      qgcPal.windowShade
+                color:      _root.useDarkStyle ? _panelColor : qgcPal.windowShade
+                border.width: _root.useDarkStyle ? 1 : 0
+                border.color: _root.useDarkStyle ? _borderColor : "transparent"
+                radius: _root.useDarkStyle ? _cornerRadius : 0
 
                 QGCLabel {
                     id:                 orientationCalAreaHelpText

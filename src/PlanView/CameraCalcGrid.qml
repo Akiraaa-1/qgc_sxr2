@@ -5,9 +5,11 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 // Camera calculator "Grid" section for mission item editors
 Column {
+    id: _root
     spacing: _margin
 
     property var    cameraCalc
@@ -25,6 +27,8 @@ Column {
     readonly property int _gridTypeCustomCamera:    1
     readonly property int _gridTypeCamera:          2
 
+    PlanEditorTheme { id: theme }
+
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
     Column {
@@ -41,10 +45,12 @@ Column {
             QGCLabel {
                 Layout.preferredWidth:  _root._fieldWidth
                 text:                   qsTr("Front Lap")
+                color:                  theme.secondaryTextColor
             }
             QGCLabel {
                 Layout.preferredWidth:  _root._fieldWidth
                 text:                   qsTr("Side Lap")
+                color:                  theme.secondaryTextColor
             }
         }
 
@@ -52,12 +58,16 @@ Column {
             anchors.left:   parent.left
             anchors.right:  parent.right
             spacing:        _margin
-            QGCLabel { text: qsTr("Overlap"); Layout.fillWidth: true }
-            FactTextField {
+            QGCLabel {
+                text:               qsTr("Overlap")
+                Layout.fillWidth:   true
+                color:              theme.secondaryTextColor
+            }
+            PlanFactTextField {
                 Layout.preferredWidth:  _root._fieldWidth
                 fact:                   cameraCalc.frontalOverlap
             }
-            FactTextField {
+            PlanFactTextField {
                 Layout.preferredWidth:  _root._fieldWidth
                 fact:                   cameraCalc.sideOverlap
             }
@@ -68,6 +78,7 @@ Column {
             text:                   qsTr("Select one:")
             Layout.preferredWidth:  parent.width
             Layout.columnSpan:      2
+            color:                  theme.secondaryTextColor
         }
 
         GridLayout {
@@ -77,7 +88,7 @@ Column {
             rowSpacing:     _margin
             columns:        2
 
-            QGCRadioButton {
+            PlanRadioButton {
                 id:                     fixedDistanceRadio
                 leftPadding:            0
                 text:                   distanceToSurfaceLabel
@@ -85,14 +96,14 @@ Column {
                 onClicked:              cameraCalc.valueSetIsDistance.value = 1
             }
 
-            AltitudeFactTextField {
+            PlanAltitudeFactTextField {
                 fact:                       cameraCalc.distanceToSurface
                 altitudeFrame:               cameraCalc.distanceMode
                 enabled:                    fixedDistanceRadio.checked
                 Layout.fillWidth:           true
             }
 
-            QGCRadioButton {
+            PlanRadioButton {
                 id:                     fixedImageDensityRadio
                 leftPadding:            0
                 text:                   qsTr("Grnd Res")
@@ -100,7 +111,7 @@ Column {
                 onClicked:              cameraCalc.valueSetIsDistance.value = 0
             }
 
-            FactTextField {
+            PlanFactTextField {
                 fact:                   cameraCalc.imageDensity
                 enabled:                fixedImageDensityRadio.checked
                 Layout.fillWidth:       true
@@ -117,21 +128,21 @@ Column {
         columns:        2
         visible:        cameraCalc.isManualCamera
 
-        QGCLabel { text: distanceToSurfaceLabel }
-        AltitudeFactTextField {
+        QGCLabel { text: distanceToSurfaceLabel; color: theme.secondaryTextColor }
+        PlanAltitudeFactTextField {
             fact:                       cameraCalc.distanceToSurface
             altitudeFrame:               cameraCalc.distanceMode
             Layout.fillWidth:           true
         }
 
-        QGCLabel { text: frontalDistanceLabel }
-        FactTextField {
+        QGCLabel { text: frontalDistanceLabel; color: theme.secondaryTextColor }
+        PlanFactTextField {
             Layout.fillWidth:   true
             fact:               cameraCalc.adjustedFootprintFrontal
         }
 
-        QGCLabel { text: sideDistanceLabel }
-        FactTextField {
+        QGCLabel { text: sideDistanceLabel; color: theme.secondaryTextColor }
+        PlanFactTextField {
             Layout.fillWidth:   true
             fact:               cameraCalc.adjustedFootprintSide
         }

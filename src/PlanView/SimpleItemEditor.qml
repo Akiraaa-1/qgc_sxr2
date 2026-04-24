@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 // Editor for Simple mission items
 Rectangle {
@@ -14,8 +15,10 @@ Rectangle {
     id: root
     width: availableWidth
     height: editorColumn.height + (_margin * 2)
-    color: qgcPal.windowShadeDark
-    radius: _radius
+    color: theme.panelColor
+    radius: theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
 
     property bool _specifiesAltitude: missionItem.specifiesAltitude
@@ -26,6 +29,11 @@ Rectangle {
     property bool _globalAltFrameIsMixed: _globalAltFrame == QGroundControl.AltitudeFrameMixed
     property real _radius: ScreenTools.defaultFontPixelWidth / 2
     property real _fieldSpacing: ScreenTools.defaultFontPixelHeight / 2
+
+    PlanEditorTheme { id: theme }
+
+    Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+    Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
     QGCPalette { id: qgcPal; colorGroupEnabled: root.enabled }
 
@@ -54,6 +62,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
+                color: theme.secondaryTextColor
             }
 
             QGCLabel {
@@ -61,9 +70,10 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
+                color: theme.secondaryTextColor
             }
 
-            QGCButton {
+            PlanButton {
                 text: qsTr("Done")
                 Layout.fillWidth: true
                 visible: !initialClickLabel.visible
@@ -80,6 +90,7 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: missionItem.isTakeoffItem && !missionItem.launchCoordinate.isValid
+                color: theme.secondaryTextColor
             }
         }
 
@@ -117,19 +128,19 @@ Rectangle {
                     }
                 }
 
-                QGCTabButton {
+                PlanTabButton {
                     id: basicItemsTab
                     icon.source: "/res/PlanSimpleItemBasic.svg"
                     visible: tabBar._basicItemsAvailable
                 }
 
-                QGCTabButton {
+                PlanTabButton {
                     id: cameraTab
                     icon.source: "/res/PlanSimpleItemCamera.svg"
                     visible: tabBar._cameraAvailable
                 }
 
-                QGCTabButton {
+                PlanTabButton {
                     id: advancedItemsTab
                     icon.source: "/res/PlanSimpleItemAdvanced.svg"
                     visible: tabBar._advancedItemsAvailable
@@ -153,6 +164,7 @@ Rectangle {
                         QGCLabel {
                             Layout.fillWidth: true
                             text: qsTr("Alt Frame")
+                            color: theme.secondaryTextColor
                         }
 
                         AltFrameCombo {
@@ -162,7 +174,7 @@ Rectangle {
                         }
                     }
 
-                    FactTextFieldSlider {
+                    PlanFactTextFieldSlider {
                         id: altField
                         Layout.fillWidth: true
                         label: qsTr("Altitude%1").arg(_extraLabelText())
@@ -177,6 +189,7 @@ Rectangle {
                         font.pointSize: ScreenTools.smallFontPointSize
                         text: qsTr("Actual AMSL alt sent: %1 %2").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
                         visible: missionItem.altitudeFrame === QGroundControl.AltitudeFrameCalcAboveTerrain
+                        color: theme.secondaryTextColor
                     }
                 }
 
@@ -195,9 +208,10 @@ Rectangle {
                                 font.pointSize: ScreenTools.smallFontPointSize
                                 text: object.name
                                 visible: object.name !== ""
+                                color: theme.secondaryTextColor
                             }
 
-                            FactComboBox {
+                            PlanFactComboBox {
                                 Layout.fillWidth: true
                                 indexModel: false
                                 model: object.enumStrings
@@ -210,7 +224,7 @@ Rectangle {
                 Repeater {
                     model: missionItem.textFieldFacts
 
-                    FactTextFieldSlider {
+                    PlanFactTextFieldSlider {
                         Layout.fillWidth: true
                         label: object.name
                         fact: object
@@ -221,7 +235,7 @@ Rectangle {
                 Repeater {
                     model: missionItem.nanFacts
 
-                    FactTextFieldSlider {
+                    PlanFactTextFieldSlider {
                         Layout.fillWidth: true
                         label: object.name
                         fact: object
@@ -232,7 +246,7 @@ Rectangle {
                     }
                 }
 
-                FactTextFieldSlider {
+                PlanFactTextFieldSlider {
                     Layout.fillWidth: true
                     label: qsTr("Flight Speed")
                     fact: missionItem.speedSection.flightSpeed
@@ -273,9 +287,10 @@ Rectangle {
                                 font.pointSize: ScreenTools.smallFontPointSize
                                 text: object.name
                                 visible: object.name !== ""
+                                color: theme.secondaryTextColor
                             }
 
-                            FactComboBox {
+                            PlanFactComboBox {
                                 Layout.fillWidth: true
                                 indexModel: false
                                 model: object.enumStrings
@@ -288,7 +303,7 @@ Rectangle {
                 Repeater {
                     model: missionItem.textFieldFactsAdvanced
 
-                    FactTextFieldSlider {
+                    PlanFactTextFieldSlider {
                         Layout.fillWidth: true
                         label: object.name
                         fact: object
@@ -299,7 +314,7 @@ Rectangle {
                 Repeater {
                     model: missionItem.nanFactsAdvanced
 
-                    FactTextFieldSlider {
+                    PlanFactTextFieldSlider {
                         Layout.fillWidth: true
                         label: object.name
                         fact: object

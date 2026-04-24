@@ -20,7 +20,12 @@ Button {
     property alias wrapMode: text.wrapMode
     property alias horizontalAlignment: text.horizontalAlignment
     property alias backgroundColor: backRect.color
+    property alias borderColor: backRect.border.color
     property alias textColor: text.color
+    property color overlayColor: qgcPal.buttonHighlight
+    property real hoverOverlayOpacity: 0.2
+    property real pressedOverlayOpacity: 1.0
+    property int stateAnimationDuration: 200
 
     id: control
     hoverEnabled: !ScreenTools.isMobile
@@ -33,26 +38,42 @@ Button {
     text: ""
 
     property bool _showHighlight: enabled && (pressed | checked)
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
     property int _horizontalPadding: ScreenTools.defaultFontPixelWidth * 2
     property int _verticalPadding: Math.round(ScreenTools.defaultFontPixelHeight * heightFactor) - (iconSource === "" ? 0 : (_iconHeight - ScreenTools.defaultFontPixelHeight)  / 2)
     property real _iconHeight: text.height * 1.5
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     background: Rectangle {
         id: backRect
-        radius: backRadius
+        radius: control._popupStyled ? popupStyle.cornerRadius : backRadius
         implicitWidth: ScreenTools.implicitButtonWidth
         implicitHeight: ScreenTools.implicitButtonHeight
-        border.width: showBorder ? 1 : 0
-        border.color: qgcPal.buttonBorder
-        color: primary ? qgcPal.primaryButton : qgcPal.button
+        border.width: (control._popupStyled || showBorder) ? 1 : 0
+        border.color: control._popupStyled
+            ? popupStyle.borderColor
+            : qgcPal.buttonBorder
+        color: control._popupStyled
+            ? (primary
+                ? (control.pressed
+                    ? popupStyle.primaryButtonPressedColor()
+                    : (control.hovered ? popupStyle.primaryButtonHoverColor() : popupStyle.primaryButtonColor))
+                : (control.pressed
+                    ? popupStyle.secondaryButtonPressedColor()
+                    : (control.hovered ? popupStyle.secondaryButtonHoverColor() : popupStyle.secondaryButtonColor)))
+            : (primary ? qgcPal.primaryButton : qgcPal.button)
+
+        Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
         Rectangle {
             anchors.fill: parent
-            color: qgcPal.buttonHighlight
-            opacity: _showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0
+            color: control.overlayColor
+            opacity: control._popupStyled ? 0 : (_showHighlight ? control.pressedOverlayOpacity : control.enabled && control.hovered ? control.hoverOverlayOpacity : 0)
             radius: parent.radius
+            Behavior on opacity { NumberAnimation { duration: control.stateAnimationDuration } }
         }
     }
 
@@ -73,12 +94,15 @@ Button {
 
         QGCLabel {
             id: text
-            Layout.alignment: Qt.AlignHCenter
+            Layout.alignment: Qt.AlignVCenter
+            Layout.fillWidth: control.iconSource === ""
             text: control.text
             font.pointSize: control.pointSize
             font.family: control.font.family
             font.weight: fontWeight
-            color: _showHighlight ? qgcPal.buttonHighlightText : (primary ? qgcPal.primaryButtonText : qgcPal.buttonText)
+            color: control._popupStyled
+                ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
+                : (_showHighlight ? qgcPal.buttonHighlightText : (primary ? qgcPal.primaryButtonText : qgcPal.buttonText))
             visible: control.text !== ""
         }
     }

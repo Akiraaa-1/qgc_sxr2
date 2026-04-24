@@ -11,6 +11,8 @@ AnalyzePage {
     pageDescription: qsTr("Provides a connection to the vehicle's system shell.")
     allowPopout: true
 
+    AnalyzePalette { id: analyzePalette }
+
     property bool isLoaded: false
 
     // Key input on mobile is handled differently, so use a separate command input text field.
@@ -25,6 +27,7 @@ AnalyzePage {
         ColumnLayout {
             height: availableHeight
             width: availableWidth
+            spacing: ScreenTools.defaultFontPixelHeight * 0.75
             property int _consoleOutputLen: 0
 
             function scrollToBottom() {
@@ -58,12 +61,107 @@ AnalyzePage {
                 textConsole.cursorPosition = textConsole.length - command_post.length
             }
 
+            function resetPrompt() {
+                textConsole.text = "> "
+                _consoleOutputLen = textConsole.length
+                textConsole.cursorPosition = textConsole.length
+            }
+
+            function refreshConsoleFromModel() {
+                const command = getCommand()
+                const cursor = textConsole.cursorPosition - _consoleOutputLen
+
+                textConsole.text = conController.text
+                _consoleOutputLen = textConsole.length
+                textConsole.insert(textConsole.length, command)
+                textConsole.cursorPosition = textConsole.length
+
+                if (cursor >= 0) {
+                    textConsole.cursorPosition = _consoleOutputLen + cursor
+                }
+
+                if (textConsole.length === 0) {
+                    resetPrompt()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: statusContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.9)
+                radius: analyzePalette.cornerRadius
+                color: analyzePalette.inputSurface
+                border.width: analyzePalette.borderWidth
+                border.color: analyzePalette.border
+
+                RowLayout {
+                    id: statusContent
+                    anchors.fill: parent
+                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.45
+                    spacing: ScreenTools.defaultFontPixelWidth
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.15
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            text: conController.activeVehicleAvailable
+                                ? (conController.linkActive
+                                    ? qsTr("%1 shell connected").arg(conController.vehicleName)
+                                    : qsTr("%1 detected, waiting for link").arg(conController.vehicleName))
+                                : qsTr("Connect a vehicle to open the MAVLink shell")
+                            color: analyzePalette.textPrimary
+                            wrapMode: Text.WordWrap
+                            font.pointSize: ScreenTools.defaultFontPointSize
+                            font.weight: Font.DemiBold
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            text: ScreenTools.isMobile
+                                ? qsTr("Enter commands below and tap Send.")
+                                : qsTr("Press Enter to send, use Up/Down for command history, and Ctrl+V to paste multiple commands.")
+                            color: analyzePalette.textSecondary
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    AnalyzeButton {
+                        text: qsTr("Reconnect")
+                        enabled: conController.activeVehicleAvailable
+                        onClicked: {
+                            conController.reopenConsole()
+                            if (!_separateCommandInput) {
+                                textConsole.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    AnalyzeButton {
+                        text: qsTr("Clear")
+                        enabled: root.isLoaded
+                        onClicked: {
+                            conController.clear()
+                            resetPrompt()
+                            if (!_separateCommandInput) {
+                                textConsole.forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+            }
+
             Connections {
                 target: conController
                 function onDataChanged(topLeft, bottomRight, roles) {
                     if (isLoaded) {
                         // rate-limit updates to reduce CPU load
                         updateTimer.start();
+                    }
+                }
+                function onModelReset() {
+                    if (isLoaded) {
+                        resetPrompt()
                     }
                 }
             }
@@ -76,18 +174,8 @@ AnalyzePage {
                 onTriggered: {
                     // only update if scroll bar is at the bottom
                     if (flickable.atYEnd) {
-                        // backup & restore cursor & command
-                        const command = getCommand()
-                        const cursor = textConsole.cursorPosition - _consoleOutputLen
-                        textConsole.text = conController.text
-                        _consoleOutputLen = textConsole.length
-                        textConsole.insert(textConsole.length, command)
-                        textConsole.cursorPosition = textConsole.length
+                        refreshConsoleFromModel()
                         scrollToBottom()
-                        if (cursor >= 0) {
-                            // We could restore the selection here too...
-                            textConsole.cursorPosition = _consoleOutputLen + cursor
-                        }
                     } else {
                         updateTimer.start();
                     }
@@ -98,6 +186,7 @@ AnalyzePage {
                 id: flickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 12
                 contentWidth: textConsole.width
                 contentHeight: textConsole.height
 
@@ -105,14 +194,14 @@ AnalyzePage {
                     id: textConsole
                     width: availableWidth
                     wrapMode: Text.WordWrap
-                    readOnly: _separateCommandInput
+                    readOnly: _separateCommandInput || !conController.activeVehicleAvailable || !conController.linkActive
                     textFormat: TextEdit.RichText
                     inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhMultiLine
                     text: "> "
-                    focus: true
-                    color: qgcPal.text
-                    selectedTextColor: qgcPal.windowShade
-                    selectionColor: qgcPal.text
+                    focus: conController.activeVehicleAvailable && !_separateCommandInput
+                    color: analyzePalette.textPrimary
+                    selectedTextColor: analyzePalette.inputSurface
+                    selectionColor: analyzePalette.textPrimary
                     font.pointSize: ScreenTools.defaultFontPointSize
                     font.family: ScreenTools.fixedFontFamily
 
@@ -125,7 +214,12 @@ AnalyzePage {
                         }
                     }
 
-                    background: Rectangle { color: qgcPal.windowShade }
+                    background: Rectangle {
+                        color:          analyzePalette.inputSurface
+                        radius:         analyzePalette.cornerRadius
+                        border.width:   analyzePalette.borderWidth
+                        border.color:   analyzePalette.border
+                    }
 
                     Keys.onPressed: (event) => {
                         // ignore tabs
@@ -197,7 +291,9 @@ AnalyzePage {
                             break;
                         case Qt.Key_Enter:
                         case Qt.Key_Return:
-                            conController.sendCommand(getCommandAndClear())
+                            if (conController.activeVehicleAvailable && conController.linkActive) {
+                                conController.sendCommand(getCommandAndClear())
+                            }
                             event.accepted = true
                             break;
                         default:
@@ -229,14 +325,18 @@ AnalyzePage {
                 Layout.fillWidth: true
                 visible: _separateCommandInput
 
-                QGCTextField {
+                AnalyzeTextField {
                     id: commandInput
                     Layout.fillWidth: true
                     placeholderText:  qsTr("Enter Commands here...")
                     inputMethodHints: Qt.ImhNoAutoUppercase
+                    enabled: conController.activeVehicleAvailable && conController.linkActive
                     onAccepted: sendCommand()
 
                     function sendCommand() {
+                        if (!enabled || text === "") {
+                            return
+                        }
                         conController.sendCommand(text)
                         text = ""
                         scrollToBottom()
@@ -244,8 +344,10 @@ AnalyzePage {
 
                 }
 
-                QGCButton {
+                AnalyzeButton {
+                    primary: true
                     text: qsTr("Send")
+                    enabled: commandInput.enabled && commandInput.text !== ""
                     onClicked: commandInput.sendCommand()
                 }
             }

@@ -5,9 +5,11 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 // Camera calculator "Camera" section for mission item editors
 ColumnLayout {
+    id: _root
     spacing: _margin
 
     property var    cameraCalc
@@ -15,6 +17,8 @@ ColumnLayout {
     property real   _margin:            ScreenTools.defaultFontPixelWidth / 2
     property real   _fieldWidth:        ScreenTools.defaultFontPixelWidth * 10.5
     property var    _vehicle:           QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
+
+    PlanEditorTheme { id: theme }
 
     Component.onCompleted: {
         cameraBrandCombo.selectCurrentBrand()
@@ -27,7 +31,7 @@ ColumnLayout {
         Layout.fillWidth:   true
         spacing:            _margin
 
-        QGCComboBox {
+        PlanComboBox {
             id:                 cameraBrandCombo
             Layout.fillWidth:   true
             model:              cameraCalc.cameraBrandList
@@ -44,7 +48,7 @@ ColumnLayout {
             }
         }
 
-        QGCComboBox {
+        PlanComboBox {
             id:                 cameraModelCombo
             Layout.fillWidth:   true
             model:              cameraCalc.cameraModelList
@@ -73,14 +77,14 @@ ColumnLayout {
                 spacing:            _margin
                 visible:            !cameraCalc.fixedOrientation.value
 
-                QGCRadioButton {
-                    width:          _editFieldWidth
+                PlanRadioButton {
+                    width:          _fieldWidth
                     text:           "Landscape"
                     checked:        !!cameraCalc.landscape.value
                     onClicked:      cameraCalc.landscape.value = 1
                 }
 
-                QGCRadioButton {
+                PlanRadioButton {
                     id:             cameraOrientationPortrait
                     text:           "Portrait"
                     checked:        !cameraCalc.landscape.value
@@ -103,10 +107,12 @@ ColumnLayout {
                     QGCLabel {
                         Layout.preferredWidth:  _root._fieldWidth
                         text:                   qsTr("Width")
+                        color:                  theme.secondaryTextColor
                     }
                     QGCLabel {
                         Layout.preferredWidth:  _root._fieldWidth
                         text:                   qsTr("Height")
+                        color:                  theme.secondaryTextColor
                     }
                 }
 
@@ -114,12 +120,16 @@ ColumnLayout {
                     Layout.fillWidth:   true
                     spacing:            _margin
 
-                    QGCLabel { text: qsTr("Sensor"); Layout.fillWidth: true }
-                    FactTextField {
+                    QGCLabel {
+                        text:               qsTr("Sensor")
+                        Layout.fillWidth:   true
+                        color:              theme.secondaryTextColor
+                    }
+                    PlanFactTextField {
                         Layout.preferredWidth:  _root._fieldWidth
                         fact:                   cameraCalc.sensorWidth
                     }
-                    FactTextField {
+                    PlanFactTextField {
                         Layout.preferredWidth:  _root._fieldWidth
                         fact:                   cameraCalc.sensorHeight
                     }
@@ -129,12 +139,16 @@ ColumnLayout {
                     Layout.fillWidth:   true
                     spacing:            _margin
 
-                    QGCLabel { text: qsTr("Image"); Layout.fillWidth: true }
-                    FactTextField {
+                    QGCLabel {
+                        text:               qsTr("Image")
+                        Layout.fillWidth:   true
+                        color:              theme.secondaryTextColor
+                    }
+                    PlanFactTextField {
                         Layout.preferredWidth:  _root._fieldWidth
                         fact:                   cameraCalc.imageWidth
                     }
-                    FactTextField {
+                    PlanFactTextField {
                         Layout.preferredWidth:  _root._fieldWidth
                         fact:                   cameraCalc.imageHeight
                     }
@@ -146,8 +160,9 @@ ColumnLayout {
                     QGCLabel {
                         text:                   qsTr("Focal length")
                         Layout.fillWidth:       true
+                        color:                  theme.secondaryTextColor
                     }
-                    FactTextField {
+                    PlanFactTextField {
                         Layout.preferredWidth:  _root._fieldWidth
                         fact:                   cameraCalc.focalLength
                     }

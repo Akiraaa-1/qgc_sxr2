@@ -70,7 +70,11 @@ target_sources(${CMAKE_PROJECT_NAME}
         ServoOutputMonitorController.h
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem
+)
 
 # ----------------------------------------------------------------------------
 # QML Controls Module
@@ -118,6 +122,7 @@ qt_add_qml_module(QGroundControlControlsModule
         LogReplayStatusBar.qml
         MainWindowSavedState.qml
         MissionCommandDialog.qml
+        ModernConfigSection.qml
         MvPanelPage.qml
         OfflineMapButton.qml
         ParameterDiffDialog.qml
@@ -153,6 +158,7 @@ qt_add_qml_module(QGroundControlControlsModule
         QGCOptionsComboBox.qml
         QGCPageIndicator.qml
         QGCPopupDialog.qml
+        QGCPopupStyle.qml
         QGCPopupDialogFactory.qml
         QGCRadioButton.qml
         QGCRoundButton.qml
@@ -191,6 +197,12 @@ qt_add_qml_module(QGroundControlControlsModule
 
         ScreenTools.qml
     NO_PLUGIN
+)
+
+target_include_directories(QGroundControlControlsModule
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem
 )
 
 # ----------------------------------------------------------------------------

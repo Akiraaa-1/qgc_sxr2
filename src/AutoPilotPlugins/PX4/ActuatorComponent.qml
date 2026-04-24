@@ -12,26 +12,58 @@ SetupPage {
     id:             actuatorPage
     pageComponent:  pageComponent
     showAdvanced:   true
+    centerPageLoader: true
+    property bool _qgcPopupChrome: true
 
     property var actuators:       globals.activeVehicle.actuators
 
     property var _showAdvanced:              advanced
     readonly property real _margins:         ScreenTools.defaultFontPixelHeight
 
+    QGCPopupStyle { id: popupStyle }
+
     Component {
         id: pageComponent
 
-        Row {
-            spacing:                        ScreenTools.defaultFontPixelWidth * 4
-            property var _leftColumnWidth:  Math.max(actuatorTesting.implicitWidth, mixerUi.implicitWidth) + (_margins * 2)
+        Item {
+            id: pageRoot
 
-            ColumnLayout {
+            readonly property real _columnSpacing:      ScreenTools.defaultFontPixelWidth * 4
+            readonly property real _outerPadding:       _margins
+            readonly property real _leftColumnWidth:    Math.max(actuatorTesting.implicitWidth, mixerUi.implicitWidth) + (_margins * 2)
+            readonly property real _contentWidth:       contentRow.implicitWidth
+
+            width:          _contentWidth + (_outerPadding * 2)
+            height:         contentRow.implicitHeight + (_outerPadding * 2)
+            implicitWidth:  width
+            implicitHeight: height
+
+            Rectangle {
+                anchors.fill: parent
+                radius: popupStyle.cornerRadius
+                border.color: popupStyle.borderColor
+                border.width: 1
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: "#1E1E1E" }
+                    GradientStop { position: 1.0; color: "#222222" }
+                }
+            }
+
+            Row {
+                id: contentRow
+                anchors.top: parent.top
+                anchors.topMargin: pageRoot._outerPadding
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: pageRoot._columnSpacing
+
+                ColumnLayout {
                 spacing:                    ScreenTools.defaultFontPixelHeight
-                implicitWidth:              _leftColumnWidth
+                implicitWidth:              pageRoot._leftColumnWidth
 
                 // mixer ui
                 RowLayout {
-                    width:                      _leftColumnWidth
+                    Layout.preferredWidth:      pageRoot._leftColumnWidth
                     visible:                    actuators.mixer.groups.count > 0
                     QGCLabel {
                         text:                   qsTr("Geometry") + (actuators.mixer.title ? ": " + actuators.mixer.title : "")
@@ -43,6 +75,7 @@ SetupPage {
                         font.pointSize:         ScreenTools.mediumFontPointSize
                         visible:                actuators.mixer.helpUrl
                         textFormat:             Text.RichText
+                        color:                  popupStyle.secondaryTextColor
                         onLinkActivated: (link) => {
                             Qt.openUrlExternally(link);
                         }
@@ -50,9 +83,12 @@ SetupPage {
                 }
 
                 Rectangle {
-                    implicitWidth:          _leftColumnWidth
+                    implicitWidth:          pageRoot._leftColumnWidth
                     implicitHeight:         mixerUi.height + (_margins * 2)
-                    color:                  qgcPal.windowShade
+                    color:                  popupStyle.panelBackground
+                    border.color:           popupStyle.borderColor
+                    border.width:           1
+                    radius:                 popupStyle.cornerRadius
                     visible:                actuators.mixer.groups.count > 0
 
                     Column {
@@ -91,23 +127,25 @@ SetupPage {
                                     }
 
                                     // param config labels
-                                    Repeater {
-                                        model:              mixerGroup.channelConfigs
-                                        QGCLabel {
-                                            text:           object.label
-                                            visible:        object.visible && (_showAdvanced || !object.advanced)
-                                            Layout.row:     0
-                                            Layout.column:  1 + index
+                                        Repeater {
+                                            model:              mixerGroup.channelConfigs
+                                            QGCLabel {
+                                                text:           object.label
+                                                color:          popupStyle.secondaryTextColor
+                                                visible:        object.visible && (_showAdvanced || !object.advanced)
+                                                Layout.row:     0
+                                                Layout.column:  1 + index
                                         }
                                     }
                                     // param instances
-                                    Repeater {
-                                        model:              mixerGroup.channels
-                                        QGCLabel {
-                                            text:           object.label + ":"
-                                            Layout.row:     1 + index
-                                            Layout.column:  0
-                                        }
+                                        Repeater {
+                                            model:              mixerGroup.channels
+                                            QGCLabel {
+                                                text:           object.label + ":"
+                                                color:          popupStyle.secondaryTextColor
+                                                Layout.row:     1 + index
+                                                Layout.column:  0
+                                            }
                                     }
                                     Repeater {
                                         model:              mixerGroup.channels
@@ -136,6 +174,7 @@ SetupPage {
                                         spacing:     ScreenTools.defaultFontPixelWidth
                                         QGCLabel {
                                             text:    object.label + ":"
+                                            color:   popupStyle.secondaryTextColor
                                             visible: _showAdvanced || !object.advanced
                                         }
                                         ActuatorFact {
@@ -181,9 +220,12 @@ SetupPage {
                 }
 
                 Rectangle {
-                    implicitWidth:            _leftColumnWidth
+                    implicitWidth:            pageRoot._leftColumnWidth
                     implicitHeight:           actuatorTesting.height + (_margins * 2)
-                    color:                    qgcPal.windowShade
+                    color:                    popupStyle.panelBackground
+                    border.color:             popupStyle.borderColor
+                    border.width:             1
+                    radius:                   popupStyle.cornerRadius
 
                     Column {
                         id:                   actuatorTesting
@@ -196,6 +238,7 @@ SetupPage {
 
                         QGCLabel {
                             text: qsTr("Configure some outputs in order to test them.")
+                            color: popupStyle.secondaryTextColor
                             visible: actuators.actuatorTest.actuators.count == 0
                         }
 
@@ -231,7 +274,7 @@ SetupPage {
                             }
 
                             QGCLabel {
-                                color:  qgcPal.warningText
+                                color:  popupStyle.secondaryTextColor
                                 text: safetySwitch.checked ? qsTr("Careful: Actuator sliders are enabled") : qsTr("Propellers are removed - Enable sliders")
                             }
                         } // Row
@@ -320,6 +363,8 @@ SetupPage {
 
             // Right column
             Column {
+                id: actuatorOutputsColumn
+
                 QGCLabel {
                     text:               qsTr("Actuator Outputs")
                     font.pointSize:     ScreenTools.mediumFontPointSize
@@ -328,18 +373,29 @@ SetupPage {
                 QGCLabel {
                     text:          qsTr("One or more actuator still needs to be assigned to an output.")
                     visible:       actuators.hasUnsetRequiredFunctions
-                    color:         qgcPal.warningText
+                    color:         popupStyle.secondaryTextColor
                     bottomPadding: ScreenTools.defaultFontPixelHeight
                 }
 
 
                 // actuator output selection tabs
                 QGCTabBar {
+                    id: actuatorOutputsTabs
+
                     Repeater {
                         model: actuators.actuatorOutputs
                         QGCTabButton {
-                            text:      '   ' + object.label + '   '
-                            width:     implicitWidth
+                            text:                   "   " + object.label + "   "
+                            width:                  implicitWidth
+                            showBorder:             true
+                            backRadius:             popupStyle.cornerRadius
+                            buttonColor:            popupStyle.borderColor
+                            hoverButtonColor:       popupStyle.hoverColor(popupStyle.borderColor)
+                            checkedButtonColor:     Qt.rgba(popupStyle.accentColor.r, popupStyle.accentColor.g, popupStyle.accentColor.b, 0.24)
+                            buttonBorderColor:      checked ? popupStyle.accentColor : popupStyle.borderColor
+                            buttonTextColor:        popupStyle.secondaryTextColor
+                            checkedButtonTextColor: popupStyle.primaryTextColor
+                            separatorColor:         popupStyle.borderColor
                         }
                     }
                     onCurrentIndexChanged: {
@@ -352,7 +408,10 @@ SetupPage {
                     id:                             selActuatorOutput
                     implicitWidth:                  actuatorGroupColumn.width + (_margins * 2)
                     implicitHeight:                 actuatorGroupColumn.height + (_margins * 2)
-                    color:                          qgcPal.windowShade
+                    color:                          popupStyle.panelBackground
+                    border.color:                   popupStyle.borderColor
+                    border.width:                   1
+                    radius:                         popupStyle.cornerRadius
 
                     property var actuatorOutput:    actuators.selectedActuatorOutput
 
@@ -369,6 +428,7 @@ SetupPage {
                             spacing:           _margins
                             QGCButton {
                                 text:          qsTr("Identify & Assign Motors")
+                                primary:       true
                                 visible:       !actuators.motorAssignmentActive && selActuatorOutput.actuatorOutput.groupsVisible
                                 enabled:       actuators.motorAssignmentEnabled
                                 onClicked: {
@@ -428,6 +488,7 @@ SetupPage {
                                 QGCLabel {
                                     visible:                  parent.enableParam != null
                                     text:                     parent.enableParam ? parent.enableParam.label + ":" : ""
+                                    color:                    popupStyle.secondaryTextColor
                                 }
                                 ActuatorFact {
                                     visible:                  parent.enableParam != null
@@ -466,23 +527,25 @@ SetupPage {
                                         }
 
                                         // param config labels
-                                        Repeater {
-                                            model: subgroup.channelConfigs
-                                            QGCLabel {
-                                                text:           object.label
-                                                visible:        object.visible && (_showAdvanced || !object.advanced)
-                                                Layout.row:     0
-                                                Layout.column:  1 + index
+                                            Repeater {
+                                                model: subgroup.channelConfigs
+                                                QGCLabel {
+                                                    text:           object.label
+                                                    color:          popupStyle.secondaryTextColor
+                                                    visible:        object.visible && (_showAdvanced || !object.advanced)
+                                                    Layout.row:     0
+                                                    Layout.column:  1 + index
                                             }
                                         }
                                         // param instances
-                                        Repeater {
-                                            model: subgroup.channels
-                                            QGCLabel {
-                                                text:            object.label + ":"
-                                                Layout.row:      1 + index
-                                                Layout.column:   0
-                                            }
+                                            Repeater {
+                                                model: subgroup.channels
+                                                QGCLabel {
+                                                    text:            object.label + ":"
+                                                    color:           popupStyle.secondaryTextColor
+                                                    Layout.row:      1 + index
+                                                    Layout.column:   0
+                                                }
                                         }
                                         Repeater {
                                             model: subgroup.channels
@@ -507,6 +570,7 @@ SetupPage {
                                         RowLayout {
                                             QGCLabel {
                                                 text: object.label + ":"
+                                                color: popupStyle.secondaryTextColor
                                             }
                                             ActuatorFact {
                                                 fact: object.fact
@@ -524,6 +588,7 @@ SetupPage {
                                 RowLayout {
                                     QGCLabel {
                                         text: object.label + ":"
+                                        color: popupStyle.secondaryTextColor
                                     }
                                     ActuatorFact {
                                         fact: object.fact
@@ -538,7 +603,7 @@ SetupPage {
                                     spacing: ScreenTools.defaultFontPixelHeight
                                     QGCLabel {
                                         text:       modelData
-                                        color:      qgcPal.warningText
+                                        color:      popupStyle.secondaryTextColor
                                     }
                                 }
                             }
@@ -547,6 +612,7 @@ SetupPage {
                 } // Rectangle
             } // Column
         } // Row
+        } // Item
 
-    }
+    } // Component
 }

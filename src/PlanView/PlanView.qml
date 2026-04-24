@@ -11,6 +11,7 @@ import QGroundControl.FlightMap
 import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.FlyView
+import QGroundControl.PlanView
 import QGroundControl.Toolbar
 
 Item {
@@ -19,14 +20,17 @@ Item {
     readonly property int   _decimalPlaces: 8
     readonly property real  _margin: ScreenTools.defaultFontPixelHeight * 0.5
     readonly property real  _toolsMargin: ScreenTools.defaultFontPixelWidth * 0.75
-    readonly property real  _rightPanelWidth: Math.min(width / 3, ScreenTools.defaultFontPixelWidth * 30)
+    readonly property real  _sidePanelWidth: width * 0.25
+    readonly property real  _maxMissionSegmentLengthM: 50000
+    readonly property color _selectedMissionGlowColor: Qt.rgba(0.52, 0.43, 0.96, 0.26)
+    readonly property color _selectedMissionBandColor: Qt.rgba(0.56, 0.47, 0.92, 0.76)
+    readonly property color _selectedMissionCoreColor: "#E8893D"
 
     property var    _planMasterController: planMasterController
     property var    _missionController: _planMasterController.missionController
     property var    _geoFenceController: _planMasterController.geoFenceController
     property var    _rallyPointController: _planMasterController.rallyPointController
     property var    _visualItems: _missionController.visualItems
-    property bool   _singleComplexItem: _missionController.complexMissionItemNames.length === 1
     property int    _editingLayer: _layerMission
     property var    _appSettings: QGroundControl.settingsManager.appSettings
     property var    _planViewSettings: QGroundControl.settingsManager.planViewSettings
@@ -35,7 +39,38 @@ Item {
     property bool   _addWaypointOnClick: false
     property bool   _homeTrackingMapCenter: true
     property bool   _updatingHomeFromMapCenter: false
+    property var    _uploadStatusPanel: null
+    property var    _uploadStatusSource: null
+    property var    _patternDropPanel: null
+    property bool   _toolStripUploadRequested: false
+    property bool   _toolStripUploadInProgress: false
+    property bool   _toolStripExpanded: true
     property bool   embeddedView: false
+
+    readonly property bool _supportsSurveyPattern: _missionController.complexMissionItemNames.indexOf(_missionController.surveyComplexItemName) !== -1
+    readonly property bool _supportsCorridorScanPattern: _missionController.complexMissionItemNames.indexOf(_missionController.corridorScanComplexItemName) !== -1
+    readonly property bool _supportsStructureScanPattern: _missionController.complexMissionItemNames.indexOf(_missionController.structureScanComplexItemName) !== -1
+    readonly property var _additionalComplexPatterns: {
+        const additionalPatterns = []
+        const excludedPatterns = [
+            _missionController.surveyComplexItemName,
+            _missionController.corridorScanComplexItemName,
+            _missionController.structureScanComplexItemName
+        ]
+        for (let i = 0; i < _missionController.complexMissionItemNames.length; i++) {
+            const patternName = _missionController.complexMissionItemNames[i]
+            if (excludedPatterns.indexOf(patternName) === -1) {
+                additionalPatterns.push(patternName)
+            }
+        }
+        return additionalPatterns
+    }
+    readonly property bool _hasPatternChoices: _supportsSurveyPattern
+                                                || _supportsCorridorScanPattern
+                                                || _supportsStructureScanPattern
+                                                || (_additionalComplexPatterns.length > 0)
+
+    PlanEditorTheme { id: theme }
 
     readonly property int _layerMission: 1
     readonly property int _layerFence: 2
@@ -56,12 +91,222 @@ Item {
         }
     }
 
+    Connections {
+        target: _planMasterController
+
+        function onSyncInProgressChanged() {
+            if (!_toolStripUploadRequested) {
+                return
+            }
+
+            if (_planMasterController.syncInProgress) {
+                _toolStripUploadInProgress = true
+                uploadStartWatchdog.stop()
+                return
+            }
+
+            if (_toolStripUploadInProgress) {
+                _toolStripUploadInProgress = false
+                _toolStripUploadRequested = false
+
+                if (!_planMasterController.dirtyForUpload) {
+                    _openUploadStatusPanel(_uploadStatusSource,
+                                           qsTr("Send To Vehicle"),
+                                           qsTr("Upload complete."),
+                                           null,
+                                           qsTr("Ok"),
+                                           false,
+                                           1600)
+                } else {
+                    _openUploadStatusPanel(_uploadStatusSource,
+                                           qsTr("Send To Vehicle"),
+                                           qsTr("Upload did not complete. Check vehicle messages for details."))
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: uploadStartWatchdog
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            if (_toolStripUploadRequested && !_planMasterController.syncInProgress) {
+                _toolStripUploadRequested = false
+                _toolStripUploadInProgress = false
+                _openUploadStatusPanel(_uploadStatusSource,
+                                       qsTr("Send To Vehicle"),
+                                       qsTr("Upload could not be started. Check vehicle link status and try again."))
+            }
+        }
+    }
+
     function mapCenter() {
         var coordinate = editorMap.center
         coordinate.latitude  = coordinate.latitude.toFixed(_decimalPlaces)
         coordinate.longitude = coordinate.longitude.toFixed(_decimalPlaces)
         coordinate.altitude  = coordinate.altitude.toFixed(_decimalPlaces)
         return coordinate
+    }
+
+    function missionLinePath(coord1, coord2) {
+        if (!coord1 || !coord1.isValid || !coord2 || !coord2.isValid) {
+            return []
+        }
+
+        const distance = coord1.distanceTo(coord2)
+        if (distance <= _maxMissionSegmentLengthM) {
+            return [coord1, coord2]
+        }
+
+        const pathPoints = [coord1]
+        const numSegments = Math.ceil(distance / _maxMissionSegmentLengthM)
+
+        for (let i = 1; i < numSegments; i++) {
+            const segmentDist = (i * distance) / numSegments
+            pathPoints.push(coord1.atDistanceAndAzimuth(segmentDist, coord1.azimuthTo(coord2)))
+        }
+
+        pathPoints.push(coord2)
+        return pathPoints
+    }
+
+    function _closeUploadStatusPanel() {
+        if (_uploadStatusPanel) {
+            _uploadStatusPanel.close()
+            _uploadStatusPanel = null
+        }
+    }
+
+    function _closePatternPanel() {
+        if (_patternDropPanel) {
+            _patternDropPanel.close()
+            _patternDropPanel = null
+        }
+    }
+
+    function _openPatternPanel(source) {
+        _closePatternPanel()
+
+        if (!source) {
+            return
+        }
+
+        let position = Qt.point(0, source.height / 2)
+        position = source.mapToItem(globals.parent, position)
+
+        _patternDropPanel = patternDropPanelComponent.createObject(mainWindow, {
+            clickRect: Qt.rect(position.x, position.y, 0, 0)
+        })
+        Qt.callLater(function() {
+            if (_patternDropPanel) {
+                _patternDropPanel.open()
+            }
+        })
+    }
+
+    function _openUploadStatusPanel(source, title, message, confirmAction, confirmButtonText, busy, autoCloseMs) {
+        _closeUploadStatusPanel()
+
+        const panelSource = source || _uploadStatusSource
+        if (panelSource) {
+            _uploadStatusSource = panelSource
+        }
+
+        if (!panelSource) {
+            QGroundControl.showMessageDialog(
+                _root,
+                title,
+                message,
+                confirmAction ? (Dialog.Ok | Dialog.Cancel) : Dialog.Ok,
+                confirmAction || null
+            )
+            return
+        }
+
+        let position = Qt.point(0, panelSource.height / 2)
+        position = panelSource.mapToItem(globals.parent, position)
+
+        _uploadStatusPanel = uploadStatusDropPanelComponent.createObject(mainWindow, {
+            clickRect: Qt.rect(position.x, position.y, 0, 0),
+            uploadTitle: title,
+            uploadMessage: message,
+            confirmAction: confirmAction || null,
+            confirmButtonText: confirmButtonText || qsTr("Ok"),
+            uploadBusy: !!busy,
+            autoCloseMs: autoCloseMs || 0
+        })
+        Qt.callLater(function() {
+            if (_uploadStatusPanel) {
+                _uploadStatusPanel.open()
+            }
+        })
+    }
+
+    function _triggerToolStripUpload(source) {
+        _closeUploadStatusPanel()
+
+        switch (_planMasterController.readyForSaveState()) {
+        case VisualMissionItem.NotReadyForSaveData:
+            _openUploadStatusPanel(source,
+                                   qsTr("Unable to %1").arg(qsTr("Upload")),
+                                   qsTr("Plan has incomplete items. Complete all items and %1 again.").arg(qsTr("Upload")))
+            return
+        case VisualMissionItem.NotReadyForSaveTerrain:
+            _openUploadStatusPanel(source,
+                                   qsTr("Unable to %1").arg(qsTr("Upload")),
+                                   qsTr("Plan is waiting on terrain data from server for correct altitude values."))
+            return
+        }
+
+        switch (_missionController.sendToVehiclePreCheck()) {
+        case MissionController.SendToVehiclePreCheckStateOk:
+            _toolStripUploadRequested = true
+            _toolStripUploadInProgress = false
+            _uploadStatusSource = source
+            _openUploadStatusPanel(source,
+                                   qsTr("Send To Vehicle"),
+                                   qsTr("Uploading plan to vehicle..."),
+                                   null,
+                                   qsTr("Ok"),
+                                   true)
+            uploadStartWatchdog.restart()
+            _planMasterController.sendToVehicle()
+            return
+        case MissionController.SendToVehiclePreCheckStateNoActiveVehicle:
+            _openUploadStatusPanel(source,
+                                   qsTr("Send To Vehicle"),
+                                   qsTr("You must be connected to a vehicle in order to upload a Plan."))
+            return
+        case MissionController.SendToVehiclePreCheckStateActiveMission:
+            _openUploadStatusPanel(source,
+                                   qsTr("Send To Vehicle"),
+                                   qsTr("Current mission must be paused prior to uploading a new Plan"))
+            return
+        case MissionController.SendToVehiclePreCheckStateFirwmareVehicleMismatch:
+            _openUploadStatusPanel(source,
+                                   qsTr("Plan Upload"),
+                                   qsTr("This Plan was created for a different firmware or vehicle type than the firmware/vehicle type of vehicle you are uploading to. "
+                                      + "This can lead to errors or incorrect behavior. "
+                                      + "It is recommended to recreate the Plan for the correct firmware/vehicle type.\n\n"
+                                      + "Click 'Ok' to upload the Plan anyway."),
+                                   function() { _planMasterController.sendToVehicle() })
+            return
+        }
+    }
+
+    function _triggerToolStripClear() {
+        if (_planMasterController.syncInProgress || !_planMasterController.containsItems) {
+            return
+        }
+
+        QGroundControl.showMessageDialog(
+            _root,
+            qsTr("Clear Route"),
+            qsTr("Are you sure you want to remove all the items from the plan editor?"),
+            Dialog.Yes | Dialog.Cancel,
+            function() { _planMasterController.removeAll() }
+        )
     }
 
     MapFitFunctions {
@@ -114,6 +359,8 @@ Item {
             }
             switch (_missionController.sendToVehiclePreCheck()) {
                 case MissionController.SendToVehiclePreCheckStateOk: sendToVehicle()
+                    break
+                case MissionController.SendToVehiclePreCheckStateNoActiveVehicle: QGroundControl.showMessageDialog(_root, qsTr("Send To Vehicle"), qsTr("You must be connected to a vehicle in order to upload a Plan."))
                     break
                 case MissionController.SendToVehiclePreCheckStateActiveMission: QGroundControl.showMessageDialog(_root, qsTr("Send To Vehicle"), qsTr("Current mission must be paused prior to uploading a new Plan"))
                     break
@@ -226,6 +473,11 @@ Item {
         _missionController.insertLandItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
     }
 
+    function insertLandHereItemAfterCurrent() {
+        var nextIndex = _missionController.currentPlanViewVIIndex + 1
+        _missionController.insertLandHereItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
+    }
+
     QGCFileDialog {
         id: fileDialog
         folder: _appSettings ? _appSettings.missionSavePath : ""
@@ -268,7 +520,10 @@ Item {
 
         FlightMap {
             id: editorMap
-            anchors.fill: parent
+            anchors.left: rightPanel.right
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
             mapName: "MissionEditor"
             allowGCSLocationCenter: true
             allowVehicleLocationCenter: true
@@ -278,10 +533,16 @@ Item {
             center: QGroundControl.flightMapPosition
 
             // This is the center rectangle of the map which is not obscured by tools
-            property rect centerViewport: Qt.rect(_leftToolWidth + _margin,  _margin, editorMap.width - _leftToolWidth - _rightToolWidth - (_margin * 2), (missionStatus.visible ? missionStatus.y : height - _margin) - _margin)
+            property rect centerViewport: Qt.rect(_margin, _margin, Math.max(editorMap.width - _rightToolWidth - (_margin * 2), 0), (missionStatus.visible ? missionStatus.y : height - _margin) - _margin)
 
-            property real _leftToolWidth: toolStrip.x + toolStrip.width
-            property real _rightToolWidth: rightPanel.width + rightPanel.anchors.rightMargin
+            property real _rightToolWidth: {
+                if (!toolStrip.visible) {
+                    return 0
+                }
+
+                const toolStripLeft = toolStrip.x - editorMap.x
+                return Math.max(editorMap.width - toolStripLeft, 0)
+            }
             property real _nonInteractiveOpacity: 0.5
 
             // Initial map position duplicates Fly view position
@@ -352,11 +613,47 @@ Item {
                 }
             }
 
-            // Add lines between waypoints
-            MissionLineView {
-                showSpecialVisual: _missionController.isROIBeginCurrentItem
+            // Add lines between waypoints (match Fly View visual style)
+            MapItemView {
                 model: _missionController.simpleFlightPathSegments
-                opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
+
+                delegate: MapPolyline {
+                    readonly property bool _terrainCollision: object && object.terrainCollision
+
+                    line.width: Math.max(10, ScreenTools.defaultFontPixelHeight * 0.96)
+                    line.color: _terrainCollision ? "red" : _selectedMissionGlowColor
+                    opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
+                    z: QGroundControl.zOrderWaypointLines
+                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                }
+            }
+
+            MapItemView {
+                model: _missionController.simpleFlightPathSegments
+
+                delegate: MapPolyline {
+                    readonly property bool _terrainCollision: object && object.terrainCollision
+
+                    line.width: Math.max(6, ScreenTools.defaultFontPixelHeight * 0.58)
+                    line.color: _terrainCollision ? "red" : _selectedMissionBandColor
+                    opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
+                    z: QGroundControl.zOrderWaypointLines + 0.1
+                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                }
+            }
+
+            MapItemView {
+                model: _missionController.simpleFlightPathSegments
+
+                delegate: MapPolyline {
+                    readonly property bool _terrainCollision: object && object.terrainCollision
+
+                    line.width: Math.max(2, ScreenTools.defaultFontPixelHeight * 0.18)
+                    line.color: _terrainCollision ? "red" : _selectedMissionCoreColor
+                    opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
+                    z: QGroundControl.zOrderWaypointLines + 0.2
+                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                }
             }
 
             // Direction arrows in waypoint lines
@@ -367,6 +664,7 @@ Item {
                     fromCoord: object ? object.coordinate1 : undefined
                     toCoord: object ? object.coordinate2 : undefined
                     arrowPosition: 3
+                    arrowColor: _selectedMissionCoreColor
                     z: QGroundControl.zOrderWaypointLines + 1
                 }
             }
@@ -439,15 +737,20 @@ Item {
         }
 
         //-----------------------------------------------------------
-        // Left tool strip
+        // Top-right tool strip
         ToolStrip {
             id: toolStrip
             anchors.margins: _toolsMargin
-            anchors.left: parent.left
-            anchors.top: parent.top
+            anchors.right: editorMap.right
+            anchors.top: editorMap.top
             z: QGroundControl.zOrderWidgets
             maxHeight: parent.height - toolStrip.y
-            visible: _editingLayer == _layerMission
+            visible: _editingLayer == _layerMission && _toolStripExpanded
+            width: ScreenTools.defaultFontPixelWidth * 7
+            radius: ScreenTools.defaultFontPixelWidth / 2
+            color: QGroundControl.globalPalette.windowTransparent
+            showText: false
+            fontSize: ScreenTools.smallFontPointSize
 
             property bool _isMissionLayer: _editingLayer == _layerMission
 
@@ -476,16 +779,11 @@ Item {
                         }
                     },
                     ToolStripAction {
-                        text: _singleComplexItem ? _missionController.complexMissionItemNames[0] : qsTr("Pattern")
+                        text: qsTr("Pattern")
                         iconSource: "/qmlimages/MapDrawShape.svg"
-                        enabled: _missionController.flyThroughCommandsAllowed
+                        enabled: _hasPatternChoices
                         visible: toolStrip._isMissionLayer
-                        dropPanelComponent: _singleComplexItem ? undefined : patternDropPanel
-                        onTriggered: {
-                            if (_singleComplexItem) {
-                                insertComplexItemAfterCurrent(_missionController.complexMissionItemNames[0])
-                            }
-                        }
+                        onTriggered: (source) => _openPatternPanel(source)
                     },
                     ToolStripAction {
                         id: waypointButton
@@ -517,6 +815,29 @@ Item {
                         }
                     },
                     ToolStripAction {
+                        text: qsTr("Land Here")
+                        iconSource: "/res/land.svg"
+                        enabled: _missionController.isInsertLandValid
+                        visible: toolStrip._isMissionLayer && _planMasterController.controllerVehicle.multiRotor
+                        onTriggered: {
+                            insertLandHereItemAfterCurrent()
+                        }
+                    },
+                    ToolStripAction {
+                        text: qsTr("Clear Route")
+                        iconSource: "/res/TrashCan.svg"
+                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        visible: toolStrip._isMissionLayer
+                        onTriggered: _triggerToolStripClear()
+                    },
+                    ToolStripAction {
+                        text: qsTr("Upload")
+                        iconSource: "/res/UploadToVehicle.svg"
+                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        visible: toolStrip._isMissionLayer
+                        onTriggered: (source) => _triggerToolStripUpload(source)
+                    },
+                    ToolStripAction {
                         text: qsTr("Stats")
                         iconSource: "/res/chevron-double-right.svg"
                         visible: missionStatus.hidden && QGroundControl.corePlugin.options.showMissionStatus
@@ -528,10 +849,41 @@ Item {
             model: toolStripActionList.model
         }
 
+        Rectangle {
+            id: toolStripOpenCloseButton
+            anchors.right: _toolStripExpanded ? toolStrip.right : editorMap.right
+            anchors.rightMargin: _toolStripExpanded ? (-width * 0.35) : (_toolsMargin * 0.2)
+            anchors.verticalCenter: toolStrip.verticalCenter
+            width: ScreenTools.defaultFontPixelWidth * 1.6
+            height: ScreenTools.defaultFontPixelHeight * 3.6
+            radius: theme.radius
+            z: QGroundControl.zOrderWidgets + 1
+            visible: _editingLayer == _layerMission
+            color: stripToggleArea.pressed ? theme.panelPressedColor : (stripToggleArea.containsMouse ? theme.panelHoverColor : theme.panelColor)
+            border.width: 1
+            border.color: theme.borderColor
+
+            Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+
+            QGCLabel {
+                anchors.centerIn: parent
+                text: _toolStripExpanded ? ">" : "<"
+                color: theme.textColor
+            }
+
+            QGCMouseArea {
+                id: stripToggleArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: _toolStripExpanded = !_toolStripExpanded
+            }
+        }
+
         MapScale {
+            id: mapScale
             anchors.margins: _toolsMargin
-            anchors.left: toolStrip.right
-            anchors.top: parent.top
+            anchors.right: toolStrip.visible ? toolStrip.left : editorMap.right
+            anchors.top: editorMap.top
             mapControl: editorMap
             autoHide: true
         }
@@ -540,8 +892,9 @@ Item {
             id: rightPanel
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            width: _rightPanelWidth
+            anchors.left: parent.left
+            width: _sidePanelWidth
+            dockLeft: true
             planMasterController: _planMasterController
             editorMap: editorMap
             onEditingLayerChangeRequested: (layer) => _editingLayer = layer
@@ -550,9 +903,9 @@ Item {
         // Layer switching icons — only active icon visible; click to expand choices leftward
         Item {
             id:                     layerSwitcher
-            anchors.right:          rightPanel.left
+            anchors.right:          mapScale.left
             anchors.rightMargin:    _toolsMargin
-            anchors.top:            parent.top
+            anchors.top:            editorMap.top
             anchors.topMargin:      _toolsMargin
             width:                  layerRow.width
             height:                 _layerButtonSize
@@ -600,19 +953,26 @@ Item {
                 Rectangle {
                     width:  layerSwitcher._layerButtonSize
                     height: width
-                    radius: ScreenTools.defaultBorderRadius
-                    color:  QGroundControl.globalPalette.buttonHighlight
+                    radius: theme.radius
+                    color:  toggleLayerMouseArea.pressed ? theme.accentHoverColor : (toggleLayerMouseArea.containsMouse ? theme.accentHoverColor : theme.accentColor)
+                    border.width: 1
+                    border.color: theme.accentColor
+
+                    Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+                    Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
                     QGCColoredImage {
                         anchors.centerIn:   parent
                         width:              parent.width * 0.6
                         height:             width
                         source:             layerSwitcher._layers.find(l => l.layer === _editingLayer)?.icon ?? "/res/waypoint.svg"
-                        color:              QGroundControl.globalPalette.buttonHighlightText
+                        color:              theme.textColor
                     }
 
                     QGCMouseArea {
+                        id:          toggleLayerMouseArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked:    layerSwitcher.toggle()
                     }
                 }
@@ -625,23 +985,30 @@ Item {
                         required property var modelData
                         width:   layerSwitcher._layerButtonSize
                         height:  width
-                        radius:  ScreenTools.defaultBorderRadius
-                        color:   QGroundControl.globalPalette.button
+                        radius:  theme.radius
+                        color:   choiceLayerMouseArea.pressed ? theme.panelPressedColor : (choiceLayerMouseArea.containsMouse ? theme.panelHoverColor : theme.panelColor)
+                        border.width: 1
+                        border.color: theme.borderColor
                         visible: opacity > 0
                         opacity: layerSwitcher.expanded ? 1 : 0
 
-                        Behavior on opacity { NumberAnimation { duration: 150 } }
+                        Behavior on opacity { NumberAnimation { duration: theme.stateAnimationDuration } }
+                        Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+                        Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
                         QGCColoredImage {
                             anchors.centerIn:   parent
                             width:              parent.width * 0.6
                             height:             width
                             source:             modelData.icon
-                            color:              QGroundControl.globalPalette.buttonText
+                            color:              choiceLayerMouseArea.containsMouse ? theme.textColor : theme.secondaryTextColor
+                            Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
                         }
 
                         QGCMouseArea {
+                            id:          choiceLayerMouseArea
                             anchors.fill: parent
+                            hoverEnabled: true
                             onClicked:    layerSwitcher.choose(modelData.nodeType)
                         }
                     }
@@ -652,8 +1019,8 @@ Item {
         RowLayout {
             id: missionStatus
             anchors.margins: _toolsMargin
-            anchors.left: _calcLeftAnchor()
-            anchors.right: rightPanel.left
+            anchors.left: editorMap.left
+            anchors.right: _calcRightAnchor()
             anchors.bottom: parent.bottom
             spacing: 0
             visible: !hidden && _editingLayer == _layerMission && QGroundControl.corePlugin.options.showMissionStatus
@@ -664,13 +1031,16 @@ Item {
                 _planViewSettings.showMissionItemStatus.rawValue = true
             }
 
-            function _calcLeftAnchor() {
+            function _calcRightAnchor() {
+                if (!toolStrip.visible) {
+                    return editorMap.right
+                }
                 let bottomOfToolStrip = toolStrip.y + toolStrip.height
                 let largestStatsHeight = Math.max(terrainStatus.height, missionStats.height)
                 if (bottomOfToolStrip + largestStatsHeight > parent.height - missionStatus.anchors.margins) {
-                    return toolStrip.right
+                    return toolStrip.left
                 }
-                return parent.left
+                return editorMap.right
             }
 
             function _toggleMissionStatusVisibility() {
@@ -689,19 +1059,30 @@ Item {
                     id: terrainButton
                     implicitWidth: missionStatsButtonLayout._buttonImplicitWidth
                     implicitHeight: implicitWidth
-                    color: checked ? QGroundControl.globalPalette.buttonHighlight : QGroundControl.globalPalette.button
+                    radius: 8
+                    border.width: 1
+                    border.color: "#333333"
+                    color: checked
+                           ? (terrainMouseArea.pressed ? "#1E40AF" : (terrainMouseArea.containsMouse ? "#1D4ED8" : "#2563EB"))
+                           : (terrainMouseArea.pressed ? "#2A2A2A" : (terrainMouseArea.containsMouse ? "#3D3D3D" : "#333333"))
 
                     property bool checked: true
+
+                    Behavior on color {
+                        ColorAnimation { duration: 200 }
+                    }
 
                     QGCColoredImage {
                         anchors.margins: missionStatsButtonLayout._buttonImageMargins
                         anchors.fill: parent
                         source: "/res/terrain.svg"
-                        color: parent.checked ? QGroundControl.globalPalette.buttonHighlightText : QGroundControl.globalPalette.buttonText
+                        color: "#FFFFFF"
                     }
 
                     QGCMouseArea {
+                        id: terrainMouseArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: {
                             terrainButton.checked = true
                             missionStatsButton.checked = false
@@ -713,19 +1094,30 @@ Item {
                     id: missionStatsButton
                     implicitWidth: missionStatsButtonLayout._buttonImplicitWidth
                     implicitHeight: implicitWidth
-                    color: checked ? QGroundControl.globalPalette.buttonHighlight : QGroundControl.globalPalette.button
+                    radius: 8
+                    border.width: 1
+                    border.color: "#333333"
+                    color: checked
+                           ? (missionStatsMouseArea.pressed ? "#1E40AF" : (missionStatsMouseArea.containsMouse ? "#1D4ED8" : "#2563EB"))
+                           : (missionStatsMouseArea.pressed ? "#2A2A2A" : (missionStatsMouseArea.containsMouse ? "#3D3D3D" : "#333333"))
 
                     property bool checked: false
+
+                    Behavior on color {
+                        ColorAnimation { duration: 200 }
+                    }
 
                     QGCColoredImage {
                         anchors.margins: missionStatsButtonLayout._buttonImageMargins
                         anchors.fill: parent
                         source: "/res/sliders.svg"
-                        color: parent.checked ? QGroundControl.globalPalette.buttonHighlightText : QGroundControl.globalPalette.buttonText
+                        color: "#FFFFFF"
                     }
 
                     QGCMouseArea {
+                        id: missionStatsMouseArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: {
                             missionStatsButton.checked = true
                             terrainButton.checked = false
@@ -737,17 +1129,26 @@ Item {
                     id: bottomStatusOpenCloseButton
                     implicitWidth: missionStatsButtonLayout._buttonImplicitWidth
                     implicitHeight: implicitWidth
-                    color: QGroundControl.globalPalette.button
+                    radius: 8
+                    border.width: 1
+                    border.color: "#333333"
+                    color: closeButtonMouseArea.pressed ? "#2A2A2A" : (closeButtonMouseArea.containsMouse ? "#3D3D3D" : "#333333")
+
+                    Behavior on color {
+                        ColorAnimation { duration: 200 }
+                    }
 
                     QGCColoredImage {
                         anchors.margins: missionStatsButtonLayout._buttonImageMargins
                         anchors.fill: parent
                         source: "/res/chevron-double-left.svg"
-                        color: QGroundControl.globalPalette.buttonText
+                        color: "#FFFFFF"
                     }
 
                     QGCMouseArea {
+                        id: closeButtonMouseArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         onClicked: missionStatus._toggleMissionStatusVisibility()
                     }
                 }
@@ -776,27 +1177,165 @@ Item {
         //- ToolStrip ToolStripDropPanel Components
 
     Component {
-        id: patternDropPanel
+        id: patternDropPanelComponent
 
-        ColumnLayout {
-            spacing: ScreenTools.defaultFontPixelWidth * 0.5
+        DropPanel {
+            id: patternDropPopup
+            backgroundColor: popupStyle.popupBackground
+            borderColor:     popupStyle.borderColor
+            panelRadius:     popupStyle.cornerRadius
+            sourceComponent: patternDropPanelContent
 
-            QGCLabel { text: qsTr("Create complex pattern:") }
+            QGCPopupStyle {
+                id: popupStyle
+            }
 
-            Repeater {
-                model: _missionController.complexMissionItemNames
+            onClosed: {
+                if (_root._patternDropPanel === patternDropPopup) {
+                    _root._patternDropPanel = null
+                }
+                destroy()
+            }
+        }
+    }
 
-                QGCButton {
-                    text: modelData
-                    Layout.fillWidth: true
+    Component {
+        id: patternDropPanelContent
 
-                    onClicked: {
-                        insertComplexItemAfterCurrent(modelData)
-                        dropPanel.hide()
+        Item {
+            id: patternPanelRoot
+            implicitWidth:  ScreenTools.defaultFontPixelWidth * 17
+            implicitHeight: Math.min(contentColumn.implicitHeight, maxPanelHeight)
+
+            readonly property real panelPadding:   ScreenTools.defaultFontPixelWidth * 0.5
+            readonly property real maxPanelHeight: Math.max(ScreenTools.defaultFontPixelHeight * 10, mainWindow.height * 0.34)
+
+            QGCPopupStyle {
+                id: popupStyle
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius:       popupStyle.cornerRadius
+                color:        Qt.rgba(0.18, 0.18, 0.18, 0.86)
+                border.width: 1
+                border.color: popupStyle.borderColor
+            }
+
+            QGCFlickable {
+                id: patternPanelFlickable
+                anchors.fill: parent
+                anchors.margins: patternPanelRoot.panelPadding
+                contentHeight: contentColumn.implicitHeight
+                flickableDirection: Flickable.VerticalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+
+                ColumnLayout {
+                    id: contentColumn
+                    width: patternPanelFlickable.width
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.22
+
+                    QGCLabel {
+                        text: qsTr("Create complex pattern:")
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: popupStyle.primaryTextColor
+                        font.pointSize: 9
+                    }
+
+                    QGCButton {
+                        text: _root._missionController.surveyComplexItemName
+                        Layout.fillWidth: true
+                        visible: _root._supportsSurveyPattern
+                        showBorder: true
+                        backRadius: popupStyle.cornerRadius
+                        pointSize: 8
+                        heightFactor: 0.22
+                        _horizontalPadding: ScreenTools.defaultFontPixelWidth * 0.65
+                        stateAnimationDuration: popupStyle.stateAnimationDuration
+                        backgroundColor: Qt.rgba(0.20, 0.20, 0.20, 0.78)
+                        borderColor: "#4A4A4A"
+
+                        onClicked: {
+                            _root.insertComplexItemAfterCurrent(_root._missionController.surveyComplexItemName)
+                            dropPanel.hide()
+                        }
+                    }
+
+                    QGCButton {
+                        text: _root._missionController.corridorScanComplexItemName
+                        Layout.fillWidth: true
+                        visible: _root._supportsCorridorScanPattern
+                        showBorder: true
+                        backRadius: popupStyle.cornerRadius
+                        pointSize: 8
+                        heightFactor: 0.22
+                        _horizontalPadding: ScreenTools.defaultFontPixelWidth * 0.65
+                        stateAnimationDuration: popupStyle.stateAnimationDuration
+                        backgroundColor: Qt.rgba(0.20, 0.20, 0.20, 0.78)
+                        borderColor: "#4A4A4A"
+
+                        onClicked: {
+                            _root.insertComplexItemAfterCurrent(_root._missionController.corridorScanComplexItemName)
+                            dropPanel.hide()
+                        }
+                    }
+
+                    QGCButton {
+                        text: _root._missionController.structureScanComplexItemName
+                        Layout.fillWidth: true
+                        visible: _root._supportsStructureScanPattern
+                        showBorder: true
+                        backRadius: popupStyle.cornerRadius
+                        pointSize: 8
+                        heightFactor: 0.22
+                        _horizontalPadding: ScreenTools.defaultFontPixelWidth * 0.65
+                        stateAnimationDuration: popupStyle.stateAnimationDuration
+                        backgroundColor: Qt.rgba(0.20, 0.20, 0.20, 0.78)
+                        borderColor: "#4A4A4A"
+
+                        onClicked: {
+                            _root.insertComplexItemAfterCurrent(_root._missionController.structureScanComplexItemName)
+                            dropPanel.hide()
+                        }
+                    }
+
+                    QGCLabel {
+                        Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.18
+                        Layout.fillWidth: true
+                        visible: _root._additionalComplexPatterns.length > 0
+                        text: qsTr("Other patterns:")
+                        wrapMode: Text.WordWrap
+                        color: popupStyle.secondaryTextColor
+                        font.pointSize: 8
+                    }
+
+                    Repeater {
+                        model: _root._additionalComplexPatterns
+
+                        QGCButton {
+                            required property var modelData
+                            text: modelData
+                            Layout.fillWidth: true
+                            showBorder: true
+                            backRadius: popupStyle.cornerRadius
+                            pointSize: 8
+                            heightFactor: 0.22
+                            _horizontalPadding: ScreenTools.defaultFontPixelWidth * 0.65
+                            stateAnimationDuration: popupStyle.stateAnimationDuration
+                            backgroundColor: Qt.rgba(0.20, 0.20, 0.20, 0.78)
+                            borderColor: "#4A4A4A"
+
+                            onClicked: {
+                                _root.insertComplexItemAfterCurrent(modelData)
+                                dropPanel.hide()
+                            }
+                        }
                     }
                 }
             }
-        } // Column
+        }
     }
 
     QGCPopupDialogFactory {
@@ -874,6 +1413,89 @@ Item {
                         onClicked: {
                             insertOrCancelROIDropPanel.close()
                             insertCancelROIAfterCurrent()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: uploadStatusDropPanelComponent
+
+        DropPanel {
+            id: uploadStatusDropPanel
+            property string uploadTitle: ""
+            property string uploadMessage: ""
+            property string confirmButtonText: qsTr("Ok")
+            property var confirmAction: null
+            property bool uploadBusy: false
+            property int autoCloseMs: 0
+
+            onClosed: {
+                if (_root._uploadStatusPanel === uploadStatusDropPanel) {
+                    _root._uploadStatusPanel = null
+                }
+                destroy()
+            }
+
+            onOpened: {
+                if (autoCloseMs > 0) {
+                    autoCloseTimer.restart()
+                }
+            }
+
+            Timer {
+                id: autoCloseTimer
+                interval: uploadStatusDropPanel.autoCloseMs
+                repeat: false
+                onTriggered: uploadStatusDropPanel.close()
+            }
+
+            sourceComponent: Component {
+                ColumnLayout {
+                    width: ScreenTools.defaultFontPixelWidth * 28
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.6
+
+                    BusyIndicator {
+                        Layout.alignment: Qt.AlignHCenter
+                        running: uploadStatusDropPanel.uploadBusy
+                        visible: running
+                    }
+
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                        text: uploadStatusDropPanel.uploadTitle
+                    }
+
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: uploadStatusDropPanel.uploadMessage
+                    }
+
+                    RowLayout {
+                        Layout.alignment: Qt.AlignRight
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.5
+                        visible: !uploadStatusDropPanel.uploadBusy && uploadStatusDropPanel.autoCloseMs <= 0
+
+                        QGCButton {
+                            visible: !!uploadStatusDropPanel.confirmAction
+                            text: qsTr("Cancel")
+                            onClicked: uploadStatusDropPanel.close()
+                        }
+
+                        QGCButton {
+                            text: uploadStatusDropPanel.confirmButtonText
+                            onClicked: {
+                                const action = uploadStatusDropPanel.confirmAction
+                                uploadStatusDropPanel.close()
+                                if (action) {
+                                    action()
+                                }
+                            }
                         }
                     }
                 }

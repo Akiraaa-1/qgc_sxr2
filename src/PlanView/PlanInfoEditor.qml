@@ -25,9 +25,13 @@ Rectangle {
 
     width:  parent ? parent.width : 0
     height: mainColumn.height + ScreenTools.defaultFontPixelHeight
-    color:  qgcPal.windowShadeDark
+    color:  theme.panelColor
+    radius: theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
     QGCPalette { id: qgcPal; colorGroupEnabled: _root.enabled }
+    PlanEditorTheme { id: theme }
 
     ColumnLayout {
         id: mainColumn
@@ -43,9 +47,10 @@ Rectangle {
 
             QGCLabel {
                 text: qsTr("Plan File")
+                color: theme.textColor
             }
 
-            QGCTextField {
+            PlanTextField {
                 id: planNameField
                 placeholderText: qsTr("Untitled")
                 Layout.fillWidth: true
@@ -66,7 +71,7 @@ Rectangle {
         }
 
         // ── Vehicle Info ──
-        SectionHeader {
+        PlanSectionHeader {
             id: vehicleInfoSectionHeader
             Layout.fillWidth: true
             text: qsTr("Vehicle Info")
@@ -78,7 +83,7 @@ Rectangle {
             spacing: ScreenTools.defaultFontPixelWidth
             visible: vehicleInfoSectionHeader.visible && vehicleInfoSectionHeader.checked
 
-            FactComboBox {
+            PlanFactComboBox {
                 fact: QGroundControl.settingsManager.appSettings.offlineEditingFirmwareClass
                 indexModel: false
                 Layout.fillWidth: true
@@ -88,9 +93,10 @@ Rectangle {
                 text: _root._controllerVehicle ? _root._controllerVehicle.firmwareTypeString : ""
                 Layout.fillWidth: true
                 visible: _root._multipleFirmware && !_root._allowFWVehicleTypeSelection
+                color: theme.secondaryTextColor
             }
 
-            FactComboBox {
+            PlanFactComboBox {
                 fact: QGroundControl.settingsManager.appSettings.offlineEditingVehicleClass
                 indexModel: false
                 Layout.fillWidth: true
@@ -100,11 +106,12 @@ Rectangle {
                 text: _root._controllerVehicle ? _root._controllerVehicle.vehicleTypeString : ""
                 Layout.fillWidth: true
                 visible: _root._multipleVehicleTypes && !_root._allowFWVehicleTypeSelection
+                color: theme.secondaryTextColor
             }
         }
 
         // ── Expected Home Position ──
-        SectionHeader {
+        PlanSectionHeader {
             id: plannedHomePositionSection
             Layout.fillWidth: true
             text: qsTr("Expected Home Position")
@@ -118,8 +125,9 @@ Rectangle {
 
             QGCLabel {
                 text: qsTr("Altitude (AMSL)")
+                color: theme.secondaryTextColor
             }
-            FactTextField {
+            PlanFactTextField {
                 fact: _root._settingsItem ? _root._settingsItem.plannedHomePositionAltitude : null
                 Layout.fillWidth: true
                 visible: _root._settingsItem && _root._settingsItem.terrainQueryFailed
@@ -128,6 +136,7 @@ Rectangle {
                 text: _root._settingsItem ? _root._settingsItem.plannedHomePositionAltitude.valueString + " " + _root._settingsItem.plannedHomePositionAltitude.units : ""
                 Layout.fillWidth: true
                 visible: !_root._settingsItem || !_root._settingsItem.terrainQueryFailed
+                color: theme.textColor
             }
         }
 
@@ -138,9 +147,10 @@ Rectangle {
             text: qsTr("Actual position/alt set by vehicle at flight time.")
             horizontalAlignment: Text.AlignHCenter
             visible: plannedHomePositionSection.checked
+            color: theme.secondaryTextColor
         }
 
-        QGCButton {
+        PlanButton {
             text: qsTr("Move To Map Center")
             Layout.alignment: Qt.AlignHCenter
             visible: plannedHomePositionSection.checked

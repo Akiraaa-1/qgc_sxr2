@@ -21,6 +21,27 @@ Item {
     property var climbRateFact: vehicle ? vehicle.climbRate : null
     property real extraInset: 0
     property real extraValuesWidth: 0
+    property bool showHeader: true
+    property bool showHeaderAction: true
+    property string headerTitle: qsTr("INSTRUMENTS")
+    property real headerHeight: ScreenTools.defaultFontPixelHeight * 1.08
+    property real headerSpacing: ScreenTools.defaultFontPixelWidth * 0.16
+    property real headerTitleSize: ScreenTools.defaultFontPixelHeight * 0.66
+    property color headerTitleColor: qgcPal.text
+    property real headerActionSize: ScreenTools.defaultFontPixelHeight * 1.08
+    property real headerActionRightMargin: ScreenTools.defaultFontPixelWidth * 0.06
+    property real headerActionRadius: ScreenTools.defaultFontPixelHeight * 0.12
+    property real headerActionIconScale: 0.46
+    property color headerActionColor: "transparent"
+    property color headerActionHoverColor: "transparent"
+    property color headerActionPressedColor: "transparent"
+    property color headerActionBorderColor: "transparent"
+    property color headerActionIconColor: qgcPal.text
+    property int headerTransitionDuration: 200
+    property real panelLeftMargin: ScreenTools.defaultFontPixelHeight * 0.35
+    property real panelRightMargin: ScreenTools.defaultFontPixelHeight * 0.35
+    property real panelTopMargin: ScreenTools.defaultFontPixelHeight * 0.16
+    property real panelBottomMargin: ScreenTools.defaultFontPixelHeight * 0.35
     readonly property bool hasTurnValue: vehicle && root._hasFactValue(vehicle.roll)
     readonly property real turnValue: hasTurnValue ? Number(vehicle.roll.rawValue) : 0
     readonly property real turnNeedleRotation: Math.max(-45, Math.min(45, turnValue))
@@ -33,11 +54,10 @@ Item {
     readonly property color _cardColor: qgcPal.windowShadeDark
     readonly property color _cardBorderColor: qgcPal.windowShade
     readonly property color _textMutedColor: qgcPal.text
-    readonly property real _panelMargin: ScreenTools.defaultFontPixelHeight * 0.35
-    readonly property real _panelTopMargin: ScreenTools.defaultFontPixelHeight * 0.16
     readonly property real _rowSpacing: ScreenTools.defaultFontPixelHeight * 0.24
     readonly property real _columnSpacing: ScreenTools.defaultFontPixelWidth * 0.24
     readonly property real _dialCardHeight: ScreenTools.defaultFontPixelHeight * 8.3
+    signal headerActionTriggered()
 
     function _hasFactValue(fact) { return fact && !isNaN(Number(fact.rawValue)) }
     function _activeBatteryForVehicle(vehicleObject) {
@@ -99,10 +119,10 @@ Item {
     Flickable {
         id: instrumentFlick
         anchors.fill: parent
-        anchors.leftMargin: root._panelMargin
-        anchors.rightMargin: root._panelMargin
-        anchors.bottomMargin: root._panelMargin
-        anchors.topMargin: root._panelTopMargin
+        anchors.leftMargin: root.panelLeftMargin
+        anchors.rightMargin: root.panelRightMargin
+        anchors.bottomMargin: root.panelBottomMargin
+        anchors.topMargin: root.panelTopMargin
         clip: true
         contentWidth: width
         contentHeight: contentLayout.implicitHeight
@@ -121,32 +141,51 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.08
-                spacing: ScreenTools.defaultFontPixelWidth * 0.16
+                Layout.preferredHeight: root.showHeader ? root.headerHeight : 0
+                spacing: root.headerSpacing
+                visible: root.showHeader
 
                 QGCLabel {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: qsTr("INSTRUMENTS")
-                    color: qgcPal.text
+                    text: root.headerTitle
+                    color: root.headerTitleColor
                     font.weight: Font.DemiBold
-                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
+                    font.pixelSize: root.headerTitleSize
                     verticalAlignment: Text.AlignVCenter
                 }
 
-                Item {
-                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.08
+                Rectangle {
+                    Layout.preferredWidth: root.headerActionSize
                     Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.rightMargin: ScreenTools.defaultFontPixelWidth * 0.06
+                    Layout.rightMargin: root.headerActionRightMargin
+                    visible: root.showHeaderAction
+                    color: headerActionMouseArea.pressed
+                        ? root.headerActionPressedColor
+                        : (headerActionMouseArea.containsMouse ? root.headerActionHoverColor : root.headerActionColor)
+                    radius: root.headerActionRadius
+                    border.width: 1
+                    border.color: root.headerActionBorderColor
+
+                    Behavior on color {
+                        ColorAnimation { duration: root.headerTransitionDuration }
+                    }
 
                     QGCColoredImage {
                         anchors.centerIn: parent
-                        width: parent.height * 0.46
+                        width: parent.height * root.headerActionIconScale
                         height: width
-                        color: qgcPal.text
+                        color: root.headerActionIconColor
                         fillMode: Image.PreserveAspectFit
                         source: "/InstrumentValueIcons/cog.svg"
+                    }
+
+                    QGCMouseArea {
+                        id: headerActionMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.headerActionTriggered()
                     }
                 }
             }

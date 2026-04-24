@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 import QGroundControl
 import QGroundControl.Controls
@@ -10,6 +11,7 @@ import QGroundControl.Controls
 /// enough room to the right then the panel will drop to the left.
 Popup {
     id:             _root
+    property bool _qgcPopupChrome: true
     padding:        _innerMargin
     leftPadding:    _dropRight ? _innerMargin + _arrowPointWidth : _innerMargin
     rightPadding:   _dropRight ? _innerMargin : _innerMargin + _arrowPointWidth
@@ -22,12 +24,18 @@ Popup {
     property var  sourceComponent                                               // Component to display within the popup
     property var  clickRect:        Qt.rect(0, 0, 0, 0)                         // Rectangle of clicked item - used to position drop down
     property var  dropViewPort:     Qt.rect(0, 0, parent.width, parent.height)  // Available viewport for dropdown
+    property color backgroundColor: popupStyle.popupBackground
+    property color borderColor:     popupStyle.borderColor
+    property real  borderWidth:     1
+    property real  panelRadius:     popupStyle.cornerRadius
 
     property var  _qgcPal:              QGroundControl.globalPalette
     property real _innerMargin:         ScreenTools.defaultFontPixelWidth * 0.5 // Margin between content and rectanglular portion of background
     property real _arrowPointWidth:     ScreenTools.defaultFontPixelWidth * 2   // Distance from vertical side to point
     property real _arrowPointPositionY: height / 2
     property bool _dropRight:           true
+
+    QGCPopupStyle { id: popupStyle }
 
     onAboutToShow: {
         // Panel defaults to dropping to the right of click position
@@ -59,12 +67,36 @@ Popup {
         implicitWidth:  contentItem.implicitWidth + _innerMargin * 2 + _arrowPointWidth
         implicitHeight: contentItem.implicitHeight + _innerMargin * 2
 
+        Item {
+            anchors.fill: parent
+
+            Rectangle {
+                id:         shadowSource
+                anchors.fill: parent
+                radius:     _root.panelRadius
+                color:      _root.backgroundColor
+                visible:    false
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: shadowSource
+                shadowEnabled: true
+                shadowColor: "#80000000"
+                shadowBlur: 0.8
+                shadowScale: 1.0
+                shadowVerticalOffset: 4
+            }
+        }
+
         Rectangle {
             x:      _dropRight ? _arrowPointWidth : 0
-            radius: ScreenTools.defaultFontPixelHeight / 2
+            radius: _root.panelRadius
             width:  parent.implicitWidth - _arrowPointWidth
             height: parent.implicitHeight
-            color:  _qgcPal.window
+            color:  _root.backgroundColor
+            border.color: _root.borderColor
+            border.width: _root.borderWidth
         }
 
         // Arrowhead
@@ -82,7 +114,7 @@ Popup {
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, 0)
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, _arrowPointWidth * 2)
                 context.closePath()
-                context.fillStyle = _qgcPal.window
+                context.fillStyle = _root.backgroundColor
                 context.fill()
             }
         }

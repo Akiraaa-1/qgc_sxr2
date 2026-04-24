@@ -19,6 +19,28 @@ Item {
     property color failColor: "#D88E8E"
     property int minimumBatteryPercent: 40
     property int minimumSatellites: 10
+    property real contentLeftMargin: ScreenTools.defaultFontPixelHeight * 0.32
+    property real contentRightMargin: ScreenTools.defaultFontPixelHeight * 0.32
+    property real contentTopMargin: ScreenTools.defaultFontPixelHeight * 0.32
+    property real contentBottomMargin: ScreenTools.defaultFontPixelHeight * 0.32
+    property real contentSpacing: ScreenTools.defaultFontPixelHeight * 0.18
+    property bool showHeader: true
+    property bool showHeaderAction: false
+    property string headerTitle: qsTr("CHECKLIST")
+    property real headerHeight: ScreenTools.defaultFontPixelHeight * 1.16
+    property real headerSpacing: ScreenTools.defaultFontPixelWidth * 0.16
+    property real headerTitleSize: ScreenTools.defaultFontPixelHeight * 0.64
+    property real headerActionSize: ScreenTools.defaultFontPixelHeight * 0.96
+    property real headerActionRightMargin: ScreenTools.defaultFontPixelWidth * 0.06
+    property real headerActionRadius: 8
+    property real headerActionIconScale: 0.52
+    property color headerActionColor: "#333333"
+    property color headerActionHoverColor: "#3D3D3D"
+    property color headerActionPressedColor: "#292929"
+    property color headerActionBorderColor: "#333333"
+    property color headerActionIconColor: "#B0B0B0"
+    property int headerTransitionDuration: 200
+    signal headerActionTriggered()
 
     property bool _hardwareChecked: false
     property bool _batteryConnectorChecked: false
@@ -72,12 +94,23 @@ Item {
                                             (_gpsPassed ? 1 : 0) +
                                             (_radioChecked ? 1 : 0)
 
-    onVehicleChanged: _resetManualChecks()
+    onVehicleChanged: {
+        _resetManualChecks()
+        _syncChecklistState()
+    }
+    on_AllChecksPassedChanged: _syncChecklistState()
 
     function _resetManualChecks() {
         _hardwareChecked = false
         _batteryConnectorChecked = false
         _radioChecked = false
+    }
+
+    function _syncChecklistState() {
+        if (!vehicle) {
+            return
+        }
+        vehicle.checkListState = _allChecksPassed ? Vehicle.CheckListPassed : Vehicle.CheckListFailed
     }
 
     function _isManualRow(key) {
@@ -202,15 +235,60 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.32
-            spacing: ScreenTools.defaultFontPixelHeight * 0.18
+            anchors.leftMargin: root.contentLeftMargin
+            anchors.rightMargin: root.contentRightMargin
+            anchors.topMargin: root.contentTopMargin
+            anchors.bottomMargin: root.contentBottomMargin
+            spacing: root.contentSpacing
 
-            QGCLabel {
+            RowLayout {
                 Layout.fillWidth: true
-                color: titleColor
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.64
-                font.weight: Font.DemiBold
-                text: qsTr("CHECKLIST")
+                Layout.preferredHeight: root.showHeader ? root.headerHeight : 0
+                spacing: root.headerSpacing
+                visible: root.showHeader
+
+                QGCLabel {
+                    Layout.fillWidth: true
+                    color: titleColor
+                    font.pixelSize: root.headerTitleSize
+                    font.weight: Font.DemiBold
+                    text: root.headerTitle
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: root.headerActionSize
+                    Layout.preferredHeight: Layout.preferredWidth
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.rightMargin: root.headerActionRightMargin
+                    visible: root.showHeaderAction
+                    color: checklistHeaderActionMouseArea.pressed
+                        ? root.headerActionPressedColor
+                        : (checklistHeaderActionMouseArea.containsMouse ? root.headerActionHoverColor : root.headerActionColor)
+                    radius: root.headerActionRadius
+                    border.width: 1
+                    border.color: root.headerActionBorderColor
+
+                    Behavior on color {
+                        ColorAnimation { duration: root.headerTransitionDuration }
+                    }
+
+                    QGCColoredImage {
+                        anchors.centerIn: parent
+                        width: parent.height * root.headerActionIconScale
+                        height: width
+                        color: root.headerActionIconColor
+                        fillMode: Image.PreserveAspectFit
+                        source: "/InstrumentValueIcons/cog.svg"
+                    }
+
+                    QGCMouseArea {
+                        id: checklistHeaderActionMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.headerActionTriggered()
+                    }
+                }
             }
 
             Flickable {

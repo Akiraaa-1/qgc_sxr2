@@ -8,6 +8,7 @@ import QGroundControl.Controls
 Item {
     required property var editorMap
     required property var planMasterController
+    property bool dockLeft: false
 
     signal editingLayerChangeRequested(int layer)
 
@@ -15,6 +16,9 @@ Item {
 
     property var  _missionController: planMasterController.missionController
     property real _toolsMargin:       ScreenTools.defaultFontPixelWidth * 0.75
+    property real _panelRadius:       8
+
+    PlanEditorTheme { id: theme }
 
     function selectNextNotReady() {
         for (var i = 0; i < _missionController.visualItems.count; i++) {
@@ -31,51 +35,82 @@ Item {
     Rectangle {
         id:             rightPanelBackground
         anchors.fill:   parent
-        color:          qgcPal.window
-        opacity:        0.85
+        radius:         _panelRadius
+        color:          theme.panelColor
+        border.width:   1
+        border.color:   theme.borderColor
+
+        gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0; color: theme.windowTopColor }
+            GradientStop { position: 1; color: theme.windowBottomColor }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -1
+            radius: parent.radius + 1
+            color: theme.shadowColor
+            z: -1
+        }
     }
 
 
     // Open/Close panel
     Item {
         id:                     panelOpenCloseButton
-        anchors.right:          parent.left
+        anchors.right:          dockLeft ? undefined : parent.left
+        anchors.left:           dockLeft ? parent.right : undefined
         anchors.verticalCenter: parent.verticalCenter
         width:                  toggleButtonRect.width - toggleButtonRect.radius
         height:                 toggleButtonRect.height
         clip:                   true
 
-        property bool _expanded: root.anchors.right == root.parent.right
+        property bool _expanded: dockLeft ? root.anchors.left == root.parent.left : root.anchors.right == root.parent.right
 
         Rectangle {
             id:             toggleButtonRect
             width:          ScreenTools.defaultFontPixelWidth * 2.25
             height:         width * 3
-            radius:         ScreenTools.defaultBorderRadius
-            color:          rightPanelBackground.color
-            opacity:        rightPanelBackground.opacity
+            radius:         _panelRadius
+            color:          toggleArea.pressed ? theme.panelPressedColor : (toggleArea.containsMouse ? theme.panelHoverColor : theme.panelColor)
+            border.width:   1
+            border.color:   theme.borderColor
+
+            Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
             QGCLabel {
                 id:                 toggleButtonLabel
                 anchors.centerIn:   parent
-                text:               panelOpenCloseButton._expanded ? ">" : "<"
-                color:              qgcPal.buttonText
+                text:               dockLeft ? (panelOpenCloseButton._expanded ? "<" : ">") : (panelOpenCloseButton._expanded ? ">" : "<")
+                color:              theme.textColor
             }
 
         }
 
         QGCMouseArea {
+            id: toggleArea
             anchors.fill: parent
 
             onClicked: {
                 if (panelOpenCloseButton._expanded) {
                     // Close panel
-                    root.anchors.right = undefined
-                    root.anchors.left = root.parent.right
+                    if (dockLeft) {
+                        root.anchors.left = undefined
+                        root.anchors.right = root.parent.left
+                    } else {
+                        root.anchors.right = undefined
+                        root.anchors.left = root.parent.right
+                    }
                 } else {
                     // Open panel
-                    root.anchors.left = undefined
-                    root.anchors.right = root.parent.right
+                    if (dockLeft) {
+                        root.anchors.right = undefined
+                        root.anchors.left = root.parent.left
+                    } else {
+                        root.anchors.left = undefined
+                        root.anchors.right = root.parent.right
+                    }
                 }
             }
         }
@@ -102,8 +137,13 @@ Item {
     function selectLayer(nodeType) {
         // Ensure panel is open
         if (!panelOpenCloseButton._expanded) {
-            root.anchors.left = undefined
-            root.anchors.right = root.parent.right
+            if (dockLeft) {
+                root.anchors.right = undefined
+                root.anchors.left = root.parent.left
+            } else {
+                root.anchors.left = undefined
+                root.anchors.right = root.parent.right
+            }
         }
         planTreeView.selectLayer(nodeType)
     }

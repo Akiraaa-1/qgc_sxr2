@@ -13,7 +13,7 @@ AnalyzePage {
 
     readonly property real _margin: ScreenTools.defaultFontPixelWidth
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: true }
+    AnalyzePalette { id: analyzePalette }
 
     Component {
         id: pageComponent
@@ -23,11 +23,9 @@ AnalyzePage {
             width:      availableWidth
 
             // Status Card
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: statusColumn.height + _margin * 2
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
                 visible:                GeoTagController.inProgress || GeoTagController.errorMessage || GeoTagController.taggedCount > 0
 
                 ColumnLayout {
@@ -70,7 +68,7 @@ AnalyzePage {
                     QGCLabel {
                         Layout.fillWidth:       true
                         text:                   GeoTagController.errorMessage
-                        color:                  qgcPal.colorRed
+                        color:                  analyzePalette.accent
                         font.bold:              true
                         wrapMode:               Text.WordWrap
                         horizontalAlignment:    Text.AlignHCenter
@@ -96,7 +94,7 @@ AnalyzePage {
                             }
                             return ""
                         }
-                        color:                  GeoTagController.failedCount > 0 ? qgcPal.colorOrange : qgcPal.colorGreen
+                        color:                  analyzePalette.textSecondary
                         font.bold:              true
                         horizontalAlignment:    Text.AlignHCenter
                         visible:                GeoTagController.taggedCount > 0 && !GeoTagController.inProgress
@@ -105,11 +103,9 @@ AnalyzePage {
             }
 
             // Step 1: Log File
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: step1Column.height + _margin * 2
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
 
                 ColumnLayout {
                     id:                 step1Column
@@ -127,12 +123,12 @@ AnalyzePage {
                             Layout.preferredWidth:  ScreenTools.defaultFontPixelHeight * 1.5
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
                             radius:                 height / 2
-                            color:                  GeoTagController.logFile ? qgcPal.colorGreen : qgcPal.button
+                            color:                  GeoTagController.logFile ? analyzePalette.accent : analyzePalette.secondaryButton
 
                             QGCLabel {
                                 anchors.centerIn:   parent
                                 text:               GeoTagController.logFile ? "\u2713" : "1"
-                                color:              GeoTagController.logFile ? "white" : qgcPal.buttonText
+                                color:              GeoTagController.logFile ? analyzePalette.textPrimary : analyzePalette.textSecondary
                                 font.bold:          true
                             }
                         }
@@ -147,7 +143,7 @@ AnalyzePage {
                         Layout.fillWidth: true
                         spacing: _margin
 
-                        QGCButton {
+                        AnalyzeButton {
                             text:               qsTr("Browse...")
                             enabled:            !GeoTagController.inProgress
                             onClicked:          openLogFile.openForLoad()
@@ -175,11 +171,9 @@ AnalyzePage {
             }
 
             // Step 2: Image Directory
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: step2Column.height + _margin * 2
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
 
                 ColumnLayout {
                     id:                 step2Column
@@ -197,12 +191,12 @@ AnalyzePage {
                             Layout.preferredWidth:  ScreenTools.defaultFontPixelHeight * 1.5
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
                             radius:                 height / 2
-                            color:                  GeoTagController.imageDirectory ? qgcPal.colorGreen : qgcPal.button
+                            color:                  GeoTagController.imageDirectory ? analyzePalette.accent : analyzePalette.secondaryButton
 
                             QGCLabel {
                                 anchors.centerIn:   parent
                                 text:               GeoTagController.imageDirectory ? "\u2713" : "2"
-                                color:              GeoTagController.imageDirectory ? "white" : qgcPal.buttonText
+                                color:              GeoTagController.imageDirectory ? analyzePalette.textPrimary : analyzePalette.textSecondary
                                 font.bold:          true
                             }
                         }
@@ -217,7 +211,7 @@ AnalyzePage {
                         Layout.fillWidth: true
                         spacing: _margin
 
-                        QGCButton {
+                        AnalyzeButton {
                             text:               qsTr("Browse...")
                             enabled:            !GeoTagController.inProgress
                             onClicked:          selectImageDir.openForLoad()
@@ -244,11 +238,9 @@ AnalyzePage {
             }
 
             // Step 3: Save Directory (Optional)
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: step3Column.height + _margin * 2
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
 
                 ColumnLayout {
                     id:                 step3Column
@@ -266,12 +258,12 @@ AnalyzePage {
                             Layout.preferredWidth:  ScreenTools.defaultFontPixelHeight * 1.5
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
                             radius:                 height / 2
-                            color:                  qgcPal.button
+                            color:                  analyzePalette.secondaryButton
 
                             QGCLabel {
                                 anchors.centerIn:   parent
                                 text:               "3"
-                                color:              qgcPal.buttonText
+                                color:              analyzePalette.textSecondary
                                 font.bold:          true
                             }
                         }
@@ -286,7 +278,7 @@ AnalyzePage {
                         Layout.fillWidth: true
                         spacing: _margin
 
-                        QGCButton {
+                        AnalyzeButton {
                             text:               qsTr("Browse...")
                             enabled:            !GeoTagController.inProgress
                             onClicked:          selectDestDir.openForLoad()
@@ -320,11 +312,9 @@ AnalyzePage {
             }
 
             // Advanced Options
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: advancedColumn.height + _margin * 2
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
 
                 ColumnLayout {
                     id:                 advancedColumn
@@ -347,7 +337,7 @@ AnalyzePage {
                             text: qsTr("Time Offset (seconds):")
                         }
 
-                        QGCTextField {
+                        AnalyzeTextField {
                             id:                     timeOffsetField
                             Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 10
                             text:                   GeoTagController.timeOffsetSecs.toFixed(1)
@@ -369,7 +359,7 @@ AnalyzePage {
                         Layout.fillWidth: true
                         spacing: _margin
 
-                        QGCCheckBox {
+                        AnalyzeCheckBox {
                             id:         previewCheckbox
                             text:       qsTr("Preview mode (don't write files)")
                             checked:    GeoTagController.previewMode
@@ -388,9 +378,10 @@ AnalyzePage {
             }
 
             // Action Button
-            QGCButton {
+            AnalyzeButton {
                 Layout.alignment:       Qt.AlignHCenter
                 Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 20
+                primary:                true
                 text: {
                     if (GeoTagController.inProgress) {
                         return qsTr("Cancel")
@@ -411,12 +402,10 @@ AnalyzePage {
             }
 
             // Image List
-            Rectangle {
+            AnalyzeCard {
                 Layout.fillWidth:       true
                 Layout.fillHeight:      true
                 Layout.minimumHeight:   ScreenTools.defaultFontPixelHeight * 10
-                color:                  qgcPal.windowShade
-                radius:                 ScreenTools.defaultFontPixelWidth / 2
                 visible:                GeoTagController.imageModel.count > 0
 
                 ColumnLayout {
@@ -441,27 +430,27 @@ AnalyzePage {
 
                             Row {
                                 spacing: _margin / 4
-                                Rectangle { width: 10; height: 10; radius: 2; color: qgcPal.text; opacity: 0.5 }
+                                Rectangle { width: 10; height: 10; radius: 2; color: analyzePalette.textDisabled; opacity: 0.8 }
                                 QGCLabel { text: qsTr("Pending"); font.pointSize: ScreenTools.smallFontPointSize }
                             }
                             Row {
                                 spacing: _margin / 4
-                                Rectangle { width: 10; height: 10; radius: 2; color: qgcPal.colorBlue }
+                                Rectangle { width: 10; height: 10; radius: 2; color: analyzePalette.accent }
                                 QGCLabel { text: qsTr("Processing"); font.pointSize: ScreenTools.smallFontPointSize }
                             }
                             Row {
                                 spacing: _margin / 4
-                                Rectangle { width: 10; height: 10; radius: 2; color: qgcPal.colorGreen }
+                                Rectangle { width: 10; height: 10; radius: 2; color: "#8CB3FF" }
                                 QGCLabel { text: qsTr("Tagged"); font.pointSize: ScreenTools.smallFontPointSize }
                             }
                             Row {
                                 spacing: _margin / 4
-                                Rectangle { width: 10; height: 10; radius: 2; color: qgcPal.colorOrange }
+                                Rectangle { width: 10; height: 10; radius: 2; color: "#7A7A7A" }
                                 QGCLabel { text: qsTr("Skipped"); font.pointSize: ScreenTools.smallFontPointSize }
                             }
                             Row {
                                 spacing: _margin / 4
-                                Rectangle { width: 10; height: 10; radius: 2; color: qgcPal.colorRed }
+                                Rectangle { width: 10; height: 10; radius: 2; color: "#5A5A5A" }
                                 QGCLabel { text: qsTr("Failed"); font.pointSize: ScreenTools.smallFontPointSize }
                             }
                         }
@@ -470,7 +459,7 @@ AnalyzePage {
                     Rectangle {
                         Layout.fillWidth:   true
                         height:             1
-                        color:              qgcPal.text
+                        color:              analyzePalette.border
                         opacity:            0.2
                     }
 
@@ -483,8 +472,8 @@ AnalyzePage {
                         delegate: Rectangle {
                             width:      imageListView.width
                             height:     ScreenTools.defaultFontPixelHeight * 2
-                            color:      index % 2 === 0 ? "transparent" : qgcPal.window
-                            radius:     ScreenTools.defaultFontPixelWidth / 4
+                            color:      index % 2 === 0 ? "transparent" : analyzePalette.surfaceHover
+                            radius:     analyzePalette.cornerRadius
 
                             RowLayout {
                                 anchors.fill:       parent
@@ -499,12 +488,12 @@ AnalyzePage {
                                     radius:                 ScreenTools.defaultFontPixelWidth / 4
                                     color: {
                                         switch (model.status) {
-                                        case 0: return qgcPal.text    // Pending
-                                        case 1: return qgcPal.colorBlue   // Processing
-                                        case 2: return qgcPal.colorGreen  // Tagged
-                                        case 3: return qgcPal.colorOrange // Skipped
-                                        case 4: return qgcPal.colorRed    // Failed
-                                        default: return qgcPal.text
+                                        case 0: return analyzePalette.textDisabled   // Pending
+                                        case 1: return analyzePalette.accent         // Processing
+                                        case 2: return "#8CB3FF"                     // Tagged
+                                        case 3: return "#7A7A7A"                     // Skipped
+                                        case 4: return "#5A5A5A"                     // Failed
+                                        default: return analyzePalette.textDisabled
                                         }
                                     }
                                     opacity: model.status === 0 ? 0.5 : 1.0
@@ -544,7 +533,7 @@ AnalyzePage {
                                     Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12
                                     text:               model.errorMessage ? model.errorMessage : model.statusString
                                     font.pointSize:     ScreenTools.smallFontPointSize
-                                    color:              model.status === 4 ? qgcPal.colorRed : (model.status === 3 ? qgcPal.colorOrange : qgcPal.text)
+                                    color:              model.status === 1 ? analyzePalette.accent : analyzePalette.textSecondary
                                     elide:              Text.ElideRight
                                     horizontalAlignment: Text.AlignRight
                                 }

@@ -17,13 +17,20 @@ CheckBox {
     }
 
     property color  textColor:          qgcPal.buttonText
+    property color  boxBackgroundColor: control.enabled ? "white" : "transparent"
+    property color  boxBorderColor:     qgcPal.buttonBorder
+    property color  checkColor:         qgcPal.buttonHighlight
+    property color  hoverColor:         qgcPal.buttonHighlight
     property bool   textBold:           false
     property real   textFontPointSize:  ScreenTools.defaultFontPointSize
     property ButtonGroup buttonGroup: null
+    property int stateAnimationDuration: 200
 
     property bool _noText: text === ""
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     onButtonGroupChanged: {
         if (buttonGroup) {
@@ -40,7 +47,9 @@ CheckBox {
         font.pointSize:     textFontPointSize
         font.bold:          control.textBold
         font.family:        ScreenTools.normalFontFamily
-        color:              control.textColor
+        color:              control._popupStyled
+            ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
+            : control.textColor
     }
 
     indicator:  Rectangle {
@@ -48,22 +57,25 @@ CheckBox {
         implicitHeight: implicitWidth
         x:              control.leftPadding
         y:              parent.height / 2 - height / 2
-        color:          control.enabled ? "white" : "transparent"
-        border.color:   qgcPal.buttonBorder
+        color:          control._popupStyled ? popupStyle.inputBackground : control.boxBackgroundColor
+        border.color:   control._popupStyled ? (control.checked ? popupStyle.accentColor : popupStyle.borderColor) : control.boxBorderColor
         border.width:   1
-        radius:         ScreenTools.defaultBorderRadius
+        radius:         control._popupStyled ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
         opacity:        control.checkedState === Qt.PartiallyChecked ? 0.5 : 1
+        Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
         Rectangle {
             anchors.fill:   parent
-            color:          qgcPal.buttonHighlight
+            color:          control._popupStyled ? popupStyle.hoverColor(popupStyle.inputBackground) : control.hoverColor
             opacity:        control.hovered ? .2 : 0
             radius:         parent.radius
+            Behavior on opacity { NumberAnimation { duration: control.stateAnimationDuration } }
         }
 
         QGCColoredImage {
             source:             "/qmlimages/checkbox-check.svg"
-            color:              qgcPal.buttonHighlight
+            color:              control._popupStyled ? popupStyle.accentColor : control.checkColor
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             width:              parent.implicitWidth * 0.75

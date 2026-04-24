@@ -7,9 +7,9 @@ import QGroundControl.Controls
 
 TextField {
     id:                 control
-    color:              qgcPal.textFieldText
-    selectionColor:     qgcPal.textFieldText
-    selectedTextColor:  qgcPal.textField
+    color:              control._popupStyled ? popupStyle.primaryTextColor : control.textColor
+    selectionColor:     control._popupStyled ? popupStyle.accentColor : control.textColor
+    selectedTextColor:  control._popupStyled ? popupStyle.primaryTextColor : control.backgroundColor
     activeFocusOnPress: true
     antialiasing:       true
     font.pointSize:     ScreenTools.defaultFontPointSize
@@ -28,11 +28,21 @@ TextField {
     property string unitsLabel:         ""
     property string extraUnitsLabel:    ""
     property bool   numericValuesOnly:  false   // true: Used as hint for mobile devices to show numeric only keyboard
-    property alias  textColor:          control.color
+    property color  textColor:          qgcPal.textFieldText
+    property color  backgroundColor:    qgcPal.textField
+    property color  borderColor:        qgcPal.buttonBorder
+    property color  focusBorderColor:   borderColor
+    property color  focusGlowColor:     focusBorderColor
+    property real   borderRadius:       ScreenTools.defaultBorderRadius
+    property real   borderWidth:        qgcPal.globalTheme === QGCPalette.Light ? 1 : 0
+    property real   focusBorderWidth:   1
+    property bool   showFocusGlow:      false
     property bool   validationError:    false
 
     property real _helpLayoutWidth: 0
     property real _marginPadding:   ScreenTools.defaultFontPixelHeight / 3
+    property int _stateAnimationDuration: 200
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
     signal helpClicked
 
@@ -40,6 +50,7 @@ TextField {
     onActiveFocusChanged: checkActiveFocus()
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+    QGCPopupStyle { id: popupStyle }
 
     onEditingFinished: {
         if (ScreenTools.isMobile) {
@@ -83,12 +94,29 @@ TextField {
     }
 
     background: Rectangle {
-        border.width:   control.validationError ? 2 : (qgcPal.globalTheme === QGCPalette.Light ? 1 : 0)
-        border.color:   control.validationError ? qgcPal.colorRed : qgcPal.buttonBorder
-        radius:         ScreenTools.defaultBorderRadius
-        color:          qgcPal.textField
+        border.width:   control.validationError ? 2 : (control.activeFocus ? control.focusBorderWidth : control.borderWidth)
+        border.color:   control.validationError
+                            ? qgcPal.colorRed
+                            : (control.activeFocus
+                                ? (control._popupStyled ? popupStyle.accentColor : control.focusBorderColor)
+                                : (control._popupStyled ? popupStyle.borderColor : control.borderColor))
+        radius:         control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+        color:          control._popupStyled ? popupStyle.inputBackground : control.backgroundColor
         implicitWidth:  ScreenTools.implicitTextFieldWidth
         implicitHeight: ScreenTools.implicitTextFieldHeight
+
+        Behavior on color { ColorAnimation { duration: control._stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: control._stateAnimationDuration } }
+
+        Rectangle {
+            anchors.fill: parent
+            visible: control.activeFocus && (control.showFocusGlow || control._popupStyled) && !control.validationError
+            radius: parent.radius
+            color: "transparent"
+            border.width: 1
+            border.color: control._popupStyled ? popupStyle.focusGlowColor(0.45) : Qt.rgba(control.focusGlowColor.r, control.focusGlowColor.g, control.focusGlowColor.b, 0.50)
+            opacity: 0.65
+        }
 
         RowLayout {
             id:                     unitsHelpLayout
@@ -117,7 +145,7 @@ TextField {
                 QGCLabel {
                     id:                 helpLabel
                     anchors.centerIn:   parent
-                    color:              qgcPal.textField
+                    color:              control._popupStyled ? popupStyle.popupBackground : qgcPal.textField
                     text:               qsTr("?")
                 }
 
@@ -130,7 +158,7 @@ TextField {
                 font.pointSize:     ScreenTools.smallFontPointSize
                 font.family:        ScreenTools.normalFontFamily
                 antialiasing:       true
-                color:              control.color
+                color:              control._popupStyled ? popupStyle.secondaryTextColor : control.color
                 visible:            control.showUnits && text !== ""
             }
 
@@ -141,7 +169,7 @@ TextField {
                 font.pointSize:     control.activeFocus ? ScreenTools.smallFontPointSize : ScreenTools.defaultFontPointSize
                 font.family:        ScreenTools.normalFontFamily
                 antialiasing:       true
-                color:              control.color
+                color:              control._popupStyled ? popupStyle.secondaryTextColor : control.color
                 visible:            control.showUnits && text !== ""
             }
         }

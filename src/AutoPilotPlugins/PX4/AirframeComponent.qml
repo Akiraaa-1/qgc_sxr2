@@ -9,6 +9,9 @@ import QGroundControl.Controls
 SetupPage {
     id:             airframePage
     pageComponent:  (controller && controller.showCustomConfigPanel) ? customFrame : pageComponent
+    centerDescriptionText: true
+
+    QGCPopupStyle { id: popupStyle }
 
     AirframeComponentController {
         id:         controller
@@ -18,27 +21,50 @@ SetupPage {
         id: customFrame
         Column {
             width:          availableWidth
-            spacing:        ScreenTools.defaultFontPixelHeight * 4
+            spacing:        ScreenTools.defaultFontPixelHeight * 2
+
             Item {
                 width:      1
                 height:     1
             }
-            QGCLabel {
+
+            Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width:      parent.width * 0.5
-                height:     ScreenTools.defaultFontPixelHeight * 4
-                wrapMode:   Text.WordWrap
-                text:       qsTr("Your vehicle is using a custom airframe configuration. ") +
-                            qsTr("This configuration can only be modified through the Parameter Editor.\n\n") +
-                            qsTr("If you want to reset your airframe configuration and select a standard configuration, click 'Reset' below.")
+                width:      Math.min(parent.width, ScreenTools.defaultFontPixelWidth * 72)
+                height:     customText.contentHeight + ScreenTools.defaultFontPixelHeight * 2
+                color:      popupStyle.panelBackground
+                radius:     popupStyle.cornerRadius
+                border.width: 1
+                border.color: popupStyle.borderColor
+
+                QGCLabel {
+                    id:                 customText
+                    anchors.fill:       parent
+                    anchors.margins:    ScreenTools.defaultFontPixelHeight
+                    wrapMode:           Text.WordWrap
+                    color:              popupStyle.primaryTextColor
+                    text:               qsTr("Your vehicle is using a custom airframe configuration. ") +
+                                        qsTr("This configuration can only be modified through the Parameter Editor.\n\n") +
+                                        qsTr("If you want to reset your airframe configuration and select a standard configuration, click 'Reset' below.")
+                }
             }
+
             QGCButton {
                 text:       qsTr("Reset")
                 enabled:    sys_autostart
                 anchors.horizontalCenter: parent.horizontalCenter
                 property Fact sys_autostart: controller.getParameterFact(-1, "SYS_AUTOSTART")
+                showBorder: true
+                backRadius: popupStyle.cornerRadius
+                backgroundColor: popupStyle.secondaryButtonColor
+                borderColor: popupStyle.borderColor
+                textColor: popupStyle.primaryTextColor
+                overlayColor: "#FFFFFF"
+                hoverOverlayOpacity: 0.08
+                pressedOverlayOpacity: 0.14
+                stateAnimationDuration: popupStyle.stateAnimationDuration
                 onClicked: {
-                    if(sys_autostart) {
+                    if (sys_autostart) {
                         sys_autostart.value = 0
                     }
                 }
@@ -69,12 +95,12 @@ SetupPage {
                 var sw  = 0
                 var rw  = 0
                 var idx = Math.floor(mainColumn.width / (_minW + ScreenTools.defaultFontPixelWidth))
-                if(idx < 1) {
+                if (idx < 1) {
                     _boxWidth = mainColumn.width
                     _boxSpace = 0
                 } else {
                     _boxSpace = 0
-                    if(idx > 1) {
+                    if (idx > 1) {
                         _boxSpace = ScreenTools.defaultFontPixelWidth
                         sw = _boxSpace * (idx - 1)
                     }
@@ -87,30 +113,53 @@ SetupPage {
                 id:             helpApplyRow
                 anchors.left:   parent.left
                 anchors.right:  parent.right
-                height:         Math.max(helpText.contentHeight, applyButton.height)
+                height:         Math.max(helpText.contentHeight, applyButton.height) + ScreenTools.defaultFontPixelHeight
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: popupStyle.panelBackground
+                    radius: popupStyle.cornerRadius
+                    border.width: 1
+                    border.color: popupStyle.borderColor
+                }
 
                 QGCLabel {
                     id:             helpText
-                    width:          parent.width - applyButton.width - 5
+                    anchors.left:   parent.left
+                    anchors.leftMargin: ScreenTools.defaultFontPixelHeight * 0.6
+                    anchors.right:  applyButton.left
+                    anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.6
+                    anchors.verticalCenter: parent.verticalCenter
                     text:           (controller.currentVehicleName != "" ?
                                          qsTr("You've connected a %1.").arg(controller.currentVehicleName) :
                                          qsTr("Airframe is not set.")) +
                                     qsTr(" To change this configuration, select the desired airframe below then click 'Apply and Restart'.")
                     font.bold:      true
                     wrapMode:       Text.WordWrap
+                    color:          popupStyle.primaryTextColor
                 }
 
                 QGCButton {
                     id:             applyButton
                     anchors.right:  parent.right
+                    anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.6
+                    anchors.verticalCenter: parent.verticalCenter
                     text:           qsTr("Apply and Restart")
+                    showBorder:     true
+                    backRadius:     popupStyle.cornerRadius
+                    backgroundColor: popupStyle.primaryButtonColor
+                    borderColor:    popupStyle.borderColor
+                    textColor:      popupStyle.primaryTextColor
+                    overlayColor:   "#000000"
+                    hoverOverlayOpacity: 0.12
+                    pressedOverlayOpacity: 0.20
+                    stateAnimationDuration: popupStyle.stateAnimationDuration
                     onClicked:      QGroundControl.showMessageDialog(airframePage, qsTr("Apply and Restart"),
                                                                  qsTr("Clicking 'Apply' will save the changes you have made to your airframe configuration.<br><br>\
                                                                         All vehicle parameters other than Radio Calibration will be reset.<br><br>\
                                                                         Your vehicle will also be restarted in order to complete the process."),
                                                                  Dialog.Apply | Dialog.Cancel,
                                                                  function() { controller.changeAutostart() })
-
                 }
             }
 
@@ -136,13 +185,23 @@ SetupPage {
                     Rectangle {
                         width:  _boxWidth
                         height: ScreenTools.defaultFontPixelHeight * 14
-                        color:  qgcPal.window
+                        color:  cardMouse.pressed
+                                    ? popupStyle.pressedColor(popupStyle.panelBackground)
+                                    : (cardMouse.containsMouse ? popupStyle.hoverColor(popupStyle.panelBackground) : popupStyle.panelBackground)
+                        radius: popupStyle.cornerRadius
+                        border.width: 1
+                        border.color: popupStyle.borderColor
+                        clip: true
 
                         readonly property real titleHeight: ScreenTools.defaultFontPixelHeight * 1.75
                         readonly property real innerMargin: ScreenTools.defaultFontPixelWidth
 
+                        Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+
                         MouseArea {
-                            anchors.fill: parent
+                            id:             cardMouse
+                            anchors.fill:   parent
+                            hoverEnabled:   !ScreenTools.isMobile
 
                             onClicked: {
                                 applyButton.primary = true
@@ -151,8 +210,13 @@ SetupPage {
                         }
 
                         QGCLabel {
-                            id:     title
-                            text:   modelData.name
+                            id:                 title
+                            text:               modelData.name
+                            color:              popupStyle.primaryTextColor
+                            anchors.left:       parent.left
+                            anchors.leftMargin: innerMargin
+                            anchors.top:        parent.top
+                            anchors.topMargin:  innerMargin * 0.5
                         }
 
                         Rectangle {
@@ -161,7 +225,17 @@ SetupPage {
                             anchors.bottom:     parent.bottom
                             anchors.left:       parent.left
                             anchors.right:      parent.right
-                            color:              airframeCheckBox.checked ? qgcPal.buttonHighlight : qgcPal.windowShade
+                            color:              airframeCheckBox.checked
+                                                    ? Qt.rgba(popupStyle.accentColor.r, popupStyle.accentColor.g, popupStyle.accentColor.b, 0.22)
+                                                    : (cardMouse.pressed
+                                                        ? popupStyle.pressedColor(popupStyle.inputBackground)
+                                                        : (cardMouse.containsMouse ? popupStyle.hoverColor(popupStyle.inputBackground) : popupStyle.inputBackground))
+                            radius:             popupStyle.cornerRadius
+                            border.width:       1
+                            border.color:       airframeCheckBox.checked ? popupStyle.accentColor : popupStyle.borderColor
+
+                            Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+                            Behavior on border.color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
 
                             Image {
                                 id:                 image
@@ -200,6 +274,19 @@ SetupPage {
                                 anchors.right:      parent.right
                                 model:              modelData.airframes
                                 textRole:           "text"
+                                borderRadius:       popupStyle.cornerRadius
+                                backgroundColor:    popupStyle.inputBackground
+                                borderColor:        popupStyle.borderColor
+                                focusBorderColor:   popupStyle.accentColor
+                                showFocusBorder:    true
+                                textColor:          popupStyle.primaryTextColor
+                                popupBackgroundColor: popupStyle.popupBackground
+                                popupBorderColor:   popupStyle.borderColor
+                                delegateBackgroundColor: popupStyle.popupBackground
+                                delegateSelectedBackgroundColor: popupStyle.hoverColor(popupStyle.panelBackground)
+                                delegateTextColor:  popupStyle.primaryTextColor
+                                delegateSelectedTextColor: popupStyle.primaryTextColor
+                                stateAnimationDuration: popupStyle.stateAnimationDuration
 
                                 Component.onCompleted: {
                                     if (airframeCheckBox.checked) {

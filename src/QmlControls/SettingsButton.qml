@@ -12,21 +12,40 @@ Button {
     autoExclusive:  true
     icon.color:     textColor
 
-    property color textColor: checked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
+    property color textColor: checked || pressed
+        ? (control._popupStyled ? popupStyle.primaryTextColor : qgcPal.buttonHighlightText)
+        : (control._popupStyled ? popupStyle.secondaryTextColor : qgcPal.buttonText)
     property bool expandable: false
     property bool expanded:   false
 
     signal toggleExpand()
+
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
     QGCPalette {
         id:                 qgcPal
         colorGroupEnabled:  control.enabled
     }
 
+    QGCPopupStyle { id: popupStyle }
+
     background: Rectangle {
-        color:      qgcPal.buttonHighlight
-        opacity:    checked || pressed ? 1 : enabled && hovered ? .2 : 0
-        radius:     ScreenTools.defaultFontPixelWidth / 2
+        color: control._popupStyled
+            ? (control.checked
+                ? Qt.rgba(popupStyle.accentColor.r, popupStyle.accentColor.g, popupStyle.accentColor.b, 0.24)
+                : (control.pressed
+                    ? popupStyle.pressedColor(popupStyle.panelBackground)
+                    : (control.enabled && control.hovered
+                        ? popupStyle.hoverColor(popupStyle.panelBackground)
+                        : "transparent")))
+            : qgcPal.buttonHighlight
+        opacity: control._popupStyled ? 1 : (control.checked || control.pressed ? 1 : control.enabled && control.hovered ? .2 : 0)
+        radius: control._popupStyled ? popupStyle.cornerRadius : ScreenTools.defaultFontPixelWidth / 2
+        border.width: control._popupStyled && control.checked ? 1 : 0
+        border.color: control.checked ? popupStyle.accentColor : popupStyle.borderColor
+
+        Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
     }
 
     contentItem: RowLayout {

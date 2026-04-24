@@ -42,6 +42,7 @@ qt_add_qml_module(AutoPilotPluginsCommonModule
         ScriptingComponent.qml
         JoystickComponentSummary.qml
         MotorComponent.qml
+        MotorComponentSummary.qml
         RadioComponent.qml
         SyslinkComponent.qml
     NO_PLUGIN

@@ -13,6 +13,13 @@ AbstractButton   {
     property bool _showBorder:      qgcPal.globalTheme === QGCPalette.Light
     property int  _sliderInset:     2
     property bool _showHighlight:   enabled && (pressed || checked)
+    property color textColor:       qgcPal.text
+    property color trackColor:      qgcPal.button
+    property color trackOnColor:    qgcPal.buttonHighlight
+    property color trackBorderColor: qgcPal.buttonBorder
+    property color handleColor:     qgcPal.buttonText
+    property real sliderRadius:     ScreenTools.defaultFontPixelHeight / 2
+    property int stateAnimationDuration: 200
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
@@ -25,6 +32,7 @@ AbstractButton   {
             anchors.left:   parent.left
             text:           visible ? control.text : "X"
             visible:        control.text !== ""
+            color:          control.textColor
         }
 
         Rectangle {
@@ -33,16 +41,20 @@ AbstractButton   {
             anchors.verticalCenter: parent.verticalCenter
             height:                 ScreenTools.defaultFontPixelHeight
             width:                  height * 2
-            radius:                 height / 2
-            color:                  checked ? qgcPal.buttonHighlight : qgcPal.button
+            radius:                 control.sliderRadius
+            color:                  checked ? control.trackOnColor : control.trackColor
             border.width:           _showBorder ? 1 : 0
-            border.color:           qgcPal.buttonBorder
+            border.color:           control.trackBorderColor
+
+            Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
+            Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
             Rectangle {
                 anchors.fill:   parent
-                color:          qgcPal.buttonHighlight
+                color:          control.trackOnColor
                 opacity:        _showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0
                 radius:         parent.radius
+                Behavior on opacity { NumberAnimation { duration: control.stateAnimationDuration } }
             }
 
             Rectangle {
@@ -51,7 +63,8 @@ AbstractButton   {
                 height:                 parent.height - (_sliderInset * 2)
                 width:                  height
                 radius:                 height / 2
-                color:                  qgcPal.buttonText
+                color:                  control.handleColor
+                Behavior on x { NumberAnimation { duration: control.stateAnimationDuration } }
             }
         }
     }

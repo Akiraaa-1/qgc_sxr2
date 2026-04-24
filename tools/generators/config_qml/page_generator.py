@@ -324,7 +324,15 @@ def _fact_ref(ctrl: ControlDef, indexed: bool = False) -> str:
     return f'controller.getParameterFact(-1, "{ctrl.param}")'
 
 
-def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog_counter: list[int] | None = None, tr_context: str = "") -> str:
+def _qml_control(
+    ctrl: ControlDef,
+    indent: str,
+    *,
+    indexed: bool = False,
+    dialog_counter: list[int] | None = None,
+    tr_context: str = "",
+    safety_theme: bool = False,
+) -> str:
     """Generate QML for a single control inside a ConfigSection ColumnLayout."""
     fact_ref = _fact_ref(ctrl, indexed=indexed)
     control_type = _detect_control_type(ctrl)
@@ -344,6 +352,11 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
             small_font=ctrl.smallFont,
             tr_context=tr_context,
         )
+        if safety_theme and not ctrl.warning:
+            qml = _inject_props(qml, [
+                f"{indent}    color: _safetySecondaryTextColor",
+                f"{indent}    font.pointSize: ScreenTools.defaultFontPointSize * 0.92",
+            ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
         return _apply_indent(qml)
@@ -389,15 +402,30 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
                 parts.append(f'{ri}QGCLabel {{')
                 parts.append(f'{ri}    text: {label_qtr}')
                 parts.append(f'{ri}    Layout.fillWidth: true')
+                if safety_theme:
+                    parts.append(f'{ri}    color: _safetySecondaryTextColor')
+                    parts.append(f'{ri}    font.pointSize: ScreenTools.defaultFontPointSize * 0.92')
                 parts.append(f'{ri}}}')
                 parts.append(f'{ri}QGCButton {{')
                 parts.append(f'{ri}    text: {qml_tr(ctrl.dialogButton.text, tr_context)}')
                 parts.append(f'{ri}    onClicked: {factory_id}.open({open_arg})')
+                if safety_theme:
+                    parts.append(f'{ri}    backgroundColor: "#333333"')
+                    parts.append(f'{ri}    borderColor: _safetyBorderColor')
+                    parts.append(f'{ri}    textColor: _safetyPrimaryTextColor')
+                    parts.append(f'{ri}    backRadius: _safetyCornerRadius')
+                    parts.append(f'{ri}    showBorder: true')
                 if ctrl.enableWhen:
                     parts.append(f'{ri}    enabled: {ctrl.enableWhen}')
                 parts.append(f'{ri}}}')
                 parts.append(f'{ri}FactTextField {{')
                 parts.append(f'{ri}    fact: {fact_ref}')
+                if safety_theme:
+                    parts.append(f'{ri}    backgroundColor: _safetyInputBgColor')
+                    parts.append(f'{ri}    borderColor: _safetyBorderColor')
+                    parts.append(f'{ri}    focusBorderColor: _safetyAccentColor')
+                    parts.append(f'{ri}    textColor: _safetyPrimaryTextColor')
+                    parts.append(f'{ri}    showFocusGlow: true')
                 if ctrl.enableWhen:
                     parts.append(f'{ri}    enabled: {ctrl.enableWhen}')
                 parts.append(f'{ri}}}')
@@ -411,10 +439,26 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
                     qml_type="LabelledFactTextField",
                     tr_context=tr_context,
                 )
+                if safety_theme:
+                    tf = _inject_props(tf, [
+                        f"{ri}    labelColor: _safetySecondaryTextColor",
+                        f"{ri}    labelPointSize: ScreenTools.defaultFontPointSize * 0.92",
+                        f"{ri}    textFieldBackgroundColor: _safetyInputBgColor",
+                        f"{ri}    textFieldBorderColor: _safetyBorderColor",
+                        f"{ri}    textFieldFocusBorderColor: _safetyAccentColor",
+                        f"{ri}    textFieldColor: _safetyPrimaryTextColor",
+                        f"{ri}    textFieldShowFocusGlow: true",
+                    ])
                 parts.append(tf)
                 parts.append(f'{ri}QGCButton {{')
                 parts.append(f'{ri}    text: {qml_tr(ctrl.dialogButton.text, tr_context)}')
                 parts.append(f'{ri}    onClicked: {factory_id}.open({open_arg})')
+                if safety_theme:
+                    parts.append(f'{ri}    backgroundColor: "#333333"')
+                    parts.append(f'{ri}    borderColor: _safetyBorderColor')
+                    parts.append(f'{ri}    textColor: _safetyPrimaryTextColor')
+                    parts.append(f'{ri}    backRadius: _safetyCornerRadius')
+                    parts.append(f'{ri}    showBorder: true')
                 if ctrl.enableWhen:
                     parts.append(f'{ri}    enabled: {ctrl.enableWhen}')
                 parts.append(f'{ri}}}')
@@ -423,13 +467,44 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
 
             qml = "\n".join(parts)
         else:
-            qml = render_dialog_button(
-                indent,
-                dialog_button=ctrl.dialogButton,
-                factory_id=factory_id,
-                enable_when=ctrl.enableWhen,
-                tr_context=tr_context,
-            )
+            if safety_theme:
+                comp_id = f"{factory_id}Component"
+                qml_lines: list[str] = []
+                qml_lines.append(f"{indent}QGCPopupDialogFactory {{")
+                qml_lines.append(f"{indent}    id: {factory_id}")
+                qml_lines.append(f"{indent}    dialogComponent: {comp_id}")
+                qml_lines.append(f"{indent}}}")
+                qml_lines.append(f"{indent}Component {{")
+                qml_lines.append(f"{indent}    id: {comp_id}")
+                qml_lines.append(f"{indent}    {ctrl.dialogButton.dialogComponent} {{ }}")
+                qml_lines.append(f"{indent}}}")
+
+                params_js = ", ".join(
+                    f'"{k}": {v}' for k, v in ctrl.dialogButton.dialogParams.items()
+                )
+                open_arg = f"{{ {params_js} }}" if params_js else ""
+
+                qml_lines.append(f"{indent}QGCButton {{")
+                qml_lines.append(f'{indent}    text: {qml_tr(ctrl.dialogButton.text, tr_context)}')
+                qml_lines.append(f"{indent}    onClicked: {factory_id}.open({open_arg})")
+                qml_lines.append(f'{indent}    backgroundColor: "#333333"')
+                qml_lines.append(f"{indent}    borderColor: _safetyBorderColor")
+                qml_lines.append(f"{indent}    textColor: _safetyPrimaryTextColor")
+                qml_lines.append(f"{indent}    backRadius: _safetyCornerRadius")
+                qml_lines.append(f"{indent}    showBorder: true")
+                if ctrl.enableWhen:
+                    qml_lines.append(f"{indent}    enabled: {ctrl.enableWhen}")
+                qml_lines.append(f"{indent}}}")
+
+                qml = "\n".join(qml_lines)
+            else:
+                qml = render_dialog_button(
+                    indent,
+                    dialog_button=ctrl.dialogButton,
+                    factory_id=factory_id,
+                    enable_when=ctrl.enableWhen,
+                    tr_context=tr_context,
+                )
 
         if ctrl.showWhen:
             # Wrap in a ColumnLayout with visibility
@@ -446,6 +521,14 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
             enable_when=ctrl.enableWhen,
             tr_context=tr_context,
         )
+        if safety_theme:
+            qml = _inject_props(qml, [
+                f'{indent}    backgroundColor: "#333333"',
+                f"{indent}    borderColor: _safetyBorderColor",
+                f"{indent}    textColor: _safetyPrimaryTextColor",
+                f"{indent}    backRadius: _safetyCornerRadius",
+                f"{indent}    showBorder: true",
+            ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
         return _apply_indent(qml)
@@ -463,25 +546,74 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
             slider_max=ctrl.sliderMax,
             tr_context=tr_context,
         )
+        if safety_theme:
+            qml = _inject_props(qml, [
+                f"{indent}    backgroundColor: _safetyPanelL2Color",
+                f"{indent}    controlRadius: _safetyCornerRadius",
+                f"{indent}    labelColor: _safetySecondaryTextColor",
+                f"{indent}    textFieldBackgroundColor: _safetyInputBgColor",
+                f"{indent}    textFieldBorderColor: _safetyBorderColor",
+                f"{indent}    textFieldFocusBorderColor: _safetyAccentColor",
+                f"{indent}    textFieldColor: _safetyPrimaryTextColor",
+                f"{indent}    textFieldShowFocusGlow: true",
+                f"{indent}    checkBoxTextColor: _safetySecondaryTextColor",
+                f"{indent}    checkBoxBoxColor: _safetyInputBgColor",
+                f"{indent}    checkBoxBorderColor: _safetyBorderColor",
+                f"{indent}    checkBoxCheckColor: _safetyAccentColor",
+                f"{indent}    checkBoxHoverColor: _safetyHoverColor",
+                f"{indent}    stateAnimationDuration: _safetyAnimationDuration",
+            ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
         return _apply_indent(qml)
 
     # Radio group — label + radio buttons
     if control_type == "radiogroup":
-        qml = render_radiogroup(
-            fact_ref, indent,
-            label=ctrl.label,
-            options=ctrl.options,
-            enable_when=ctrl.enableWhen,
-            raw=ctrl.raw,
-            optional=ctrl.optional,
-            tr_context=tr_context,
-        )
-        if ctrl.showWhen:
-            # Wrap the label + column in a ColumnLayout with visibility
-            inner_qml = render_radiogroup(
-                fact_ref, indent + "    ",
+        if safety_theme:
+            value_prop = "rawValue" if ctrl.raw else "value"
+            lines: list[str] = []
+            if ctrl.label:
+                lines.append(f"{indent}QGCLabel {{")
+                lines.append(f"{indent}    text: {qml_tr(ctrl.label, tr_context)}")
+                lines.append(f"{indent}    color: _safetySecondaryTextColor")
+                lines.append(f"{indent}    font.pointSize: ScreenTools.defaultFontPointSize * 0.92")
+                lines.append(f"{indent}}}")
+            lines.append(f"{indent}ColumnLayout {{")
+            lines.append(f"{indent}    spacing: 0")
+            for opt in ctrl.options:
+                lines.append(f"{indent}    QGCRadioButton {{")
+                lines.append(f"{indent}        text: {qml_tr(opt.label, tr_context)}")
+                lines.append(f"{indent}        textColor: _safetySecondaryTextColor")
+                lines.append(f"{indent}        indicatorBackgroundColor: _safetyInputBgColor")
+                lines.append(f"{indent}        indicatorBorderColor: _safetyBorderColor")
+                lines.append(f"{indent}        indicatorHoverColor: _safetyHoverColor")
+                lines.append(f"{indent}        indicatorDotColor: _safetyAccentColor")
+                lines.append(f"{indent}        stateAnimationDuration: _safetyAnimationDuration")
+                if opt.checked:
+                    if ctrl.optional:
+                        lines.append(f"{indent}        checked: {fact_ref} ? {opt.checked} : false")
+                    else:
+                        lines.append(f"{indent}        checked: {opt.checked}")
+                if ctrl.optional:
+                    lines.append(f"{indent}        onClicked: if ({fact_ref}) {{ {fact_ref}.{value_prop} = {opt.value} }}")
+                else:
+                    lines.append(f"{indent}        onClicked: {fact_ref}.{value_prop} = {opt.value}")
+                if ctrl.enableWhen:
+                    lines.append(f"{indent}        enabled: {ctrl.enableWhen}")
+                lines.append(f"{indent}    }}")
+            lines.append(f"{indent}}}")
+            qml = "\n".join(lines)
+            if ctrl.showWhen:
+                qml = (
+                    f"{indent}ColumnLayout {{\n"
+                    f"{indent}    visible: {ctrl.showWhen}\n"
+                    f"{indent}    spacing: 0\n"
+                    f"{qml}\n"
+                    f"{indent}}}"
+                )
+        else:
+            qml = render_radiogroup(
+                fact_ref, indent,
                 label=ctrl.label,
                 options=ctrl.options,
                 enable_when=ctrl.enableWhen,
@@ -489,13 +621,24 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
                 optional=ctrl.optional,
                 tr_context=tr_context,
             )
-            qml = (
-                f"{indent}ColumnLayout {{\n"
-                f"{indent}    visible: {ctrl.showWhen}\n"
-                f"{indent}    spacing: 0\n"
-                f"{inner_qml}\n"
-                f"{indent}}}"
-            )
+            if ctrl.showWhen:
+                # Wrap the label + column in a ColumnLayout with visibility
+                inner_qml = render_radiogroup(
+                    fact_ref, indent + "    ",
+                    label=ctrl.label,
+                    options=ctrl.options,
+                    enable_when=ctrl.enableWhen,
+                    raw=ctrl.raw,
+                    optional=ctrl.optional,
+                    tr_context=tr_context,
+                )
+                qml = (
+                    f"{indent}ColumnLayout {{\n"
+                    f"{indent}    visible: {ctrl.showWhen}\n"
+                    f"{indent}    spacing: 0\n"
+                    f"{inner_qml}\n"
+                    f"{indent}}}"
+                )
         return _apply_indent(qml)
 
     # Bitmask checkbox — FactBitMaskCheckBoxSlider
@@ -547,6 +690,16 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
             qml_type="FactCheckBoxSlider",
             tr_context=tr_context,
         )
+        if safety_theme:
+            qml = _inject_props(qml, [
+                f"{indent}    textColor: _safetySecondaryTextColor",
+                f"{indent}    trackColor: _safetyInputBgColor",
+                f"{indent}    trackOnColor: _safetyAccentColor",
+                f"{indent}    trackBorderColor: _safetyBorderColor",
+                f"{indent}    handleColor: _safetyPrimaryTextColor",
+                f"{indent}    sliderRadius: _safetyCornerRadius",
+                f"{indent}    stateAnimationDuration: _safetyAnimationDuration",
+            ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
         return _apply_indent(qml)
@@ -562,6 +715,21 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
             combo_preferred_width="ScreenTools.defaultFontPixelWidth * 30",
             tr_context=tr_context,
         )
+        if safety_theme:
+            qml = _inject_props(qml, [
+                f"{indent}    labelColor: _safetySecondaryTextColor",
+                f"{indent}    labelPointSize: ScreenTools.defaultFontPointSize * 0.92",
+                f"{indent}    comboBoxBackgroundColor: _safetyInputBgColor",
+                f"{indent}    comboBoxBorderColor: _safetyBorderColor",
+                f"{indent}    comboBoxFocusBorderColor: _safetyAccentColor",
+                f"{indent}    comboBoxTextColor: _safetyPrimaryTextColor",
+                f"{indent}    comboBoxPopupBackgroundColor: _safetyPopupBgColor",
+                f"{indent}    comboBoxPopupBorderColor: _safetyBorderColor",
+                f"{indent}    comboBoxSelectedColor: _safetyAccentColor",
+                f"{indent}    comboBoxSelectedTextColor: _safetyPrimaryTextColor",
+                f"{indent}    comboBoxRadius: _safetyCornerRadius",
+                f"{indent}    comboBoxShowFocusBorder: true",
+            ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
         return _apply_indent(qml)
@@ -575,6 +743,16 @@ def _qml_control(ctrl: ControlDef, indent: str, *, indexed: bool = False, dialog
         qml_type="LabelledFactTextField",
         tr_context=tr_context,
     )
+    if safety_theme:
+        qml = _inject_props(qml, [
+            f"{indent}    labelColor: _safetySecondaryTextColor",
+            f"{indent}    labelPointSize: ScreenTools.defaultFontPointSize * 0.92",
+            f"{indent}    textFieldBackgroundColor: _safetyInputBgColor",
+            f"{indent}    textFieldBorderColor: _safetyBorderColor",
+            f"{indent}    textFieldFocusBorderColor: _safetyAccentColor",
+            f"{indent}    textFieldColor: _safetyPrimaryTextColor",
+            f"{indent}    textFieldShowFocusGlow: true",
+        ])
     if ctrl.showWhen:
         qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
     return _apply_indent(qml)
@@ -584,6 +762,14 @@ def _inject_prop(qml: str, prop_line: str) -> str:
     """Insert a property line after the opening brace of a QML block."""
     qml_lines = qml.split("\n")
     qml_lines.insert(1, prop_line)
+    return "\n".join(qml_lines)
+
+
+def _inject_props(qml: str, prop_lines: list[str]) -> str:
+    """Insert multiple property lines after the opening brace of a QML block."""
+    qml_lines = qml.split("\n")
+    for idx, prop_line in enumerate(prop_lines, start=1):
+        qml_lines.insert(idx, prop_line)
     return "\n".join(qml_lines)
 
 
@@ -598,25 +784,49 @@ def _wrap_visible(qml: str, expr: str, indent: str) -> str:
     return "\n".join(lines)
 
 
-def _qml_generated_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> str:
+def _qml_generated_section(
+    sec: SectionDef,
+    sec_idx: int,
+    tr_context: str = "",
+    section_component: str = "ConfigSection",
+    two_column_layout: bool = False,
+) -> str:
     """Generate QML for a section with auto-generated controls."""
     ind = "                "  # base indent inside outerColumn
     lines: list[str] = []
 
     name_vis = f'sectionMatchesFilter("{sec.title}")'
     show_vis = f"{name_vis} && {sec.showWhen}" if sec.showWhen else name_vis
+    safety_theme = section_component == "ModernConfigSection"
 
-    lines.append(f'{ind}ConfigSection {{')
+    lines.append(f'{ind}{section_component} {{')
     lines.append(f'{ind}    Layout.fillWidth: true')
+    if two_column_layout:
+        lines.append(f'{ind}    Layout.row: sectionNameFilter === "" ? {sec_idx // 2} : (sectionMatchesFilter("{sec.title}") ? 0 : {sec_idx + 1})')
+        lines.append(f'{ind}    Layout.column: sectionNameFilter === "" ? {sec_idx % 2} : 0')
+        lines.append(f'{ind}    Layout.columnSpan: sectionNameFilter === "" ? 1 : 2')
+        lines.append(f'{ind}    Layout.preferredWidth: sectionNameFilter === "" ? _twoColumnSectionWidth : _singleColumnSectionWidth')
+        lines.append(f'{ind}    Layout.alignment: Qt.AlignTop | Qt.AlignHCenter')
+        lines.append(f'{ind}    Layout.preferredHeight: visible ? implicitHeight : 0')
+        lines.append(f'{ind}    Layout.minimumHeight: 0')
     lines.append(f'{ind}    visible: {show_vis}')
     lines.append(f'{ind}    heading: {qml_tr(sec.title, tr_context)}')
     if sec.image:
         lines.append(f'{ind}    iconSource: "{sec.image}"')
+    if safety_theme:
+        lines.append(f'{ind}    panelBackgroundColor: _safetyPanelColor')
+        lines.append(f'{ind}    panelBorderColor: _safetyBorderColor')
+        lines.append(f'{ind}    dividerColor: _safetyBorderColor')
+        lines.append(f'{ind}    headingColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}    subtleTextColor: _safetySecondaryTextColor')
+        lines.append(f'{ind}    iconChipColor: _safetyPanelL2Color')
+        lines.append(f'{ind}    iconColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}    cornerRadius: _safetyCornerRadius')
 
     ctrl_indent = ind + "    "
     for ctrl in sec.controls:
         lines.append("")
-        lines.append(_qml_control(ctrl, ctrl_indent, tr_context=tr_context))
+        lines.append(_qml_control(ctrl, ctrl_indent, tr_context=tr_context, safety_theme=safety_theme))
 
     lines.append(f'{ind}}}')
 
@@ -707,7 +917,13 @@ def _qml_repeat_count_property(sec: SectionDef) -> str:
     return "\n".join(lines)
 
 
-def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> str:
+def _qml_repeat_section(
+    sec: SectionDef,
+    sec_idx: int,
+    tr_context: str = "",
+    section_component: str = "ConfigSection",
+    two_column_layout: bool = False,
+) -> str:
     """Generate QML for a repeated (indexed) section using a Repeater."""
     rep = sec.repeat
     assert rep is not None
@@ -716,6 +932,7 @@ def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> 
     name_vis = f'sectionMatchesFilter(heading)'
     show_vis = f"{name_vis} && {sec.showWhen}" if sec.showWhen else name_vis
     safe = _safe_id(sec.title)
+    safety_theme = section_component == "ModernConfigSection"
 
     lines: list[str] = []
 
@@ -723,8 +940,14 @@ def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> 
     lines.append(f"{ind}Repeater {{")
     lines.append(f"{ind}    model: _{safe}Count")
     lines.append("")
-    lines.append(f"{ind}    ConfigSection {{")
+    lines.append(f"{ind}    {section_component} {{")
     lines.append(f"{ind}        Layout.fillWidth: true")
+    if two_column_layout:
+        lines.append(f'{ind}        Layout.columnSpan: sectionNameFilter === "" ? 1 : 2')
+        lines.append(f'{ind}        Layout.preferredWidth: sectionNameFilter === "" ? _twoColumnSectionWidth : _singleColumnSectionWidth')
+        lines.append(f'{ind}        Layout.alignment: Qt.AlignTop | Qt.AlignHCenter')
+        lines.append(f'{ind}        Layout.preferredHeight: visible ? implicitHeight : 0')
+        lines.append(f'{ind}        Layout.minimumHeight: 0')
     if rep.enableParam:
         dv = rep.disabledParamValue
         enable_expr = f'controller.getParameterFact(-1, _fullParamName("{rep.enableParam}")).value !== {dv}'
@@ -741,6 +964,15 @@ def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> 
 
     if sec.image:
         lines.append(f'{ind}        iconSource: "{sec.image}"')
+    if safety_theme:
+        lines.append(f'{ind}        panelBackgroundColor: _safetyPanelColor')
+        lines.append(f'{ind}        panelBorderColor: _safetyBorderColor')
+        lines.append(f'{ind}        dividerColor: _safetyBorderColor')
+        lines.append(f'{ind}        headingColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}        subtleTextColor: _safetySecondaryTextColor')
+        lines.append(f'{ind}        iconChipColor: _safetyPanelL2Color')
+        lines.append(f'{ind}        iconColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}        cornerRadius: _safetyCornerRadius')
 
     # Internal properties for index math
     lines.append("")
@@ -762,7 +994,7 @@ def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> 
     dialog_counter = [0]
     for ctrl in sec.controls:
         lines.append("")
-        lines.append(_qml_control(ctrl, ctrl_indent, indexed=True, dialog_counter=dialog_counter, tr_context=tr_context))
+        lines.append(_qml_control(ctrl, ctrl_indent, indexed=True, dialog_counter=dialog_counter, tr_context=tr_context, safety_theme=safety_theme))
 
     lines.append(f"{ind}    }}")
     lines.append(f"{ind}}}")
@@ -770,25 +1002,44 @@ def _qml_repeat_section(sec: SectionDef, sec_idx: int, tr_context: str = "") -> 
     # Companion section for disabled items
     if rep.enableParam and rep.disabledSection:
         lines.append("")
-        lines.append(_qml_disabled_companion_section(sec, tr_context=tr_context))
+        lines.append(
+            _qml_disabled_companion_section(
+                sec,
+                tr_context=tr_context,
+                section_component=section_component,
+                two_column_layout=two_column_layout,
+            )
+        )
 
     return "\n".join(lines)
 
 
-def _qml_disabled_companion_section(sec: SectionDef, tr_context: str = "") -> str:
+def _qml_disabled_companion_section(
+    sec: SectionDef,
+    tr_context: str = "",
+    section_component: str = "ConfigSection",
+    two_column_layout: bool = False,
+) -> str:
     """Emit a compact section showing only the enable-param control for disabled items."""
     rep = sec.repeat
     assert rep is not None
     ind = "                "  # base indent inside outerColumn
     safe = _safe_id(sec.title)
     dv = rep.disabledParamValue
+    safety_theme = section_component == "ModernConfigSection"
 
     # camelCase version of safe id for use in property names
     camel = "".join(w.capitalize() for w in safe.split("_") if w)
 
     lines: list[str] = []
-    lines.append(f"{ind}ConfigSection {{")
+    lines.append(f"{ind}{section_component} {{")
     lines.append(f"{ind}    Layout.fillWidth: true")
+    if two_column_layout:
+        lines.append(f'{ind}    Layout.columnSpan: sectionNameFilter === "" ? 1 : 2')
+        lines.append(f'{ind}    Layout.preferredWidth: sectionNameFilter === "" ? _twoColumnSectionWidth : _singleColumnSectionWidth')
+        lines.append(f'{ind}    Layout.alignment: Qt.AlignTop | Qt.AlignHCenter')
+        lines.append(f'{ind}    Layout.preferredHeight: visible ? implicitHeight : 0')
+        lines.append(f'{ind}    Layout.minimumHeight: 0')
 
     # Visible when sectionNameFilter allows it AND any item is disabled
     lines.append(f'{ind}    visible: sectionMatchesFilter("{rep.disabledSection.heading}") && _hasDisabled{camel}')
@@ -809,6 +1060,15 @@ def _qml_disabled_companion_section(sec: SectionDef, tr_context: str = "") -> st
     lines.append(f"{ind}    }}")
 
     lines.append(f'{ind}    heading: {qml_tr(rep.disabledSection.heading, tr_context)}')
+    if safety_theme:
+        lines.append(f'{ind}    panelBackgroundColor: _safetyPanelColor')
+        lines.append(f'{ind}    panelBorderColor: _safetyBorderColor')
+        lines.append(f'{ind}    dividerColor: _safetyBorderColor')
+        lines.append(f'{ind}    headingColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}    subtleTextColor: _safetySecondaryTextColor')
+        lines.append(f'{ind}    iconChipColor: _safetyPanelL2Color')
+        lines.append(f'{ind}    iconColor: _safetyPrimaryTextColor')
+        lines.append(f'{ind}    cornerRadius: _safetyCornerRadius')
 
     # Repeater with one control per disabled item
     lines.append(f"")
@@ -864,6 +1124,34 @@ def _qml_disabled_companion_section(sec: SectionDef, tr_context: str = "") -> st
     return "\n".join(lines)
 
 
+def _section_component_name(page: PageDef) -> str:
+    """Return the section container component name for this page."""
+    if _use_modern_dark_theme(page):
+        return "ModernConfigSection"
+    return "ConfigSection"
+
+
+def _use_modern_dark_theme(page: PageDef) -> bool:
+    """Whether this page should use the modern dark card styling."""
+    return page.json_filename.lower() in {
+        "safety.vehicleconfig.json",
+        "power.vehicleconfig.json",
+    }
+
+
+def _use_two_column_layout(page: PageDef) -> bool:
+    """Whether this page should render sections in two centered columns."""
+    return page.json_filename.lower() == "safety.vehicleconfig.json"
+
+
+def _use_wide_single_column_layout(page: PageDef) -> bool:
+    """Whether this page should render a wider centered single-column layout."""
+    return page.json_filename.lower() in {
+        "power.vehicleconfig.json",
+        "apmpower.vehicleconfig.json",
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
@@ -892,6 +1180,23 @@ def generate_config_page_qml(page: PageDef) -> str:
     lines.append("            }")
     lines.append("")
     lines.append("            property real _margins: ScreenTools.defaultFontPixelHeight")
+    modern_theme = _use_modern_dark_theme(page)
+    if modern_theme:
+        lines.append("            readonly property color _safetyBgTopColor: \"#1E1E1E\"")
+        lines.append("            readonly property color _safetyBgBottomColor: \"#222222\"")
+        lines.append("            readonly property color _safetyPanelColor: \"#2D2D2D\"")
+        lines.append("            readonly property color _safetyPanelL2Color: \"#2A2A2A\"")
+        lines.append("            readonly property color _safetyInputBgColor: \"#252525\"")
+        lines.append("            readonly property color _safetyBorderColor: \"#333333\"")
+        lines.append("            readonly property color _safetyPrimaryTextColor: \"#FFFFFF\"")
+        lines.append("            readonly property color _safetySecondaryTextColor: \"#B0B0B0\"")
+        lines.append("            readonly property color _safetyDisabledTextColor: \"#666666\"")
+        lines.append("            readonly property color _safetyAccentColor: \"#2563EB\"")
+        lines.append("            readonly property color _safetyHoverColor: \"#3A3A3A\"")
+        lines.append("            readonly property color _safetyPressedColor: \"#232323\"")
+        lines.append("            readonly property color _safetyPopupBgColor: \"#1A1A1A\"")
+        lines.append("            readonly property real _safetyCornerRadius: ScreenTools.defaultFontPixelHeight * 0.66")
+        lines.append("            readonly property int _safetyAnimationDuration: 200")
     lines.append("")
 
     # Emit page-level constants as readonly properties
@@ -982,23 +1287,145 @@ def generate_config_page_qml(page: PageDef) -> str:
     lines.append("                return true")
     lines.append("            }")
     lines.append("")
-    lines.append("            property real _maxLeftMargin: ScreenTools.defaultFontPixelWidth * 20")
+    two_column_layout = _use_two_column_layout(page)
+    wide_single_column_layout = _use_wide_single_column_layout(page)
+    if modern_theme:
+        lines.append("            Rectangle {")
+        lines.append("                anchors.fill: parent")
+        lines.append("                z: -1")
+        lines.append("                gradient: Gradient {")
+        lines.append("                    orientation: Gradient.Vertical")
+        lines.append("                    GradientStop { position: 0; color: _safetyBgTopColor }")
+        lines.append("                    GradientStop { position: 1; color: _safetyBgBottomColor }")
+        lines.append("                }")
+        lines.append("            }")
+        lines.append("")
+    if two_column_layout:
+        lines.append("            property real _sectionSpacingX: _margins * 0.9")
+        lines.append("            property real _sectionSpacingY: _margins * 1.25")
+        lines.append("            property real _singleColumnSectionWidth: Math.min(parent.width - (_margins * 2), ScreenTools.defaultFontPixelWidth * 86)")
+        lines.append("            property real _twoColumnSectionWidth: Math.max(ScreenTools.defaultFontPixelWidth * 36, Math.min(ScreenTools.defaultFontPixelWidth * 62, (parent.width - (_margins * 2) - _sectionSpacingX) / 2))")
+        lines.append("            property real _safetyGridWidth: (_twoColumnSectionWidth * 2) + _sectionSpacingX")
+        lines.append("            property real _safetyContentWidth: sectionNameFilter === \"\" ? _safetyGridWidth : _singleColumnSectionWidth")
+    elif wide_single_column_layout:
+        lines.append("            property real _singleColumnSectionWidth: Math.min(parent.width - (_margins * 1.2), ScreenTools.defaultFontPixelWidth * 108)")
+    else:
+        lines.append("            property real _maxLeftMargin: ScreenTools.defaultFontPixelWidth * 20")
     lines.append("")
     lines.append("            ColumnLayout {")
     lines.append("                id: outerColumn")
     lines.append("                spacing: _margins * 1.25")
-    lines.append("                anchors.left: parent.left")
-    lines.append("                anchors.leftMargin: Math.min((parent.width - width) / 2, _maxLeftMargin)")
+    if two_column_layout:
+        lines.append("                width: _safetyContentWidth")
+        lines.append("                anchors.top: parent.top")
+        lines.append("                anchors.topMargin: _margins * 0.2")
+        lines.append("                anchors.horizontalCenter: parent.horizontalCenter")
+        lines.append("")
+        lines.append("                GridLayout {")
+        lines.append("                    id: _allSectionsGrid")
+        lines.append("                    visible: sectionNameFilter === \"\"")
+        lines.append("                    Layout.fillWidth: true")
+        lines.append("                    columns: 2")
+        lines.append("                    columnSpacing: _sectionSpacingX")
+        lines.append("                    rowSpacing: _sectionSpacingY")
+    else:
+        if wide_single_column_layout:
+            lines.append("                width: _singleColumnSectionWidth")
+            lines.append("                anchors.top: parent.top")
+            lines.append("                anchors.topMargin: _margins * 0.2")
+            lines.append("                anchors.horizontalCenter: parent.horizontalCenter")
+        else:
+            lines.append("                anchors.left: parent.left")
+            lines.append("                anchors.leftMargin: Math.min((parent.width - width) / 2, _maxLeftMargin)")
 
     tr_ctx = page.json_filename
-    for sec_idx, sec in enumerate(page.sections):
+    section_component = _section_component_name(page)
+    if two_column_layout:
+        for sec_idx, sec in enumerate(page.sections):
+            lines.append("")
+            if sec.repeat:
+                lines.append(
+                    _qml_repeat_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=True,
+                    )
+                )
+            elif sec.component:
+                lines.append(_qml_component_section(sec, sec_idx, tr_context=tr_ctx))
+            else:
+                lines.append(
+                    _qml_generated_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=True,
+                    )
+                )
+
+        lines.append("                }")
         lines.append("")
-        if sec.repeat:
-            lines.append(_qml_repeat_section(sec, sec_idx, tr_context=tr_ctx))
-        elif sec.component:
-            lines.append(_qml_component_section(sec, sec_idx, tr_context=tr_ctx))
-        else:
-            lines.append(_qml_generated_section(sec, sec_idx, tr_context=tr_ctx))
+        lines.append("                ColumnLayout {")
+        lines.append("                    id: _filteredSectionColumn")
+        lines.append("                    visible: sectionNameFilter !== \"\"")
+        lines.append("                    Layout.fillWidth: true")
+        lines.append("                    width: _singleColumnSectionWidth")
+        lines.append("                    spacing: _sectionSpacingY")
+
+        for sec_idx, sec in enumerate(page.sections):
+            lines.append("")
+            if sec.repeat:
+                lines.append(
+                    _qml_repeat_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=False,
+                    )
+                )
+            elif sec.component:
+                lines.append(_qml_component_section(sec, sec_idx, tr_context=tr_ctx))
+            else:
+                lines.append(
+                    _qml_generated_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=False,
+                    )
+                )
+
+        lines.append("                }")
+    else:
+        for sec_idx, sec in enumerate(page.sections):
+            lines.append("")
+            if sec.repeat:
+                lines.append(
+                    _qml_repeat_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=False,
+                    )
+                )
+            elif sec.component:
+                lines.append(_qml_component_section(sec, sec_idx, tr_context=tr_ctx))
+            else:
+                lines.append(
+                    _qml_generated_section(
+                        sec,
+                        sec_idx,
+                        tr_context=tr_ctx,
+                        section_component=section_component,
+                        two_column_layout=False,
+                    )
+                )
 
     lines.append("            }")
     lines.append("        }")

@@ -2,6 +2,8 @@
 #include "MAVLinkLib.h"
 #include "Vehicle.h"
 #include "LinkManager.h"
+#include "SettingsManager.h"
+#include "MavlinkSettings.h"
 #include "QGCApplication.h"
 #include "AudioOutput.h"
 #ifndef QGC_NO_SERIAL_LINK
@@ -112,7 +114,16 @@ void VehicleLinkManager::_commLostCheck()
     }
 
     // Use much shorter heartbeat timeout in unit tests since MockLink sends heartbeats instantly
-    const int heartbeatTimeout = qgcApp()->runningUnitTests() ? kTestHeartbeatTimeoutMs : _heartbeatMaxElpasedMSecs;
+    int heartbeatTimeout = _heartbeatMaxElpasedMSecs;
+    if (qgcApp()->runningUnitTests()) {
+        heartbeatTimeout = kTestHeartbeatTimeoutMs;
+    } else {
+        const Fact *const heartbeatTimeoutFact = SettingsManager::instance()->mavlinkSettings()->vehicleHeartbeatTimeout();
+        const int heartbeatTimeoutSeconds = heartbeatTimeoutFact ? heartbeatTimeoutFact->rawValue().toInt() : 0;
+        if (heartbeatTimeoutSeconds > 0) {
+            heartbeatTimeout = heartbeatTimeoutSeconds * 1000;
+        }
+    }
 
     bool linkStatusChange = false;
     for (LinkInfo_t &linkInfo: _rgLinkInfo) {

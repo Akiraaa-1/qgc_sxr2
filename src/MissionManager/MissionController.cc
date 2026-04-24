@@ -78,6 +78,7 @@ void MissionController::_resetMissionFlightStatus(void)
     emit missionHoverTimeChanged();
     emit missionCruiseTimeChanged();
     emit missionMaxTelemetryChanged(_missionFlightStatus.maxTelemetryDistance);
+    emit missionBatteryPercentRemainingChanged(missionBatteryPercentRemaining());
     emit batteryChangePointChanged(_missionFlightStatus.batteryChangePoint);
     emit batteriesRequiredChanged(_missionFlightStatus.batteriesRequired);
 }
@@ -360,6 +361,17 @@ VisualMissionItem* MissionController::insertLandItem(QGeoCoordinate coordinate, 
         return vtolLanding;
     } else {
         return _insertSimpleMissionItemWorker(coordinate, _controllerVehicle->vtol() ? MAV_CMD_NAV_VTOL_LAND : MAV_CMD_NAV_RETURN_TO_LAUNCH, visualItemIndex, makeCurrentItem);
+    }
+}
+
+VisualMissionItem* MissionController::insertLandHereItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem)
+{
+    if (_controllerVehicle->fixedWing()) {
+        return insertLandItem(coordinate, visualItemIndex, makeCurrentItem);
+    } else if (_controllerVehicle->vtol()) {
+        return _insertSimpleMissionItemWorker(coordinate, MAV_CMD_NAV_VTOL_LAND, visualItemIndex, makeCurrentItem);
+    } else {
+        return _insertSimpleMissionItemWorker(coordinate, MAV_CMD_NAV_LAND, visualItemIndex, makeCurrentItem);
     }
 }
 
@@ -1231,6 +1243,7 @@ void MissionController::_recalcMissionFlightStatus()
     emit missionTimeChanged             ();
     emit missionHoverTimeChanged        ();
     emit missionCruiseTimeChanged       ();
+    emit missionBatteryPercentRemainingChanged(missionBatteryPercentRemaining());
     emit batteryChangePointChanged      (_missionFlightStatus.batteryChangePoint);
     emit batteriesRequiredChanged       (_missionFlightStatus.batteriesRequired);
     emit minAMSLAltitudeChanged         (_minAMSLAltitude);

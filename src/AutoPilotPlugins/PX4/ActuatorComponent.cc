@@ -59,5 +59,5 @@ QUrl ActuatorComponent::setupSource(void) const
 
 QUrl ActuatorComponent::summaryQmlSource(void) const
 {
-    return QUrl();
+    return QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AutoPilotPlugins/PX4/ActuatorComponentSummary.qml"));
 }

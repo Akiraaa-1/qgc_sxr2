@@ -26,8 +26,26 @@ qt_add_qml_module(PlanViewModule
         MissionItemStatus.qml
         MissionSettingsEditor.qml
         MissionStats.qml
+        PlanAltitudeFactTextField.qml
+        PlanButton.qml
+        PlanCheckBox.qml
+        PlanCheckBoxSlider.qml
+        PlanComboBox.qml
+        PlanEditorTheme.qml
+        PlanFactCheckBox.qml
+        PlanFactComboBox.qml
+        PlanFactTextField.qml
+        PlanFactTextFieldSlider.qml
         PlanEditToolbar.qml
         PlanInfoEditor.qml
+        PlanLabelledButton.qml
+        PlanLabelledFactComboBox.qml
+        PlanLabelledFactTextField.qml
+        PlanPanel.qml
+        PlanRadioButton.qml
+        PlanSectionHeader.qml
+        PlanTabButton.qml
+        PlanTextField.qml
         PlanToolBarIndicators.qml
         PlanTreeView.qml
         PlanView.qml

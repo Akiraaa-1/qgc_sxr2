@@ -7,6 +7,8 @@ import QGroundControl.Controls
 RowLayout {
     property alias label:                   _label.text
     property alias buttonText:              _button.text
+    property alias labelControl:            _label
+    property alias buttonControl:           _button
     property real  buttonPreferredWidth:    -1
 
     signal clicked

@@ -44,6 +44,7 @@ add_subdirectory(GPS)
 add_subdirectory(Utilities)
 add_subdirectory(Joystick)
 add_subdirectory(MAVLink)
+add_subdirectory(Cluster)
 add_subdirectory(MissionManager)
 add_subdirectory(PlanView)
 add_subdirectory(PositionManager)
@@ -137,6 +138,10 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         ToolbarModule
         VehicleSetupModule
 )
+
+if(TARGET ClusterModule)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,ClusterModule>")
+endif()
 
 # ----------------------------------------------------------------------------
 # Optional/Conditional Modules

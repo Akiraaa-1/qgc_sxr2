@@ -5,18 +5,21 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 Rectangle {
     id: root
     height: _currentItem ? valuesRect.y + valuesRect.height + _innerMargin : titleLayout.y + titleLayout.height + _margin
-    color: _currentItem ? qgcPal.buttonHighlight : qgcPal.windowShade
-    radius: _radius
+    color: theme.panelColor
+    radius: theme.radius
+    border.width: 1
+    border.color: _currentItem ? theme.accentColor : theme.borderColor
 
     property var rallyPoint ///< RallyPoint object associated with editor
     property var controller ///< RallyPointController
 
     property bool _currentItem: rallyPoint ? rallyPoint === controller.currentRallyPoint : false
-    property color _outerTextColor: qgcPal.text
+    property color _outerTextColor: _currentItem ? theme.textColor : theme.secondaryTextColor
 
     readonly property real _margin: ScreenTools.defaultFontPixelWidth / 2
     readonly property real  _innerMargin: 2
@@ -24,6 +27,7 @@ Rectangle {
     readonly property real _titleHeight: ScreenTools.implicitComboBoxHeight + ScreenTools.defaultFontPixelWidth
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
+    PlanEditorTheme { id: theme }
 
     RowLayout {
         id: titleLayout
@@ -45,7 +49,7 @@ Rectangle {
             Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.5
             Layout.preferredHeight: Layout.preferredWidth
             source: "/res/XDelete.svg"
-            color: _outerTextColor
+            color: theme.secondaryTextColor
         }
     }
 
@@ -82,9 +86,11 @@ Rectangle {
         anchors.right: parent.right
         anchors.top: titleLayout.bottom
         height: valuesLayout.height + (_margin * 2)
-        color: qgcPal.windowShadeDark
+        color: theme.inputColor
         visible: _currentItem
-        radius: _radius
+        radius: theme.radius
+        border.width: 1
+        border.color: theme.borderColor
 
         ColumnLayout {
             id: valuesLayout
@@ -97,7 +103,7 @@ Rectangle {
             Repeater {
                 model: rallyPoint ? rallyPoint.textFieldFacts : 0
 
-                LabelledFactTextField {
+                PlanLabelledFactTextField {
                     Layout.fillWidth: true
                     label: modelData.shortDescription
                     fact: modelData

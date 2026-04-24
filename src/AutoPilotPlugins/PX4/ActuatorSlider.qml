@@ -22,6 +22,10 @@ Column {
     Layout.alignment:                 Qt.AlignTop
 
     readonly property int _sliderHeight: 6
+    readonly property bool _popupStyled: popupStyle.inPopupContext(root)
+
+    QGCPalette { id: qgcPal; colorGroupEnabled: true }
+    QGCPopupStyle { id: popupStyle }
 
     function stopTimer() {
         sendTimer.stop();
@@ -44,6 +48,11 @@ Column {
         live:   true
         anchors.horizontalCenter:   parent.horizontalCenter
         height:                     ScreenTools.defaultFontPixelHeight * _sliderHeight
+        trackColor:                 _popupStyled ? popupStyle.inputBackground : qgcPal.button
+        trackBorderColor:           _popupStyled ? popupStyle.borderColor : qgcPal.buttonText
+        handleColor:                _popupStyled ? popupStyle.panelBackground : qgcPal.button
+        handleBorderColor:          _popupStyled ? popupStyle.borderColor : qgcPal.buttonText
+        labelColor:                 _popupStyled ? popupStyle.secondaryTextColor : qgcPal.buttonText
 
         onValueChanged: {
             if (blockUpdates)
@@ -84,6 +93,7 @@ Column {
         id: channelLabel
         anchors.horizontalCenter: parent.horizontalCenter
         text:                     channel.label
+        color:                    _popupStyled ? popupStyle.primaryTextColor : qgcPal.text
         width:                    contentHeight
         height:                   contentWidth
         transform: [

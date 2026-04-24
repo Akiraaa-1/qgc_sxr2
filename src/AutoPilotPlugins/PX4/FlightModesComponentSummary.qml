@@ -18,6 +18,8 @@ Item {
 
 	ColumnLayout {
 		id: mainLayout
+        anchors.left: parent.left
+        anchors.right: parent.right
 		spacing: 0
 
 		VehicleSummaryRow {

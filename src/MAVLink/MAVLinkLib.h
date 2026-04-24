@@ -26,5 +26,5 @@
 #ifdef __GNUC__
 #	pragma GCC diagnostic pop
 #else
-#	pragma warning(pop, 0)
+#	pragma warning(pop)
 #endif

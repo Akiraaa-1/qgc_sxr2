@@ -9,7 +9,11 @@ target_sources(${CMAKE_PROJECT_NAME}
         JoystickConfigController.h
 )
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../FactSystem
+)
 
 # ----------------------------------------------------------------------------
 # Firmware Upgrade (requires serial link)
@@ -40,6 +44,7 @@ qt_add_qml_module(VehicleSetupModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        ClusterView.qml
         FirmwareUpgrade.qml
         JoystickComponent.qml
         JoystickComponentButtons.qml
@@ -49,8 +54,28 @@ qt_add_qml_module(VehicleSetupModule
         RemoteControlCalibration.qml
         RemoteControlChannelMonitor.qml
         RemoteControlChannelValueDisplay.qml
+        Myswarm.qml
         SetupParameterEditor.qml
+        SwarmOperationPopup.qml
+        VehicleConfigMenu.qml
         VehicleConfigView.qml
         VehicleSummary.qml
+    IMPORTS
+        QGroundControl
+        QGroundControl.Cluster
+        QGroundControl.Controls
+        QGroundControl.Viewer3D
+        QtCharts
+        QtPositioning
+        QtQuick3D
+        QtQuick3D.AssetUtils
+        QtQuick3D.Helpers
+        QtQuick3D.Physics
     NO_PLUGIN
+)
+
+target_include_directories(VehicleSetupModule
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../FactSystem
 )

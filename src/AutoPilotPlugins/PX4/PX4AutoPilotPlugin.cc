@@ -107,6 +107,12 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                     _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));
                 }
 
+                if (!_motorComponent) {
+                    _motorComponent = new MotorComponent(_vehicle, this, this);
+                    _motorComponent->setupTriggerSignals();
+                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));
+                }
+
                 _safetyComponent = new SafetyComponent(_vehicle, this, this);
                 _safetyComponent->setupTriggerSignals();
                 _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_safetyComponent)));

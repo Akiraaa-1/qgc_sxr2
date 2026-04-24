@@ -11,13 +11,21 @@ Button {
     leftPadding:        ScreenTools.defaultFontPixelWidth
     rightPadding:       leftPadding
 
+    AnalyzePalette { id: analyzePalette }
+
     property real _compIDWidth: ScreenTools.defaultFontPixelWidth * 3
     property real _hzWidth:     ScreenTools.defaultFontPixelWidth * 6
     property real _nameWidth:   nameLabel.contentWidth
 
     background: Rectangle {
         anchors.fill:   parent
-        color:          checked ? qgcPal.buttonHighlight : qgcPal.button
+        radius:         analyzePalette.cornerRadius
+        border.width:   analyzePalette.borderWidth
+        border.color:   checked ? analyzePalette.accent : analyzePalette.border
+        color:          checked ? analyzePalette.accent : (control.pressed ? analyzePalette.surfacePressed : (control.hovered ? analyzePalette.surfaceHover : analyzePalette.surface))
+
+        Behavior on color { ColorAnimation { duration: analyzePalette.transitionDuration } }
+        Behavior on border.color { ColorAnimation { duration: analyzePalette.transitionDuration } }
     }
 
     property double messageHz:  0
@@ -29,7 +37,7 @@ Button {
 
         QGCLabel {
             text:                   control.compID
-            color:                  checked ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color:                  checked ? analyzePalette.textPrimary : analyzePalette.textSecondary
             verticalAlignment:      Text.AlignVCenter
             Layout.minimumHeight:   ScreenTools.isMobile ? (ScreenTools.defaultFontPixelHeight * 2) : (ScreenTools.defaultFontPixelHeight * 1.5)
             Layout.minimumWidth:    _compIDWidth
@@ -37,12 +45,12 @@ Button {
         QGCLabel {
             id:                     nameLabel
             text:                   control.text
-            color:                  checked ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color:                  checked ? analyzePalette.textPrimary : analyzePalette.textSecondary
             Layout.fillWidth:       true
             Layout.alignment:       Qt.AlignVCenter
         }
         QGCLabel {
-            color:                  checked ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color:                  checked ? analyzePalette.textPrimary : analyzePalette.textSecondary
             text:                   messageHz.toFixed(1) + 'Hz'
             horizontalAlignment:    Text.AlignRight
             Layout.minimumWidth:    _hzWidth

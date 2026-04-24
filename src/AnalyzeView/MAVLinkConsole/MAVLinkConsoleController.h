@@ -18,6 +18,9 @@ class MAVLinkConsoleController : public QStringListModel
     QML_ELEMENT
     Q_MOC_INCLUDE("Vehicle.h")
     Q_PROPERTY(QString text READ _getText CONSTANT)
+    Q_PROPERTY(bool activeVehicleAvailable READ activeVehicleAvailable NOTIFY activeVehicleAvailableChanged)
+    Q_PROPERTY(bool linkActive READ linkActive NOTIFY linkActiveChanged)
+    Q_PROPERTY(QString vehicleName READ vehicleName NOTIFY vehicleNameChanged)
 
     class CommandHistory
     {
@@ -37,6 +40,8 @@ public:
     ~MAVLinkConsoleController();
 
     Q_INVOKABLE void sendCommand(const QString &command);
+    Q_INVOKABLE void clear();
+    Q_INVOKABLE void reopenConsole();
     Q_INVOKABLE QString historyUp(const QString &current) { return _history.up(current); }
     Q_INVOKABLE QString historyDown(const QString &current) { return _history.down(current); }
 
@@ -45,6 +50,15 @@ public:
     ///     @return last line of the clipboard data
     Q_INVOKABLE QString handleClipboard(const QString &command_pre);
 
+    bool activeVehicleAvailable() const { return _vehicle != nullptr; }
+    bool linkActive() const;
+    QString vehicleName() const;
+
+signals:
+    void activeVehicleAvailableChanged();
+    void linkActiveChanged();
+    void vehicleNameChanged();
+
 private slots:
     void _setActiveVehicle(Vehicle *vehicle);
     void _receiveData(uint8_t device, uint8_t flags, uint16_t timeout, uint32_t baudrate, const QByteArray &data);
@@ -52,6 +66,7 @@ private slots:
 private:
     bool _processANSItext(QByteArray &line);
     void _sendSerialData(const QByteArray &data, bool close = false);
+    void _resetConsole();
     void _writeLine(int line, const QByteArray &text);
     QString _transformLineForRichText(const QString &line) const;
     QString _getText() const;

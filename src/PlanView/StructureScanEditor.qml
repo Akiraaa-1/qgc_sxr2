@@ -7,14 +7,17 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.FlightMap
+import QGroundControl.PlanView
 
 // Editor for Survery mission items
 Rectangle {
     id:         _root
     height:     visible ? (editorColumn.height + (_margin * 2)) : 0
     width:      availableWidth
-    color:      qgcPal.windowShadeDark
-    radius:     _radius
+    color:      theme.panelColor
+    radius:     theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
     required property var missionItem
     required property real availableWidth
@@ -23,6 +26,8 @@ Rectangle {
     property real   _fieldWidth:                ScreenTools.defaultFontPixelWidth * 10.5
     property var    _vehicle:                   QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
     property real   _cameraMinTriggerInterval:  missionItem.cameraCalc.minTriggerInterval.rawValue
+
+    PlanEditorTheme { id: theme }
 
     function polygonCaptureStarted() {
         missionItem.clearPolygon()
@@ -57,6 +62,7 @@ Rectangle {
                 horizontalAlignment:    Text.AlignHCenter
                 text:               qsTr("Use the Polygon Tools to create the polygon which outlines the structure.")
                 visible:        !missionItem.structurePolygon.isValid || missionItem.wizardMode
+                color:          theme.secondaryTextColor
             }
 
         ColumnLayout {
@@ -70,8 +76,8 @@ Rectangle {
 
                 Component.onCompleted: currentIndex = 0
 
-                QGCTabButton { text: qsTr("Grid") }
-                QGCTabButton { text: qsTr("Camera") }
+                PlanTabButton { text: qsTr("Grid") }
+                PlanTabButton { text: qsTr("Camera") }
             }
 
             ColumnLayout {
@@ -84,6 +90,7 @@ Rectangle {
                     text:           qsTr("Note: Polygon respresents structure surface not vehicle flight path.")
                     wrapMode:       Text.WordWrap
                     font.pointSize: ScreenTools.smallFontPointSize
+                    color:          theme.secondaryTextColor
                 }
 
                 QGCLabel {
@@ -103,7 +110,7 @@ Rectangle {
                     sideDistanceLabel:              qsTr("Trigger Distance")
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             scanHeader
                     Layout.fillWidth:   true
                     text:           qsTr("Scan")
@@ -120,7 +127,7 @@ Rectangle {
                         rowSpacing:     _margin
                         columns:        2
 
-                        FactComboBox {
+                        PlanFactComboBox {
                             fact:               missionItem.startFromTop
                             indexModel:         true
                             model:              [ qsTr("Start Scan From Bottom"), qsTr("Start Scan From Top") ]
@@ -130,21 +137,22 @@ Rectangle {
 
                         QGCLabel {
                             text:       qsTr("Structure Height")
+                            color:      theme.secondaryTextColor
                         }
-                        FactTextField {
+                        PlanFactTextField {
                             fact:               missionItem.structureHeight
                             Layout.fillWidth:   true
                         }
 
-                        QGCLabel { text: qsTr("Scan Bottom Alt") }
-                        AltitudeFactTextField {
+                        QGCLabel { text: qsTr("Scan Bottom Alt"); color: theme.secondaryTextColor }
+                        PlanAltitudeFactTextField {
                             fact:               missionItem.scanBottomAlt
                             altitudeFrame:       QGroundControl.AltitudeFrameRelative
                             Layout.fillWidth:   true
                         }
 
-                        QGCLabel { text: qsTr("Entrance/Exit Alt") }
-                        AltitudeFactTextField {
+                        QGCLabel { text: qsTr("Entrance/Exit Alt"); color: theme.secondaryTextColor }
+                        PlanAltitudeFactTextField {
                             fact:               missionItem.entranceAlt
                             altitudeFrame:       QGroundControl.AltitudeFrameRelative
                             Layout.fillWidth:   true
@@ -153,8 +161,9 @@ Rectangle {
                         QGCLabel {
                             text:       qsTr("Gimbal Pitch")
                             visible:    missionItem.cameraCalc.isManualCamera
+                            color:      theme.secondaryTextColor
                         }
-                        FactTextField {
+                        PlanFactTextField {
                             fact:               missionItem.gimbalPitch
                             Layout.fillWidth:   true
                             visible:            missionItem.cameraCalc.isManualCamera
@@ -166,13 +175,13 @@ Rectangle {
                         width:  1
                     }
 
-                    QGCButton {
+                    PlanButton {
                         text:       qsTr("Rotate entry point")
                         onClicked:  missionItem.rotateEntryPoint()
                     }
                 } // Column - Scan
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             statsHeader
                     Layout.fillWidth:   true
                     text:           qsTr("Statistics")
@@ -183,26 +192,26 @@ Rectangle {
                     columnSpacing:  ScreenTools.defaultFontPixelWidth
                     visible:        statsHeader.checked
 
-                    QGCLabel { text: qsTr("Layers") }
-                    QGCLabel { text: missionItem.layers.valueString }
+                    QGCLabel { text: qsTr("Layers"); color: theme.secondaryTextColor }
+                    QGCLabel { text: missionItem.layers.valueString; color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Layer Height") }
-                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
+                    QGCLabel { text: qsTr("Layer Height"); color: theme.secondaryTextColor }
+                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString; color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Top Layer Alt") }
-                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.topFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
+                    QGCLabel { text: qsTr("Top Layer Alt"); color: theme.secondaryTextColor }
+                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.topFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString; color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Bottom Layer Alt") }
-                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.bottomFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
+                    QGCLabel { text: qsTr("Bottom Layer Alt"); color: theme.secondaryTextColor }
+                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.bottomFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString; color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Photo Count") }
-                    QGCLabel { text: missionItem.cameraShots }
+                    QGCLabel { text: qsTr("Photo Count"); color: theme.secondaryTextColor }
+                    QGCLabel { text: missionItem.cameraShots; color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Photo Interval") }
-                    QGCLabel { text: missionItem.timeBetweenShots.toFixed(1) + " " + qsTr("secs") }
+                    QGCLabel { text: qsTr("Photo Interval"); color: theme.secondaryTextColor }
+                    QGCLabel { text: missionItem.timeBetweenShots.toFixed(1) + " " + qsTr("secs"); color: theme.textColor }
 
-                    QGCLabel { text: qsTr("Trigger Distance") }
-                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintSide.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
+                    QGCLabel { text: qsTr("Trigger Distance"); color: theme.secondaryTextColor }
+                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintSide.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString; color: theme.textColor }
                 }
             } // Grid Column
 

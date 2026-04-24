@@ -27,7 +27,7 @@ AnalyzePage {
     readonly property real _barBadValue:    60.0
     readonly property real _barMidValue:    30.0
 
-    QGCPalette { id:qgcPal; colorGroupEnabled: true }
+    AnalyzePalette { id: analyzePalette }
 
     Component {
         id: pageComponent
@@ -46,15 +46,17 @@ AnalyzePage {
                         height:             _barHeight
                         width:              _barWidth
                         Layout.alignment:   Qt.AlignHCenter
-                        color:              "transparent"
-                        border.width:       1
-                        border.color:       qgcPal.text
+                        color:              analyzePalette.inputSurface
+                        radius:             analyzePalette.cornerRadius
+                        border.width:       analyzePalette.borderWidth
+                        border.color:       analyzePalette.border
 
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width:          parent.width
                             height:         parent.height * (Math.min(_barMaximum, _xValue) / (_barMaximum - _barMinimum))
-                            color:          qgcPal.text
+                            color:          analyzePalette.textPrimary
+                            radius:         analyzePalette.cornerRadius
                         }
 
                         // Max vibe indication line at 60
@@ -65,7 +67,8 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.8
                         }
 
                         // Mid vibe indication line at 30
@@ -76,13 +79,15 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.5
                         }
                     }
 
                     QGCLabel {
                         Layout.alignment:   Qt.AlignHCenter
                         text:               qsTr("X (%1)").arg(_xValue.toFixed(0))
+                        color:              analyzePalette.textPrimary
                     }
                 }
 
@@ -91,15 +96,17 @@ AnalyzePage {
                         height:             _barHeight
                         width:              _barWidth
                         Layout.alignment:   Qt.AlignHCenter
-                        color:              "transparent"
-                        border.width:       1
-                        border.color:       qgcPal.text
+                        color:              analyzePalette.inputSurface
+                        radius:             analyzePalette.cornerRadius
+                        border.width:       analyzePalette.borderWidth
+                        border.color:       analyzePalette.border
 
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width:          parent.width
                             height:         parent.height * (Math.min(_barMaximum, _yValue) / (_barMaximum - _barMinimum))
-                            color:          qgcPal.text
+                            color:          analyzePalette.textPrimary
+                            radius:         analyzePalette.cornerRadius
                         }
 
                         // Max vibe indication line at 60
@@ -110,7 +117,8 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.8
                         }
 
                         // Mid vibe indication line at 30
@@ -121,13 +129,15 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.5
                         }
                     }
 
                     QGCLabel {
                         Layout.alignment:   Qt.AlignHCenter
                         text:               qsTr("Y (%1)").arg(_yValue.toFixed(0))
+                        color:              analyzePalette.textPrimary
                     }
                 }
 
@@ -136,15 +146,17 @@ AnalyzePage {
                         height:             _barHeight
                         width:              _barWidth
                         Layout.alignment:   Qt.AlignHCenter
-                        color:              "transparent"
-                        border.width:       1
-                        border.color:       qgcPal.text
+                        color:              analyzePalette.inputSurface
+                        radius:             analyzePalette.cornerRadius
+                        border.width:       analyzePalette.borderWidth
+                        border.color:       analyzePalette.border
 
                         Rectangle {
                             anchors.bottom: parent.bottom
                             width:          parent.width
                             height:         parent.height * (Math.min(_barMaximum, _zValue) / (_barMaximum - _barMinimum))
-                            color:          qgcPal.text
+                            color:          analyzePalette.textPrimary
+                            radius:         analyzePalette.cornerRadius
                         }
 
                         // Max vibe indication line at 60
@@ -155,7 +167,8 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.8
                         }
 
                         // Mid vibe indication line at 30
@@ -166,13 +179,15 @@ AnalyzePage {
                             anchors.right:          parent.right
                             width:                  parent.width
                             height:                 1
-                            color:                  "red"
+                            color:                  analyzePalette.accent
+                            opacity:                0.5
                         }
                     }
 
                     QGCLabel {
                         Layout.alignment:   Qt.AlignHCenter
                         text:               qsTr("Z (%1)").arg(_zValue.toFixed(0))
+                        color:              analyzePalette.textPrimary
                     }
                 }
             }
@@ -183,24 +198,28 @@ AnalyzePage {
 
                 QGCLabel {
                     text: qsTr("Clip count")
+                    color: analyzePalette.textPrimary
                 }
 
                 QGCLabel {
                     text: qsTr("Accel 1: %1").arg(_activeVehicle.vibration.clipCount1.rawValue)
+                    color: analyzePalette.textSecondary
                 }
 
                 QGCLabel {
                     text: qsTr("Accel 2: %1").arg(_activeVehicle.vibration.clipCount2.rawValue)
+                    color: analyzePalette.textSecondary
                 }
 
                 QGCLabel {
                     text: qsTr("Accel 3: %1").arg(_activeVehicle.vibration.clipCount3.rawValue)
+                    color: analyzePalette.textSecondary
                 }
             }
 
             Rectangle {
                 anchors.fill:   parent
-                color:          qgcPal.window
+                color:          analyzePalette.backgroundTop
                 opacity:        0.75
                 visible:        !_available
 
@@ -209,6 +228,7 @@ AnalyzePage {
                     horizontalAlignment:    Text.AlignHCenter
                     verticalAlignment:      Text.AlignVCenter
                     text:                   qsTr("Not Available")
+                    color:                  analyzePalette.textSecondary
                 }
             }
         }

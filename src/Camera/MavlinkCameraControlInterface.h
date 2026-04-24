@@ -7,6 +7,7 @@
 #include <QtCore/QSizeF>
 
 #include "FactGroup.h"
+#include "MAVLinkLib.h"
 #include "QGCVideoStreamInfo.h"
 #include "QmlObjectListModel.h"
 

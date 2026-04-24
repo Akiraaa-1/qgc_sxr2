@@ -23,6 +23,14 @@ Button {
     property bool showBorder: qgcPal.globalTheme === QGCPalette.Light
     property real backRadius: ScreenTools.defaultBorderRadius
     property real heightFactor: 0.5
+    property color buttonColor: qgcPal.button
+    property color checkedButtonColor: qgcPal.buttonHighlight
+    property color hoverButtonColor: buttonColor
+    property color buttonBorderColor: qgcPal.buttonBorder
+    property color buttonTextColor: qgcPal.buttonText
+    property color checkedButtonTextColor: qgcPal.buttonHighlightText
+    property color separatorColor: Qt.darker(qgcPal.buttonText, 1.5)
+    property int stateAnimationDuration: 200
 
     property bool _showSeparator: false
     property bool _showHighlight: enabled && (pressed | checked)
@@ -36,10 +44,13 @@ Button {
         id: backRect
         implicitWidth: ScreenTools.implicitButtonWidth
         implicitHeight: ScreenTools.implicitButtonHeight
-        //radius: backRadius
+        radius: backRadius
         border.width: showBorder ? 1 : 0
-        border.color: qgcPal.buttonBorder
-        color: _showHighlight ? qgcPal.buttonHighlight : qgcPal.button
+        border.color: buttonBorderColor
+        color: control.checked || control.pressed ? checkedButtonColor : (control.hovered ? hoverButtonColor : buttonColor)
+
+        Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
         Rectangle {
             anchors.right: parent.right
@@ -48,7 +59,7 @@ Button {
             anchors.topMargin: _vertMargin
             anchors.bottomMargin: _vertMargin
             width: 1
-            color: Qt.darker(qgcPal.buttonText, 1.5)
+            color: control.separatorColor
             visible: control._showSeparator
 
             property real _vertMargin: ScreenTools.defaultFontPixelHeight * 0.25
@@ -66,7 +77,7 @@ Button {
             source: control.icon.source
             height: source === "" ? 0 : ScreenTools.defaultFontPixelHeight
             width: height
-            color: _showHighlight ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color: control.checked || control.pressed ? checkedButtonTextColor : buttonTextColor
             fillMode: Image.PreserveAspectFit
             sourceSize.height: height
             visible: _showIcon
@@ -79,7 +90,7 @@ Button {
             text: control.text
             font.pointSize: control.pointSize
             font.family: ScreenTools.normalFontFamily
-            color: _showHighlight ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color: control.checked || control.pressed ? checkedButtonTextColor : buttonTextColor
             visible: !_showIcon
         }
     }

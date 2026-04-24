@@ -12,6 +12,7 @@ ColumnLayout {
     required property var controller
     property Component additionalSetupComponent
     property Component additionalMonitorComponent
+    property bool useDarkStyle: false
 
     // Controllers need access to these UI elements
     property alias statusText: statusText
@@ -23,15 +24,34 @@ ColumnLayout {
 
     property bool useDeadband: false
 
-    property real _channelValueDisplayWidth: ScreenTools.defaultFontPixelWidth * 30
+    property real _channelValueDisplayWidth: ScreenTools.defaultFontPixelWidth * 16
     property bool _deadbandActive: useDeadband
+    readonly property color _darkPanelColor: "#2D2D2D"
+    readonly property color _darkInputColor: "#252525"
+    readonly property color _darkBorderColor: "#333333"
+    readonly property color _darkPrimaryTextColor: "#FFFFFF"
+    readonly property color _darkSecondaryTextColor: "#B0B0B0"
+    readonly property color _darkDisabledTextColor: "#666666"
+    readonly property color _darkAccentColor: "#2563EB"
+    readonly property color _darkAccentHoverColor: "#1D4ED8"
+    readonly property color _darkAccentPressedColor: "#1E40AF"
+    readonly property color _darkButtonColor: "#333333"
+    readonly property color _darkButtonHoverColor: "#3A3A3A"
+    readonly property color _darkButtonPressedColor: "#2A2A2A"
+    readonly property int _styleAnimDuration: 200
 
     QGCPalette { id: qgcPal; colorGroupEnabled: root.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     RowLayout {
+        id: topControlsRow
+        Layout.fillWidth: true
+        spacing: ScreenTools.defaultFontPixelWidth
+
         // Left Column - Attitude Controls display
         ColumnLayout {
             Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
             spacing: ScreenTools.defaultFontPixelHeight
 
             ColumnLayout {
@@ -39,7 +59,10 @@ ColumnLayout {
                 Layout.fillWidth: true
                 spacing: ScreenTools.defaultFontPixelHeight
 
-                QGCLabel { text: qsTr("Attitude Controls") }
+                QGCLabel {
+                    text: qsTr("Attitude Controls")
+                    color: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.text
+                }
 
                 Repeater {
                     model: [
@@ -51,10 +74,12 @@ ColumnLayout {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelWidth
 
                         QGCLabel {
                             Layout.fillWidth: true
                             text: modelData.name
+                            color: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.text
                         }
 
                         RemoteControlChannelValueDisplay {
@@ -66,12 +91,14 @@ ColumnLayout {
                             channelValue: modelData.value
                             deadbandValue: modelData.deadband
                             deadbandEnabled: root._deadbandActive
+                            useDarkStyle: root.useDarkStyle
                         }
                     }
                 }
 
                 QGCLabel {
                     text: qsTr("Extension Controls")
+                    color: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.text
                     visible: controller.anyExtensionEnabled
                 }
 
@@ -90,10 +117,12 @@ ColumnLayout {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: modelData.extensionEnabled
+                        spacing: ScreenTools.defaultFontPixelWidth
 
                         QGCLabel {
                             Layout.fillWidth: true
                             text: modelData.name
+                            color: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.text
                         }
 
                         RemoteControlChannelValueDisplay {
@@ -105,6 +134,7 @@ ColumnLayout {
                             channelValue: modelData.value
                             deadbandValue: modelData.deadband
                             deadbandEnabled: root._deadbandActive
+                            useDarkStyle: root.useDarkStyle
                         }
                     }
                 }
@@ -114,16 +144,27 @@ ColumnLayout {
         // Right Column - Stick Display
         ColumnLayout {
             Layout.alignment: Qt.AlignTop
+            readonly property real _maxPanelWidth: topControlsRow.width * 0.58
+            readonly property real _minPanelWidth: ScreenTools.defaultFontPixelWidth * 20
+            readonly property real _panelWidth: Math.max(_minPanelWidth, Math.min(stickDisplayContainer.implicitWidth, _maxPanelWidth))
+            Layout.preferredWidth: _panelWidth
+            Layout.minimumWidth: _minPanelWidth
+            Layout.maximumWidth: _maxPanelWidth
             spacing: ScreenTools.defaultFontPixelHeight / 2
 
             Rectangle {
                 id: stickDisplayContainer
+                Layout.fillWidth: true
                 implicitWidth: stickDisplayLayout.width + _margins * 2
                 implicitHeight: stickDisplayLayout.height + _margins * 2
-                border.color: qgcPal.text
+                border.color: root.useDarkStyle ? root._darkBorderColor : qgcPal.text
                 border.width: 1
-                color: qgcPal.window
-                radius: ScreenTools.defaultBorderRadius
+                color: root.useDarkStyle ? root._darkPanelColor : qgcPal.window
+                radius: root.useDarkStyle ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
+                clip: true
+
+                Behavior on color { ColorAnimation { duration: root._styleAnimDuration } }
+                Behavior on border.color { ColorAnimation { duration: root._styleAnimDuration } }
 
                 property real _margins: ScreenTools.defaultFontPixelHeight / 2
                 property real _stickAdjust: leftStickDisplay.width / 2 - _margins * 1.25
@@ -131,18 +172,39 @@ ColumnLayout {
                 ColumnLayout {
                     id: stickDisplayLayout
                     anchors.leftMargin: stickDisplayContainer._margins
+                    anchors.rightMargin: stickDisplayContainer._margins
                     anchors.topMargin: stickDisplayContainer._margins
                     anchors.left: parent.left
+                    anchors.right: parent.right
                     anchors.top: parent.top
                     spacing: stickDisplayContainer._margins
 
                     RowLayout {
-                        spacing: ScreenTools.defaultFontPixelWidth * 2
+                        id: modeControlsRow
+                        Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.5
 
                         QGCComboBox {
                             id: transmitterModeComboBox
-                            model: [ qsTr("Mode 1"), qsTr("Mode 2"), qsTr("Mode 3"), qsTr("Mode 4") ]
+                            model: [
+                                qsTr("Mode 1 (\u65e5\u672c\u624b)"),
+                                qsTr("Mode 2 (\u7f8e\u56fd\u624b)"),
+                                qsTr("Mode 3 (\u53cd\u7f8e\u624b)"),
+                                qsTr("Mode 4 (\u53cd\u65e5\u624b)")
+                            ]
+                            Layout.preferredWidth: Math.min(ScreenTools.defaultFontPixelWidth * 14, modeControlsRow.width * 0.44)
+                            Layout.maximumWidth: Math.min(ScreenTools.defaultFontPixelWidth * 15, modeControlsRow.width * 0.46)
                             enabled: !controller.calibrating
+                            backgroundColor: root.useDarkStyle ? root._darkInputColor : qgcPal.button
+                            borderColor: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonBorder
+                            focusBorderColor: root.useDarkStyle ? root._darkAccentColor : qgcPal.buttonBorder
+                            textColor: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.buttonText
+                            popupBackgroundColor: root.useDarkStyle ? "#1A1A1A" : qgcPal.window
+                            popupBorderColor: root.useDarkStyle ? root._darkBorderColor : qgcPal.text
+                            delegateSelectedBackgroundColor: root.useDarkStyle ? root._darkAccentColor : qgcPal.buttonHighlight
+                            delegateSelectedTextColor: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.buttonHighlightText
+                            showFocusBorder: root.useDarkStyle
+                            borderRadius: root.useDarkStyle ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
 
                             onActivated: (index) => controller.transmitterMode = index + 1
 
@@ -151,15 +213,30 @@ ColumnLayout {
 
                         QGCCheckBox {
                             id: centeredThrottleCheckBox
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 13
                             text: qsTr("Centered Throttle")
                             checked: controller.centeredThrottle
                             enabled: !controller.calibrating
                             visible: !controller.joystickMode
+                            textColor: root.useDarkStyle ? root._darkSecondaryTextColor : qgcPal.buttonText
+                            boxBackgroundColor: root.useDarkStyle ? root._darkInputColor : (enabled ? "white" : "transparent")
+                            boxBorderColor: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonBorder
+                            checkColor: root.useDarkStyle ? root._darkAccentColor : qgcPal.buttonHighlight
+                            hoverColor: root.useDarkStyle ? "#3A3A3A" : qgcPal.buttonHighlight
 
                             onClicked: controller.centeredThrottle = checked
                         }
                     }
 
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: modeControlsRow.width
+                        visible: controller.calibrating
+                        text: qsTr("\u6b63\u5728\u6821\u51c6\uff0c\u6a21\u5f0f\u4e0e\u6cb9\u95e8\u7c7b\u578b\u4f1a\u88ab\u9501\u5b9a\u3002\u8bf7\u5148\u7ed3\u675f/\u53d6\u6d88\u6821\u51c6\u540e\u518d\u9009\u62e9\u3002")
+                        color: root.useDarkStyle ? "#F0BB6C" : qgcPal.warningText
+                        wrapMode: Text.WordWrap
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: stickDisplayContainer._margins * 2
@@ -170,9 +247,9 @@ ColumnLayout {
                             implicitWidth: ScreenTools.defaultFontPixelHeight * 5
                             implicitHeight: implicitWidth
                             radius: implicitWidth / 2
-                            border.color: qgcPal.buttonHighlight
+                            border.color: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonHighlight
                             border.width: 1
-                            color: qgcPal.window
+                            color: root.useDarkStyle ? root._darkInputColor : qgcPal.window
 
                             Rectangle {
                                 x: parent.width / 2 + stickDisplayContainer._stickAdjust * controller.stickDisplayPositions[0] - width / 2
@@ -180,7 +257,7 @@ ColumnLayout {
                                 width: ScreenTools.defaultFontPixelHeight
                                 height: width
                                 radius: width / 2
-                                color: qgcPal.buttonHighlight
+                                color: root.useDarkStyle ? root._darkAccentColor : qgcPal.buttonHighlight
                             }
                         }
 
@@ -189,9 +266,9 @@ ColumnLayout {
                             implicitWidth: leftStickDisplay.implicitWidth
                             implicitHeight: implicitWidth
                             radius: implicitWidth / 2
-                            border.color: qgcPal.buttonHighlight
+                            border.color: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonHighlight
                             border.width: 1
-                            color: qgcPal.window
+                            color: root.useDarkStyle ? root._darkInputColor : qgcPal.window
                             visible: !controller.singleStickDisplay
 
                             Rectangle {
@@ -200,7 +277,7 @@ ColumnLayout {
                                 width: ScreenTools.defaultFontPixelHeight
                                 height: width
                                 radius: width / 2
-                                color: qgcPal.buttonHighlight
+                                color: root.useDarkStyle ? root._darkAccentColor : qgcPal.buttonHighlight
                             }
                         }
                     }
@@ -217,6 +294,12 @@ ColumnLayout {
         QGCButton {
             id: cancelButton
             text: qsTr("Cancel")
+            borderColor: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonBorder
+            textColor: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.buttonText
+            backgroundColor: root.useDarkStyle ? (pressed ? root._darkButtonPressedColor : (hovered ? root._darkButtonHoverColor : root._darkButtonColor)) : qgcPal.button
+            backRadius: root.useDarkStyle ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
+            showBorder: root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
+            overlayColor: root.useDarkStyle ? "transparent" : qgcPal.buttonHighlight
             onClicked: controller.cancelButtonClicked()
         }
 
@@ -224,6 +307,12 @@ ColumnLayout {
             id: nextButton
             primary: true
             text: qsTr("Calibrate")
+            backgroundColor: root.useDarkStyle ? (pressed ? root._darkAccentPressedColor : (hovered ? root._darkAccentHoverColor : root._darkAccentColor)) : qgcPal.primaryButton
+            borderColor: root.useDarkStyle ? root._darkBorderColor : qgcPal.buttonBorder
+            textColor: root.useDarkStyle ? root._darkPrimaryTextColor : qgcPal.primaryButtonText
+            backRadius: root.useDarkStyle ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
+            showBorder: root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
+            overlayColor: root.useDarkStyle ? "transparent" : qgcPal.buttonHighlight
 
             onClicked: {
                 if (text === qsTr("Calibrate")) {
@@ -256,6 +345,7 @@ ColumnLayout {
             id: statusText
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
+            color: root.useDarkStyle ? (enabled ? root._darkSecondaryTextColor : root._darkDisabledTextColor) : qgcPal.text
         }
     }
 
@@ -263,14 +353,17 @@ ColumnLayout {
         id: separator
         Layout.fillWidth: true
         implicitHeight: 1
-        color: qgcPal.text
+        color: root.useDarkStyle ? root._darkBorderColor : qgcPal.text
     }
 
     // Additional Setup + Channel Monitor
     RowLayout {
+        id: additionalSetupRow
         Layout.fillWidth: true
-        spacing: ScreenTools.defaultFontPixelHeight
+        spacing: ScreenTools.defaultFontPixelWidth * 2
 
+        readonly property real _setupMinWidth: ScreenTools.defaultFontPixelWidth * 17
+        readonly property real _monitorMinWidth: ScreenTools.defaultFontPixelWidth * 14
 
         Item {
             Layout.fillWidth: true
@@ -280,19 +373,29 @@ ColumnLayout {
 
         Loader {
             id: additionalSetupLoader
+            readonly property real _preferredLoaderWidth: Math.max(implicitWidth, additionalSetupRow.width * 0.52)
+            visible: additionalSetupComponent !== undefined
             Layout.alignment: Qt.AlignTop
+            Layout.fillWidth: true
+            Layout.preferredWidth: _preferredLoaderWidth
+            Layout.minimumWidth: additionalSetupRow._setupMinWidth
+            Layout.maximumWidth: additionalSetupRow.width * 0.66
             sourceComponent: additionalSetupComponent
         }
 
         ColumnLayout {
             Layout.alignment: Qt.AlignTop
             Layout.fillWidth: true
+            Layout.minimumWidth: additionalSetupRow._monitorMinWidth
+            Layout.preferredWidth: Math.max(additionalSetupRow._monitorMinWidth, additionalSetupRow.width * 0.34)
+            Layout.maximumWidth: additionalSetupRow.width * 0.46
             spacing: ScreenTools.defaultFontPixelHeight
 
             RemoteControlChannelMonitor {
                 id: channelMonitor
                 Layout.fillWidth: true
                 twoColumn: false
+                useDarkStyle: root.useDarkStyle
                 channelCount: controller.channelCount
                 channelValueMin: controller.channelValueMin
                 channelValueMax: controller.channelValueMax

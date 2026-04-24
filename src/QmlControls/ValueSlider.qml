@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import Qt.labs.animation
 
 import QGroundControl
@@ -26,7 +25,7 @@ Control {
 
     property real   _majorTickSize:         valueIndicator.pointerSize + valueIndicator.indicatorValueMargins
     property real   _tickValueEdgeMargin:   ScreenTools.defaultFontPixelWidth / 2
-    property real   _minorTickSize:        _majorTickSize / 2
+    property real   _minorTickSize:         _majorTickSize / 2
     property real   _sliderValuePerPixel:   majorTickStepSize / _majorTickSpacing
 
     property int    _minorTickValueStep:    majorTickStepSize / 2
@@ -57,6 +56,12 @@ Control {
     property bool    _loadComplete: false
 
     property var qgcPal: QGroundControl.globalPalette
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
+    readonly property color _sliderTickColor: _popupStyled ? popupStyle.secondaryTextColor : qgcPal.text
+    readonly property color _sliderStrokeColor: _popupStyled ? popupStyle.borderColor : qgcPal.text
+    readonly property color _sliderSurfaceColor: _popupStyled ? popupStyle.inputBackground : qgcPal.window
+    readonly property color _sliderLabelColor: _popupStyled ? popupStyle.panelBackground : qgcPal.window
+    readonly property int _stateAnimationDuration: 200
 
     function setValue(value) {
         value = _clampedSliderValue(value)
@@ -135,6 +140,8 @@ Control {
         colorGroupEnabled:  control.enabled
     }
 
+    QGCPopupStyle { id: popupStyle }
+
     // This TapHandler ensures that the slider captures touch and click events,
     // preventing them from passing through to the underlying map.
     TapHandler {
@@ -195,7 +202,9 @@ Control {
                         id:     majorTickMark
                         width:  1
                         height: _majorTickSize
-                        color:  qgcPal.text
+                        color:  control._sliderTickColor
+
+                        Behavior on color { ColorAnimation { duration: control._stateAnimationDuration } }
                     }
 
                     QGCLabel {
@@ -212,14 +221,16 @@ Control {
                 model: _cMajorTicks * 2
 
                 Rectangle {
-                    x:          _majorTickSpacing / 2 * index +  + _firstTickPixelOffset
+                    x:          (_majorTickSpacing / 2 * index) + _firstTickPixelOffset
                     width:      1
                     height:     _minorTickSize
-                    color:      qgcPal.text
+                    color:      control._sliderTickColor
                     opacity:    tickValue < from || tickValue > to ? 0.5 : 1
                     visible:    index % 2 === 1
 
                     property real tickValue: _majorTickMaxValue - ((majorTickStepSize  / 2) * index)
+
+                    Behavior on color { ColorAnimation { duration: control._stateAnimationDuration } }
                 }
             }
         }
@@ -228,9 +239,11 @@ Control {
             id:         labelItemBackground
             width:      labelItem.contentWidth
             height:     labelItem.contentHeight
-            color:      qgcPal.window
+            color:      control._sliderLabelColor
             opacity:    0.8
             visible:    labelItem.visible
+
+            Behavior on color { ColorAnimation { duration: control._stateAnimationDuration } }
         }
 
         QGCLabel {
@@ -258,8 +271,8 @@ Control {
 
             onPaint: {
                 var ctx = getContext("2d")
-                ctx.strokeStyle = qgcPal.text
-                ctx.fillStyle = qgcPal.window
+                ctx.strokeStyle = control._sliderStrokeColor
+                ctx.fillStyle = control._sliderSurfaceColor
                 ctx.lineWidth = 1
                 ctx.beginPath()
                 ctx.moveTo(width / 2, 0)

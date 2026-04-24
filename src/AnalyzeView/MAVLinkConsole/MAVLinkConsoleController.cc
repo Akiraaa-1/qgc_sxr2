@@ -4,6 +4,7 @@
 #include "QGCLoggingCategory.h"
 #include "QGCPalette.h"
 #include "Vehicle.h"
+#include "VehicleLinkManager.h"
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QClipboard>
@@ -24,8 +25,7 @@ MAVLinkConsoleController::MAVLinkConsoleController(QObject *parent)
 MAVLinkConsoleController::~MAVLinkConsoleController()
 {
     if (_vehicle) {
-        QByteArray msg;
-        _sendSerialData(msg, true);
+        _sendSerialData(QByteArray(), true);
     }
 
     qCDebug(MAVLinkConsoleControllerLog) << this;
@@ -33,6 +33,10 @@ MAVLinkConsoleController::~MAVLinkConsoleController()
 
 void MAVLinkConsoleController::sendCommand(const QString &command)
 {
+    if (!_vehicle) {
+        return;
+    }
+
     QString output = command;
 
     // there might be multiple commands, add them separately to the history
@@ -46,6 +50,21 @@ void MAVLinkConsoleController::sendCommand(const QString &command)
     (void) output.append("\n");
     _sendSerialData(qPrintable(output));
     _cursorHomePos = -1;
+}
+
+void MAVLinkConsoleController::clear()
+{
+    _resetConsole();
+}
+
+void MAVLinkConsoleController::reopenConsole()
+{
+    if (!_vehicle) {
+        return;
+    }
+
+    _resetConsole();
+    _sendSerialData(QByteArray());
 }
 
 QString MAVLinkConsoleController::handleClipboard(const QString &command_pre)
@@ -64,20 +83,37 @@ QString MAVLinkConsoleController::handleClipboard(const QString &command_pre)
 
 void MAVLinkConsoleController::_setActiveVehicle(Vehicle *vehicle)
 {
+    const bool hadVehicle = (_vehicle != nullptr);
+    const QString previousVehicleName = vehicleName();
+    const bool previousLinkActive = linkActive();
+
+    if (_vehicle) {
+        _sendSerialData(QByteArray(), true);
+    }
+
     for (QMetaObject::Connection &con : _connections) {
         (void) disconnect(con);
     }
     _connections.clear();
 
     _vehicle = vehicle;
+    _resetConsole();
+
     if (_vehicle) {
-        _incomingBuffer.clear();
-        // Reset the model
-        setStringList(QStringList());
-        _cursorY = 0;
-        _cursorX = 0;
-        _cursorHomePos = -1;
         _connections << connect(_vehicle, &Vehicle::mavlinkSerialControl, this, &MAVLinkConsoleController::_receiveData);
+        _connections << connect(_vehicle->vehicleLinkManager(), &VehicleLinkManager::primaryLinkChanged, this, &MAVLinkConsoleController::linkActiveChanged);
+        _connections << connect(_vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged, this, &MAVLinkConsoleController::linkActiveChanged);
+        _sendSerialData(QByteArray());
+    }
+
+    if (hadVehicle != (_vehicle != nullptr)) {
+        emit activeVehicleAvailableChanged();
+    }
+    if (previousVehicleName != vehicleName()) {
+        emit vehicleNameChanged();
+    }
+    if (previousLinkActive != linkActive()) {
+        emit linkActiveChanged();
     }
 }
 
@@ -127,7 +163,6 @@ void MAVLinkConsoleController::_receiveData(uint8_t device, uint8_t flags, uint1
 void MAVLinkConsoleController::_sendSerialData(const QByteArray &data, bool close)
 {
     if (!_vehicle) {
-        qCWarning(MAVLinkConsoleControllerLog) << "Internal error";
         return;
     }
 
@@ -136,9 +171,12 @@ void MAVLinkConsoleController::_sendSerialData(const QByteArray &data, bool clos
         return;
     }
 
-    // Send maximum sized chunks until the complete buffer is transmitted
     QByteArray output(data);
-    while (output.size()) {
+    bool sendEmptyFrame = output.isEmpty();
+
+    // Send maximum sized chunks until the complete buffer is transmitted.
+    // An empty frame is still meaningful here, since it opens/closes the shell session.
+    while (sendEmptyFrame || !output.isEmpty()) {
         QByteArray chunk(output.left(MAVLINK_MSG_SERIAL_CONTROL_FIELD_DATA_LEN));
         const int dataSize = chunk.size();
 
@@ -164,8 +202,32 @@ void MAVLinkConsoleController::_sendSerialData(const QByteArray &data, bool clos
         );
 
         (void) _vehicle->sendMessageOnLinkThreadSafe(sharedLink.get(), msg);
-        (void) output.remove(0, chunk.size());
+        (void) output.remove(0, dataSize);
+        sendEmptyFrame = false;
     }
+}
+
+bool MAVLinkConsoleController::linkActive() const
+{
+    if (!_vehicle) {
+        return false;
+    }
+
+    return !_vehicle->vehicleLinkManager()->primaryLink().expired() && !_vehicle->vehicleLinkManager()->communicationLost();
+}
+
+QString MAVLinkConsoleController::vehicleName() const
+{
+    return _vehicle ? QStringLiteral("Vehicle %1").arg(_vehicle->id()) : QString();
+}
+
+void MAVLinkConsoleController::_resetConsole()
+{
+    _incomingBuffer.clear();
+    setStringList(QStringList());
+    _cursorY = 0;
+    _cursorX = 0;
+    _cursorHomePos = -1;
 }
 
 bool MAVLinkConsoleController::_processANSItext(QByteArray &line)

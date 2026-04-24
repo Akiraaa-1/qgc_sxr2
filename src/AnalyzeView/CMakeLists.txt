@@ -24,7 +24,14 @@ qt_add_qml_module(AnalyzeViewModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        AnalyzeButton.qml
+        AnalyzeCard.qml
+        AnalyzeCheckBox.qml
+        AnalyzeComboBox.qml
+        AnalyzePalette.qml
         AnalyzePage.qml
+        AnalyzeSubMenuButton.qml
+        AnalyzeTextField.qml
         AnalyzeView.qml
         MAVLinkConsole/MAVLinkConsolePage.qml
         MAVLinkInspector/MAVLinkChart.qml

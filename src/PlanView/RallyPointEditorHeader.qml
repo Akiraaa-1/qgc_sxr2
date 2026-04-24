@@ -3,17 +3,22 @@ import QtQuick.Controls
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.PlanView
 
 Rectangle {
     id:     outerEditorRect
     height: innerEditorRect.y + innerEditorRect.height + (_margin * 2)
-    radius: _radius
-    color:  qgcPal.missionItemEditor
+    radius: theme.radius
+    color:  theme.panelColor
+    border.width: 1
+    border.color: theme.borderColor
 
     property var controller ///< RallyPointController
 
     readonly property real  _margin: ScreenTools.defaultFontPixelWidth / 2
     readonly property real  _radius: ScreenTools.defaultFontPixelWidth / 2
+
+    PlanEditorTheme { id: theme }
 
     QGCLabel {
         id:                 editorLabel
@@ -21,6 +26,7 @@ Rectangle {
         anchors.left:       parent.left
         anchors.top:        parent.top
         text:               qsTr("Rally Points")
+        color:              theme.textColor
     }
 
     Rectangle {
@@ -30,8 +36,10 @@ Rectangle {
         anchors.right:      parent.right
         anchors.top:        editorLabel.bottom
         height:             infoLabel.height + (_margin * 2)
-        color:              qgcPal.windowShadeDark
-        radius:             _radius
+        color:              theme.inputColor
+        radius:             theme.radius
+        border.width:       1
+        border.color:       theme.borderColor
 
         QGCLabel {
             id:                 infoLabel
@@ -42,6 +50,7 @@ Rectangle {
             wrapMode:           Text.WordWrap
             font.pointSize:     ScreenTools.smallFontPointSize
             text:               qsTr("Rally Points provide alternate landing points when performing a Return to Launch (RTL).")
+            color:              theme.secondaryTextColor
         }
     }
 }

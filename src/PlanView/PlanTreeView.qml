@@ -31,14 +31,16 @@ TreeView {
     property var _missionController: planMasterController.missionController
     property var _geoFenceController: planMasterController.geoFenceController
     property var _rallyPointController: planMasterController.rallyPointController
+    property real _contentRightInset: ScreenTools.defaultFontPixelWidth * 0.8
 
     // Helper: convert a persistent model index to the current visual row
     function _rowFor(modelIndex) { return root.rowAtIndex(modelIndex) }
 
     // QGCFlickableScrollIndicator expects parent to have indicatorColor (provided by QGCFlickable/QGCListView)
-    property color indicatorColor: qgcPal.text
+    property color indicatorColor: theme.secondaryTextColor
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+    PlanEditorTheme { id: theme }
 
     QGCFlickableScrollIndicator { parent: root; orientation: QGCFlickableScrollIndicator.Horizontal }
     QGCFlickableScrollIndicator { parent: root; orientation: QGCFlickableScrollIndicator.Vertical }
@@ -197,7 +199,7 @@ TreeView {
         // preventing "Cannot read property of null" warnings.
         Loader {
             id: loader
-            width: parent.width
+            width: parent.width - root._contentRightInset
 
             Component.onCompleted: {
                 switch (delegateRoot.nodeType) {
@@ -297,13 +299,14 @@ TreeView {
 
         Rectangle {
             id: separatorLine
-            anchors.margins: ScreenTools.defaultFontPixelWidth * 0.5
             anchors.topMargin: root.rowSpacing
             anchors.top: loader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.5
+            anchors.rightMargin: root._contentRightInset + ScreenTools.defaultFontPixelWidth * 0.5
             height: 1
-            color: qgcPal.groupBorder
+            color: theme.borderColor
             visible: delegateRoot.separator
         }
 
@@ -311,10 +314,15 @@ TreeView {
         Component {
             id: groupHeaderComponent
 
-            Rectangle {
+            PlanPanel {
                 width:  delegateRoot.width
                 height: ScreenTools.implicitComboBoxHeight + ScreenTools.defaultFontPixelWidth
-                color:  qgcPal.windowShade
+                panelColor: theme.panelColor
+                hoverColor: theme.panelHoverColor
+                pressedColor: theme.panelPressedColor
+                borderColor: delegateRoot.expanded ? theme.accentColor : theme.borderColor
+                hovered: headerMouseArea.containsMouse
+                pressed: headerMouseArea.pressed
 
                 RowLayout {
                     id: groupHeaderRow
@@ -329,7 +337,7 @@ TreeView {
                         Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.75
                         Layout.preferredHeight: Layout.preferredWidth
                         source: "/InstrumentValueIcons/cheveron-right.svg"
-                        color: qgcPal.text
+                        color: theme.secondaryTextColor
                         rotation: delegateRoot.expanded ? 90 : 0
                     }
 
@@ -337,6 +345,7 @@ TreeView {
                         Layout.alignment: Qt.AlignBaseline
                         text: delegateRoot.nodeObject ? delegateRoot.nodeObject.objectName : ""
                         font.bold: true
+                        color: theme.textColor
                     }
 
                     QGCLabel {
@@ -345,11 +354,12 @@ TreeView {
                         text: root._groupSubtitle(delegateRoot.nodeType)
                         elide: Text.ElideRight
                         font.pointSize: ScreenTools.smallFontPointSize
-                        color: qgcPal.colorGrey
+                        color: theme.secondaryTextColor
                     }
                 }
 
                 MouseArea {
+                    id: headerMouseArea
                     anchors.fill: parent
                     onClicked: {
                         if (!mainWindow.allowViewSwitch()) {

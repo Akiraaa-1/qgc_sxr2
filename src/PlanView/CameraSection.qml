@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 // Camera section for mission item editors
 Column {
@@ -21,7 +22,9 @@ Column {
     property real   _fieldWidth:    ScreenTools.defaultFontPixelWidth * 16
     property real   _margin:        ScreenTools.defaultFontPixelWidth / 2
 
-    SectionHeader {
+    PlanEditorTheme { id: theme }
+
+    PlanSectionHeader {
         id:             cameraSectionHeader
         width:          parent.width
         text:           qsTr("Camera")
@@ -34,7 +37,7 @@ Column {
         spacing:    _margin
         visible:    !showSectionHeader || cameraSectionHeader.checked
 
-        LabelledFactComboBox {
+        PlanLabelledFactComboBox {
             id:         cameraActionCombo
             width:      parent.width
             label:      qsTr("Action")
@@ -42,14 +45,14 @@ Column {
             indexModel: false
         }
 
-        LabelledFactTextField {
+        PlanLabelledFactTextField {
             width:      parent.width
             label:      qsTr("Time")
             fact:       _camera.cameraPhotoIntervalTime
             visible:    _camera.cameraAction.rawValue === 1
         }
 
-        LabelledFactTextField {
+        PlanLabelledFactTextField {
             width:      parent.width
             label:      qsTr("Distance")
             fact:       _camera.cameraPhotoIntervalDistance
@@ -61,14 +64,14 @@ Column {
             spacing:    ScreenTools.defaultFontPixelWidth
             visible:    _camera.cameraModeSupported
 
-            QGCCheckBox {
+            PlanCheckBox {
                 id:                 modeCheckBox
                 text:               qsTr("Mode")
                 checked:            _camera.specifyCameraMode
                 onClicked:          _camera.specifyCameraMode = checked
             }
 
-            FactComboBox {
+            PlanFactComboBox {
                 fact:               _camera.cameraMode
                 indexModel:         false
                 enabled:            modeCheckBox.checked
@@ -76,21 +79,21 @@ Column {
             }
         }
 
-        QGCCheckBox {
+        PlanCheckBox {
             id:                 gimbalCheckBox
             text:               qsTr("Gimbal")
             checked:            _camera.specifyGimbal
             onClicked:          _camera.specifyGimbal = checked
         }
 
-        FactTextFieldSlider {
+        PlanFactTextFieldSlider {
             width:          parent.width
             label:          qsTr("Pitch")
             fact:           _camera.gimbalPitch
             enabled:        gimbalCheckBox.checked
         }
 
-        FactTextFieldSlider {
+        PlanFactTextFieldSlider {
             width:          parent.width
             label:          qsTr("Yaw")
             fact:           _camera.gimbalYaw

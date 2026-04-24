@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Templates as T
 
 import QGroundControl
@@ -9,6 +10,19 @@ import QGroundControl.Controls
 T.ComboBox {
     property bool sizeToContents: false
     property string alternateText: ""
+    property color backgroundColor: qgcPal.button
+    property color borderColor: qgcPal.buttonBorder
+    property color focusBorderColor: borderColor
+    property color textColor: qgcPal.buttonText
+    property color popupBackgroundColor: qgcPal.window
+    property color popupBorderColor: qgcPal.text
+    property color delegateBackgroundColor: qgcPal.button
+    property color delegateSelectedBackgroundColor: qgcPal.buttonHighlight
+    property color delegateTextColor: qgcPal.buttonText
+    property color delegateSelectedTextColor: qgcPal.buttonHighlightText
+    property real borderRadius: ScreenTools.defaultBorderRadius
+    property bool showFocusBorder: false
+    property int stateAnimationDuration: 200
 
     id: control
     padding: ScreenTools.comboBoxPadding
@@ -28,8 +42,10 @@ T.ComboBox {
     property bool _onCompleted: false
     property bool _showBorder: qgcPal.globalTheme === QGCPalette.Light
     property bool _showHighlight: enabled && pressed
+    readonly property bool _popupStyled: popupStyle.inPopupContext(control)
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+    QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     TextMetrics {
         id: textMetrics
@@ -45,18 +61,31 @@ T.ComboBox {
     }
 
     function _calcPopupWidth() {
-        if (_onCompleted && sizeToContents && control.count > 0) {
-            _largestTextWidth = 0
+        if (!_onCompleted) {
+            return
+        }
+
+        let widestText = 0
+        if (control.count > 0) {
             for (let i = 0; i < control.count; i++) {
                 textMetrics.text = control.textAt(i)
-                _largestTextWidth = Math.max(textMetrics.width, _largestTextWidth)
+                widestText = Math.max(textMetrics.width, widestText)
             }
-            _popupWidth = _largestTextWidth + itemDelegateMetrics.leftPadding + itemDelegateMetrics.rightPadding
         }
+
+        _largestTextWidth = widestText
+
+        const popupHorizontalMargins = control._popupStyled ? 8 : 0
+        const contentWidth = widestText > 0
+            ? widestText + itemDelegateMetrics.leftPadding + itemDelegateMetrics.rightPadding + popupHorizontalMargins
+            : control.width
+
+        _popupWidth = Math.max(control.width, contentWidth)
     }
 
     onModelChanged: _calcPopupWidth()
     onCountChanged: _calcPopupWidth()
+    onWidthChanged: _calcPopupWidth()
 
     Component.onCompleted: {
         _onCompleted = true
@@ -65,7 +94,9 @@ T.ComboBox {
 
     // The items in the popup
     delegate: ItemDelegate {
-        width: _popupWidth
+        width: ListView.view
+            ? Math.max(0, ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin)
+            : control._popupWidth
         height: Math.round(popupItemMetrics.height * 1.75)
 
         property string _text: control.textRole ?
@@ -81,12 +112,22 @@ T.ComboBox {
         contentItem: Text {
             text: _text
             font: control.font
-            color: control.currentIndex === index ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color: control._popupStyled
+                ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
+                : (control.currentIndex === index ? control.delegateSelectedTextColor : control.delegateTextColor)
             verticalAlignment: Text.AlignVCenter
         }
 
         background: Rectangle {
-            color: control.currentIndex === index ? qgcPal.buttonHighlight : qgcPal.button
+            radius: control._popupStyled ? popupStyle.cornerRadius : 0
+            color: control._popupStyled
+                ? (pressed
+                    ? popupStyle.pressedColor(popupStyle.panelBackground)
+                    : ((highlighted || hovered || control.currentIndex === index)
+                        ? popupStyle.hoverColor(popupStyle.panelBackground)
+                        : "transparent"))
+                : (control.currentIndex === index ? control.delegateSelectedBackgroundColor : control.delegateBackgroundColor)
+            Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
         }
 
         highlighted: control.highlightedIndex === index
@@ -99,7 +140,7 @@ T.ComboBox {
         height: ScreenTools.defaultFontPixelWidth
         width: height
         source: "/qmlimages/arrow-down.png"
-        color: qgcPal.buttonText
+        color: control._popupStyled ? popupStyle.primaryTextColor : control.textColor
     }
 
     // The label of the button
@@ -107,28 +148,38 @@ T.ComboBox {
         id: text
         text: control.alternateText === "" ? control.currentText : control.alternateText
         font: control.font
-        color: qgcPal.buttonText
+        color: control._popupStyled
+            ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
+            : control.textColor
         elide: Text.ElideRight
     }
 
     background: Rectangle {
-        color: qgcPal.button
-        border.color: qgcPal.buttonBorder
-        border.width: _showBorder ? 1 : 0
-        radius: ScreenTools.defaultBorderRadius
+        color: control._popupStyled ? popupStyle.inputBackground : control.backgroundColor
+        border.color: (control.showFocusBorder || control._popupStyled) && control.activeFocus
+            ? (control._popupStyled ? popupStyle.accentColor : control.focusBorderColor)
+            : (control._popupStyled ? popupStyle.borderColor : control.borderColor)
+        border.width: (control._popupStyled || control._showBorder) ? 1 : 0
+        radius: control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+
+        Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
+        Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
         Rectangle {
             anchors.fill: parent
-            color: qgcPal.buttonHighlight
-            opacity: _showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0
+            color: control._popupStyled ? popupStyle.focusGlowColor(0.35) : control.delegateSelectedBackgroundColor
+            opacity: control._popupStyled
+                ? (control.activeFocus ? 1 : 0)
+                : (control._showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0)
             radius: parent.radius
+            Behavior on opacity { NumberAnimation { duration: control.stateAnimationDuration } }
         }
     }
 
     popup: T.Popup {
-        x: Math.max(-_controlPos.x, Math.min(control.width - _popupWidth, control.Window.width - _controlPos.x - _popupWidth))
+        x: Math.max(-_controlPos.x, Math.min(control.width - control._popupWidth, control.Window.width - _controlPos.x - control._popupWidth))
         y: _openAbove ? -height : control.height
-        width: _popupWidth
+        width: control._popupWidth
         height: Math.min(contentItem.implicitHeight, _openAbove ? _spaceAbove : _spaceBelow)
         topMargin: 6
         bottomMargin: 6
@@ -144,20 +195,44 @@ T.ComboBox {
             model: control.delegateModel
             currentIndex: control.highlightedIndex
             highlightMoveDuration: 0
-
-            Rectangle {
-                z: 10
-                width: parent.width
-                height: parent.height
-                color: "transparent"
-                border.color: qgcPal.text
-            }
+            spacing: control._popupStyled ? 2 : 0
+            leftMargin: control._popupStyled ? 4 : 0
+            rightMargin: control._popupStyled ? 4 : 0
+            topMargin: control._popupStyled ? 4 : 0
+            bottomMargin: control._popupStyled ? 4 : 0
 
             T.ScrollIndicator.vertical: ScrollIndicator { }
         }
 
-        background: Rectangle {
-            color: qgcPal.window
+        background: Item {
+            implicitWidth: control._popupWidth
+            implicitHeight: contentItem.implicitHeight
+
+            Rectangle {
+                id:         comboPopupShadowSource
+                anchors.fill: parent
+                radius:     control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+                color:      control._popupStyled ? popupStyle.popupBackground : control.popupBackgroundColor
+                visible:    false
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                source: comboPopupShadowSource
+                shadowEnabled: true
+                shadowColor: "#80000000"
+                shadowBlur: 0.8
+                shadowScale: 1.0
+                shadowVerticalOffset: 4
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: control._popupStyled ? popupStyle.popupBackground : control.popupBackgroundColor
+                border.width: 1
+                border.color: control._popupStyled ? popupStyle.borderColor : control.popupBorderColor
+                radius: control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+            }
         }
     }
 }

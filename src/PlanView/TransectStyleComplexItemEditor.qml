@@ -7,13 +7,16 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.FlightMap
+import QGroundControl.PlanView
 
 Rectangle {
     id:         _root
     height:     childrenRect.y + childrenRect.height + _margin
     width:      availableWidth
-    color:      qgcPal.windowShadeDark
-    radius:     _radius
+    color:      theme.panelColor
+    radius:     theme.radius
+    border.width: 1
+    border.color: theme.borderColor
 
     required property var missionItem
     required property real availableWidth
@@ -33,6 +36,11 @@ Rectangle {
     property real   _cameraMinTriggerInterval:  _missionItem.cameraCalc.minTriggerInterval.rawValue
     property string _doneAdjusting:             qsTr("Done")
     property bool   _presetsAvailable:          _missionItem.presetNames.length !== 0
+
+    PlanEditorTheme { id: theme }
+
+    Behavior on color { ColorAnimation { duration: theme.stateAnimationDuration } }
+    Behavior on border.color { ColorAnimation { duration: theme.stateAnimationDuration } }
 
     function polygonCaptureStarted() {
         _missionItem.clearPolygon()
@@ -67,6 +75,7 @@ Rectangle {
             horizontalAlignment:    Text.AlignHCenter
             text:                   transectAreaDefinitionHelp
             visible:                !transectAreaDefinitionComplete || _missionItem.wizardMode
+            color:                  theme.secondaryTextColor
         }
 
         ColumnLayout {
@@ -102,7 +111,7 @@ Rectangle {
                     sideDistanceLabel:              qsTr("Spacing")
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:                 transectValuesHeader
                     Layout.fillWidth:   true
                     text:               transectValuesHeaderName
@@ -116,14 +125,14 @@ Rectangle {
                     property bool forPresets: false
                 }
 
-                QGCButton {
+                PlanButton {
                     Layout.alignment:   Qt.AlignHCenter
                     text:               qsTr("Rotate Entry Point")
                     onClicked:          _missionItem.rotateEntryPoint()
                     visible:            transectValuesHeader.checked
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:                 statsHeader
                     Layout.fillWidth:   true
                     text:               qsTr("Statistics")
@@ -160,9 +169,10 @@ Rectangle {
                     Layout.fillWidth:   true
                     text:               qsTr("Presets")
                     wrapMode:           Text.WordWrap
+                    color:              theme.secondaryTextColor
                 }
 
-                QGCComboBox {
+                PlanComboBox {
                     id:                 presetCombo
                     Layout.fillWidth:   true
                     model:              _missionItem.presetNames
@@ -171,14 +181,14 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth:   true
 
-                    QGCButton {
+                    PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Apply Preset")
                         enabled:            _missionItem.presetNames.length != 0
                         onClicked:          _missionItem.loadPreset(presetCombo.textAt(presetCombo.currentIndex))
                     }
 
-                    QGCButton {
+                    PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Delete Preset")
                         enabled:            _missionItem.presetNames.length != 0
@@ -208,14 +218,14 @@ Rectangle {
 
                 Item { height: ScreenTools.defaultFontPixelHeight; width: 1 }
 
-                QGCButton {
+                PlanButton {
                     Layout.alignment:   Qt.AlignCenter
                     Layout.fillWidth:   true
                     text:               qsTr("Save Settings As New Preset")
                     onClicked:          savePresetDialogFactory.open()
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:                 presectsTransectValuesHeader
                     Layout.fillWidth:   true
                     text:               transectValuesHeaderName
@@ -230,7 +240,7 @@ Rectangle {
                     property bool forPresets: true
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:                 presetsStatsHeader
                     Layout.fillWidth:   true
                     text:               qsTr("Statistics")
@@ -273,13 +283,15 @@ Rectangle {
                         Layout.fillWidth:   true
                         text:               qsTr("Save the current settings as a named preset.")
                         wrapMode:           Text.WordWrap
+                        color:              theme.secondaryTextColor
                     }
 
                     QGCLabel {
                         text: qsTr("Preset Name")
+                        color: theme.secondaryTextColor
                     }
 
-                    QGCTextField {
+                    PlanTextField {
                         id:                 presetNameField
                         Layout.fillWidth:   true
                         placeholderText:    qsTr("Enter preset name")

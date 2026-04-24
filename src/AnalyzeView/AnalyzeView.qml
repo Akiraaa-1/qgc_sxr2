@@ -6,8 +6,16 @@ import QGroundControl.Controls
 
 Rectangle {
     id:     _root
-    color:  qgcPal.window
+    color:  analyzePalette.backgroundTop
     z:      QGroundControl.zOrderTopMost
+
+    AnalyzePalette { id: analyzePalette }
+
+    gradient: Gradient {
+        orientation: Gradient.Horizontal
+        GradientStop { position: 0.0; color: analyzePalette.backgroundTop }
+        GradientStop { position: 1.0; color: analyzePalette.backgroundBottom }
+    }
 
     signal popout()
 
@@ -43,56 +51,66 @@ Rectangle {
         anchors.fill: parent
     }
 
-    QGCFlickable {
-        id:                 buttonScroll
-        width:              buttonColumn.width
-        anchors.topMargin:  _defaultTextHeight / 2
-        anchors.top:        parent.top
-        anchors.bottom:     parent.bottom
-        anchors.leftMargin: _horizontalMargin
-        anchors.left:       parent.left
-        contentHeight:      buttonColumn.height
-        flickableDirection: Flickable.VerticalFlick
-        clip:               true
+    AnalyzeCard {
+        id:                     navPane
+        anchors.topMargin:      _verticalMargin
+        anchors.bottomMargin:   _verticalMargin
+        anchors.leftMargin:     _horizontalMargin
+        anchors.left:           parent.left
+        anchors.top:            parent.top
+        anchors.bottom:         parent.bottom
+        width:                  buttonColumn._maxButtonWidth + (_horizontalMargin * 2)
 
-        Column {
-            id:         buttonColumn
-            width:      _maxButtonWidth
-            spacing:    _defaultTextHeight / 2
+        QGCFlickable {
+            id:                 buttonScroll
+            anchors.topMargin:  _verticalMargin
+            anchors.bottomMargin: _verticalMargin
+            anchors.leftMargin: _horizontalMargin
+            anchors.rightMargin: _horizontalMargin
+            anchors.fill:       parent
+            contentHeight:      buttonColumn.height
+            flickableDirection: Flickable.VerticalFlick
+            clip:               true
 
-            property real _maxButtonWidth: {
-                var maxW = 0
-                for (var i = 0; i < buttonRepeater.count; i++) {
-                    var item = buttonRepeater.itemAt(i)
-                    if (item) maxW = Math.max(maxW, item.implicitWidth)
-                }
-                return maxW
-            }
+            Column {
+                id:         buttonColumn
+                width:      _maxButtonWidth
+                spacing:    _defaultTextHeight / 2
 
-            Repeater {
-                id:     buttonRepeater
-                model:  QGroundControl.corePlugin ? QGroundControl.corePlugin.analyzePages : []
-
-                Component.onCompleted: {
-                    if (count > 0) {
-                        itemAt(0).checked = true
-                        _currentPage = QGroundControl.corePlugin.analyzePages[0]
-                        panelLoader.title = _currentPage.title
-                        _updatePanelSource()
+                property real _maxButtonWidth: {
+                    var maxW = 0
+                    for (var i = 0; i < buttonRepeater.count; i++) {
+                        var item = buttonRepeater.itemAt(i)
+                        if (item) maxW = Math.max(maxW, item.implicitWidth)
                     }
+                    return maxW
                 }
 
-                SubMenuButton {
-                    imageResource:      modelData.icon
-                    autoExclusive:      true
-                    text:               modelData.title
-                    width:              buttonColumn._maxButtonWidth
+                Repeater {
+                    id:     buttonRepeater
+                    model:  QGroundControl.corePlugin ? QGroundControl.corePlugin.analyzePages : []
 
-                    onClicked: {
-                        _currentPage        = modelData
-                        panelLoader.title   = modelData.title
-                        checked             = true
-                        _updatePanelSource()
+                    Component.onCompleted: {
+                        if (count > 0) {
+                            itemAt(0).checked = true
+                            _currentPage = QGroundControl.corePlugin.analyzePages[0]
+                            panelLoader.title = _currentPage.title
+                            _updatePanelSource()
+                        }
+                    }
+
+                    AnalyzeSubMenuButton {
+                        imageResource:      modelData.icon
+                        autoExclusive:      true
+                        text:               modelData.title
+                        width:              buttonColumn._maxButtonWidth
+
+                        onClicked: {
+                            _currentPage        = modelData
+                            panelLoader.title   = modelData.title
+                            checked             = true
+                            _updatePanelSource()
+                        }
                     }
                 }
             }
@@ -104,15 +122,14 @@ Rectangle {
         anchors.topMargin:      _verticalMargin
         anchors.bottomMargin:   _verticalMargin
         anchors.leftMargin:     _horizontalMargin
-        anchors.left:           buttonScroll.right
+        anchors.left:           navPane.right
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
         width:                  1
-        color:                  qgcPal.windowShade
+        color:                  analyzePalette.border
     }
 
-    Loader {
-        id:                     panelLoader
+    AnalyzeCard {
         anchors.topMargin:      _verticalMargin
         anchors.bottomMargin:   _verticalMargin
         anchors.leftMargin:     _horizontalMargin
@@ -121,19 +138,26 @@ Rectangle {
         anchors.right:          parent.right
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
-        source:                 ""
 
-        property string title
+        Loader {
+            id:                     panelLoader
+            anchors.fill:           parent
+            anchors.margins:        _verticalMargin
+            source:                 ""
 
-        Connections {
-            target:     panelLoader.item
-            function onPopout() { mainWindow.createWindowedAnalyzePage(panelLoader.title, panelLoader.source, _currentPage ? _currentPage.requiresVehicle : false) }
+            property string title
+
+            Connections {
+                target:     panelLoader.item
+                function onPopout() { mainWindow.createWindowedAnalyzePage(panelLoader.title, panelLoader.source, _currentPage ? _currentPage.requiresVehicle : false) }
+            }
         }
     }
 
     QGCLabel {
         anchors.centerIn:   panelLoader
         text:               qsTr("Requires a connected vehicle")
+        color:              analyzePalette.textSecondary
         visible:            _currentPage && _currentPage.requiresVehicle && !_activeVehicle
     }
 }

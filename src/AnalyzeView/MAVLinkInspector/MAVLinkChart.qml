@@ -12,7 +12,7 @@ ChartView {
     antialiasing:       true
     animationOptions:   ChartView.NoAnimation
     legend.visible:     false
-    backgroundColor:    qgcPal.window
+    backgroundColor:    analyzePalette.surface
     backgroundRoundness: 0
     margins.bottom:     ScreenTools.defaultFontPixelHeight * 1.5
     margins.top:        chartHeader.height + (ScreenTools.defaultFontPixelHeight * 2)
@@ -21,7 +21,9 @@ ChartView {
     required property var inspectorController
     required property int chartIndex
 
-    property var _seriesColors: ["#00E04B","#DE8500","#F32836","#BFBFBF","#536DFF","#EECC44"]
+    property var _seriesColors: ["#60A5FA", "#3B82F6", "#93C5FD", "#9CA3AF", "#1D4ED8", "#BFDBFE"]
+
+    AnalyzePalette { id: analyzePalette }
 
     function addDimension(field) {
         var color   = _seriesColors[chartView.count]
@@ -61,7 +63,7 @@ ChartView {
         gridVisible:                true
         labelsFont.family:          ScreenTools.fixedFontFamily
         labelsFont.pointSize:       ScreenTools.smallFontPointSize
-        labelsColor:                qgcPal.text
+        labelsColor:                analyzePalette.textSecondary
     }
 
     ValueAxis {
@@ -72,7 +74,7 @@ ChartView {
         lineVisible:                false
         labelsFont.family:          ScreenTools.fixedFontFamily
         labelsFont.pointSize:       ScreenTools.smallFontPointSize
-        labelsColor:                qgcPal.text
+        labelsColor:                analyzePalette.textSecondary
     }
 
     Row {
@@ -92,9 +94,10 @@ ChartView {
             anchors.verticalCenter: parent.verticalCenter
             QGCLabel {
                 text:               qsTr("Scale:");
+                color:              analyzePalette.textSecondary
                 Layout.alignment:   Qt.AlignVCenter
             }
-            QGCComboBox {
+            AnalyzeComboBox {
                 Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 10
                 Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 10
                 height:             ScreenTools.defaultFontPixelHeight
@@ -105,9 +108,10 @@ ChartView {
             }
             QGCLabel {
                 text:               qsTr("Range:");
+                color:              analyzePalette.textSecondary
                 Layout.alignment:   Qt.AlignVCenter
             }
-            QGCComboBox {
+            AnalyzeComboBox {
                 Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 10
                 Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 10
                 height:             ScreenTools.defaultFontPixelHeight

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FactPanelController.h"
+#include "MAVLinkLib.h"
 #include "QGCMAVLink.h"
 
 #include <QtCore/QLoggingCategory>

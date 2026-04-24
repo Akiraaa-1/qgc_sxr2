@@ -9,11 +9,13 @@ Item {
     anchors.fill:               parent
     anchors.margins:            ScreenTools.defaultFontPixelWidth
 
+    AnalyzePalette { id: analyzePalette }
+
     property alias  pageComponent:      pageLoader.sourceComponent
     property alias  pageDescription:    pageDescriptionLabel.text
     property alias  headerComponent:    headerLoader.sourceComponent
-    property real   availableWidth:     width  - pageLoader.x
-    property real   availableHeight:    height - mainContent.y
+    property real   availableWidth:     pageLoader.width
+    property real   availableHeight:    pageLoader.height
     property bool   allowPopout:        false
     property bool   popped:             false
     property real   _margins:           ScreenTools.defaultFontPixelHeight * 0.5
@@ -44,10 +46,12 @@ Item {
             anchors.left:       parent.left
             anchors.right:      parent.right
             wrapMode:           Text.WordWrap
+            color:              analyzePalette.textSecondary
+            font.pointSize:     ScreenTools.defaultFontPointSize
         }
     }
 
-    Item {
+    AnalyzeCard {
         id:                     mainContent
         anchors.topMargin:      ScreenTools.defaultFontPixelHeight
         anchors.top:            headerLoader.sourceComponent === null ? (headingColumn.visible ? headingColumn.bottom : parent.top) : headerLoader.bottom
@@ -55,8 +59,11 @@ Item {
         anchors.left:           parent.left
         anchors.right:          parent.right
         clip:                   true
+
         Loader {
             id:                 pageLoader
+            anchors.fill:       parent
+            anchors.margins:    _margins * 1.5
         }
     }
 
@@ -69,7 +76,7 @@ Item {
         sourceSize.width:       width
         source:                 "/qmlimages/FloatingWindow.svg"
         fillMode:               Image.PreserveAspectFit
-        color:                  qgcPal.text
+        color:                  analyzePalette.textSecondary
         visible:                allowPopout && !popped && !ScreenTools.isMobile
         QGCMouseArea {
             fillItem:       floatIcon

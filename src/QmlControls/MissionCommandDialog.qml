@@ -16,12 +16,15 @@ QGCPopupDialog {
     property var    map
     property bool   flyThroughCommandsAllowed
 
+    QGCPopupStyle { id: popupStyle }
+
     ColumnLayout {
         RowLayout {
             spacing: ScreenTools.defaultFontPixelWidth
 
             QGCLabel {
                 text: qsTr("Category:")
+                color: popupStyle.secondaryTextColor
             }
 
             QGCComboBox {
@@ -48,12 +51,22 @@ QGCPopupDialog {
             Layout.fillWidth:   true
 
             delegate: Rectangle {
-                width:  parent.width
-                height: commandColumn.height + ScreenTools.defaultFontPixelHeight
-                color:  QGroundControl.globalPalette.button
+                width:      parent.width
+                height:     commandColumn.height + ScreenTools.defaultFontPixelHeight
+                radius:     popupStyle.cornerRadius
+                color:      commandMouseArea.pressed
+                                ? popupStyle.pressedColor(popupStyle.panelBackground)
+                                : (commandMouseArea.containsMouse
+                                    ? popupStyle.hoverColor(popupStyle.panelBackground)
+                                    : popupStyle.panelBackground)
+                border.width: 1
+                border.color: popupStyle.borderColor
 
                 property var    mavCmdInfo: modelData
-                property color  textColor:  QGroundControl.globalPalette.buttonText
+                property color  textColor:  popupStyle.primaryTextColor
+
+                Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+                Behavior on border.color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
 
                 Column {
                     id:                 commandColumn
@@ -74,12 +87,14 @@ QGCPopupDialog {
                         anchors.right:      parent.right
                         text:               mavCmdInfo.description
                         wrapMode:           Text.WordWrap
-                        color:              textColor
+                        color:              popupStyle.secondaryTextColor
                     }
                 }
 
-                MouseArea {
+                QGCMouseArea {
+                    id:             commandMouseArea
                     anchors.fill:   parent
+                    hoverEnabled:   true
                     onClicked: {
                         missionItem.setMapCenterHintForCommandChange(map.center)
                         missionItem.command = mavCmdInfo.command

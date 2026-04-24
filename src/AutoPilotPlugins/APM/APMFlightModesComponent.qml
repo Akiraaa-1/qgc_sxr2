@@ -8,6 +8,7 @@ import QGroundControl.Controls
 
 SetupPage {
     id:             flightModePage
+    centerPageLoader: true
     pageComponent:  flightModePageComponent
 
     readonly property string _modeChannelParam: controller.modeChannelParam
@@ -25,6 +26,7 @@ SetupPage {
     property bool   _customSimpleMode:          controller.simpleMode === APMFlightModesComponentController.SimpleModeCustom
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
+    QGCPopupStyle { id: popupStyle }
 
     APMFlightModesComponentController {
         id:         controller
@@ -33,155 +35,191 @@ SetupPage {
     Component {
         id: flightModePageComponent
 
-        Flow {
-            id:         flowLayout
-            width:      availableWidth
-            spacing:     _margins
+        Item {
+            id: pageRoot
+            width: availableWidth
+            height: availableHeight
+            property bool _qgcPopupChrome: true
+            property real _pageMargin: ScreenTools.defaultFontPixelHeight
 
-            QGCGroupBox {
-                title: qsTr("Flight Mode Settings") + (_fltmodeChExists ? "" : qsTr(" (Channel 5)"))
+            Rectangle {
+                anchors.fill: parent
+                color: "#202020"
+                border.width: 1
+                border.color: "#333333"
+                radius: popupStyle.cornerRadius
+            }
 
-                ColumnLayout {
-                    spacing: ScreenTools.defaultFontPixelHeight
+            QGCFlickable {
+                id: pageFlickable
+                anchors.fill: parent
+                anchors.margins: pageRoot._pageMargin
+                clip: true
+                contentWidth: Math.max(width, flowLayout.width)
+                contentHeight: Math.max(height, flowLayout.height)
 
-                        Row {
-                            spacing:    _margins
-                            visible:    _fltmodeChExists
+                Flow {
+                    id:         flowLayout
+                    spacing:    _margins
+                    width:      childrenRect.width
+                    height:     childrenRect.height
+                    x:          Math.max(0, (pageFlickable.contentWidth - width) / 2)
+                    y:          Math.max(0, (pageFlickable.contentHeight - height) / 2)
 
-                            QGCLabel {
-                                id:                 modeChannelLabel
-                                anchors.baseline:   modeChannelCombo.baseline
-                                text:               qsTr("Flight mode channel:")
-                            }
+                    QGCGroupBox {
+                        title: qsTr("Flight Mode Settings") + (_fltmodeChExists ? "" : qsTr(" (Channel 5)"))
 
-                            QGCComboBox {
-                                id:              modeChannelCombo
-                                sizeToContents:  true
-                                Layout.maximumWidth: _comboWidth
-                                model:          [ qsTr("Not assigned"), qsTr("Channel 1"), qsTr("Channel 2"),
-                                    qsTr("Channel 3"),    qsTr("Channel 4"), qsTr("Channel 5"),
-                                    qsTr("Channel 6"),    qsTr("Channel 7"), qsTr("Channel 8") ]
-
-                                currentIndex:   _fltmodeCh.value
-                                onActivated: (index) => { _fltmodeCh.value = index }
-                            }
-                        }
-
-                        GridLayout {
-                            rows:   _customSimpleMode ? 7 : 6
-                            flow:   GridLayout.TopToBottom
-
-                            QGCLabel { text: ""; visible: _customSimpleMode }
-                            Repeater {
-                                model:  6
-
-                                QGCLabel {
-                                    text:   qsTr("Flight Mode ") + index
-                                    color:  controller.activeFlightMode == index ? "yellow" : qgcPal.text
-
-                                    property int index: modelData + 1
-                                }
-                            }
-
-                            QGCLabel { text: ""; visible: _customSimpleMode }
-                            Repeater {
-                                model:  6
-
-                                FactComboBox {
-                                    sizeToContents:         true
-                                    Layout.maximumWidth:    _comboWidth
-                                    fact:                   controller.getParameterFact(-1, _modeParamPrefix + index)
-                                    indexModel:             false
-
-                                    property int index: modelData + 1
-                                }
-                            }
-
-                            QGCLabel {
-                                text:           qsTr("Simple")
-                                font.pointSize: ScreenTools.smallFontPointSize
-                                visible:        _customSimpleMode
-                            }
-                            Repeater {
-                                model:  controller.simpleModeEnabled
-                                QGCCheckBox {
-                                    Layout.alignment:   Qt.AlignHCenter
-                                    visible:            _customSimpleMode
-                                    checked:            modelData
-                                    onClicked:          controller.setSimpleMode(index, checked)
-                                }
-                            }
-
-                            QGCLabel {
-                                text:           qsTr("Super-Simple")
-                                font.pointSize: ScreenTools.smallFontPointSize
-                                visible:        _customSimpleMode
-                            }
-                            Repeater {
-                                model:  controller.superSimpleModeEnabled
-                                QGCCheckBox {
-                                    Layout.alignment:   Qt.AlignHCenter
-                                    visible:            _customSimpleMode
-                                    checked:            modelData
-                                    onClicked:          controller.setSuperSimpleMode(index, checked)
-                                }
-                            }
-
-                            QGCLabel { text: ""; visible: _customSimpleMode }
-                            Repeater {
-                                model:  6
-
-                                QGCLabel { text: _pwmStrings[modelData] }
-                            }
-                        }
-
-                        RowLayout {
-                            spacing: _margins
-                            visible: controller.simpleModesSupported
-
-                            QGCLabel { text: qsTr("Simple Mode") }
-
-                            QGCComboBox {
-                                model:          controller.simpleModeNames
-                                currentIndex:   controller.simpleMode
-                                onActivated: (index) => { controller.simpleMode = index }
-                            }
-                        }
-                } // ColumnLayout
-            } // QGCGroupBox - Flight Modes
-
-            QGCGroupBox {
-                title: qsTr("Switch Options")
-
-                ColumnLayout {
-                    spacing: ScreenTools.defaultFontPixelHeight
-
-                        Repeater {
-                            model: _rcOptionStop - _rcOptionStart + 1
+                        ColumnLayout {
+                            spacing: ScreenTools.defaultFontPixelHeight
 
                             Row {
-                                spacing: ScreenTools.defaultFontPixelWidth
-
-                                property int index: modelData + _rcOptionStart
-                                property Fact nullFact: Fact { }
+                                spacing:    _margins
+                                visible:    _fltmodeChExists
 
                                 QGCLabel {
-                                    anchors.baseline:   optCombo.baseline
-                                    text:               qsTr("Channel option %1 :").arg(index)
-                                    color:              controller.channelOptionEnabled[modelData + (_ch7OptAvailable ? 1 : 0)] ? "yellow" : qgcPal.text
+                                    id:                 modeChannelLabel
+                                    anchors.baseline:   modeChannelCombo.baseline
+                                    text:               qsTr("Flight mode channel:")
                                 }
 
-                                FactComboBox {
-                                    id:              optCombo
+                                QGCComboBox {
+                                    id:              modeChannelCombo
                                     sizeToContents:  true
                                     Layout.maximumWidth: _comboWidth
-                                    fact:       controller.getParameterFact(-1, "RC" + index + "_OPTION")
-                                    indexModel: false
+                                    model:          [ qsTr("Not assigned"), qsTr("Channel 1"), qsTr("Channel 2"),
+                                        qsTr("Channel 3"),    qsTr("Channel 4"), qsTr("Channel 5"),
+                                        qsTr("Channel 6"),    qsTr("Channel 7"), qsTr("Channel 8") ]
+
+                                    currentIndex:   _fltmodeCh.value
+                                    onActivated: (index) => { _fltmodeCh.value = index }
                                 }
                             }
-                        } // Repeater -- Channel options
-                } // ColumnLayout
-            } // QGCGroupBox - Channel options
-        } // Flow
+
+                            GridLayout {
+                                rows:   _customSimpleMode ? 7 : 6
+                                flow:   GridLayout.TopToBottom
+
+                                QGCLabel { text: ""; visible: _customSimpleMode }
+                                Repeater {
+                                    model:  6
+
+                                    QGCLabel {
+                                        text:   qsTr("Flight Mode ") + index
+                                        color:  controller.activeFlightMode == index ? popupStyle.accentColor : popupStyle.secondaryTextColor
+
+                                        property int index: modelData + 1
+                                    }
+                                }
+
+                                QGCLabel { text: ""; visible: _customSimpleMode }
+                                Repeater {
+                                    model:  6
+
+                                    FactComboBox {
+                                        sizeToContents:         true
+                                        Layout.maximumWidth:    _comboWidth
+                                        fact:                   controller.getParameterFact(-1, _modeParamPrefix + index)
+                                        indexModel:             false
+
+                                        property int index: modelData + 1
+                                    }
+                                }
+
+                                QGCLabel {
+                                    text:           qsTr("Simple")
+                                    font.pointSize: ScreenTools.smallFontPointSize
+                                    color:          popupStyle.secondaryTextColor
+                                    visible:        _customSimpleMode
+                                }
+                                Repeater {
+                                    model:  controller.simpleModeEnabled
+                                    QGCCheckBox {
+                                        Layout.alignment:   Qt.AlignHCenter
+                                        visible:            _customSimpleMode
+                                        checked:            modelData
+                                        onClicked:          controller.setSimpleMode(index, checked)
+                                    }
+                                }
+
+                                QGCLabel {
+                                    text:           qsTr("Super-Simple")
+                                    font.pointSize: ScreenTools.smallFontPointSize
+                                    color:          popupStyle.secondaryTextColor
+                                    visible:        _customSimpleMode
+                                }
+                                Repeater {
+                                    model:  controller.superSimpleModeEnabled
+                                    QGCCheckBox {
+                                        Layout.alignment:   Qt.AlignHCenter
+                                        visible:            _customSimpleMode
+                                        checked:            modelData
+                                        onClicked:          controller.setSuperSimpleMode(index, checked)
+                                    }
+                                }
+
+                                QGCLabel { text: ""; visible: _customSimpleMode }
+                                Repeater {
+                                    model:  6
+
+                                    QGCLabel {
+                                        text: _pwmStrings[modelData]
+                                        color: popupStyle.secondaryTextColor
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: _margins
+                                visible: controller.simpleModesSupported
+
+                                QGCLabel {
+                                    text: qsTr("Simple Mode")
+                                    color: popupStyle.secondaryTextColor
+                                }
+
+                                QGCComboBox {
+                                    model:          controller.simpleModeNames
+                                    currentIndex:   controller.simpleMode
+                                    onActivated: (index) => { controller.simpleMode = index }
+                                }
+                            }
+                        } // ColumnLayout
+                    } // QGCGroupBox - Flight Modes
+
+                    QGCGroupBox {
+                        title: qsTr("Switch Options")
+
+                        ColumnLayout {
+                            spacing: ScreenTools.defaultFontPixelHeight
+
+                            Repeater {
+                                model: _rcOptionStop - _rcOptionStart + 1
+
+                                Row {
+                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                    property int index: modelData + _rcOptionStart
+                                    property Fact nullFact: Fact { }
+
+                                    QGCLabel {
+                                        anchors.baseline:   optCombo.baseline
+                                        text:               qsTr("Channel option %1 :").arg(index)
+                                        color:              controller.channelOptionEnabled[modelData + (_ch7OptAvailable ? 1 : 0)] ? popupStyle.accentColor : popupStyle.secondaryTextColor
+                                    }
+
+                                    FactComboBox {
+                                        id:              optCombo
+                                        sizeToContents:  true
+                                        Layout.maximumWidth: _comboWidth
+                                        fact:       controller.getParameterFact(-1, "RC" + index + "_OPTION")
+                                        indexModel: false
+                                    }
+                                }
+                            } // Repeater -- Channel options
+                        } // ColumnLayout
+                    } // QGCGroupBox - Channel options
+                } // Flow
+            }
+        }
     } // Component - flightModePageComponent
 } // SetupPage

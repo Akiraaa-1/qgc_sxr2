@@ -64,7 +64,16 @@ ApplicationWindow {
     readonly property real      _panelRadius:               ScreenTools.defaultFontPixelHeight * 0.5
     readonly property int       _planTabIndex:              0
     readonly property int       _flyTabIndex:               1
-    readonly property int       _analyzeTabIndex:           2
+    readonly property int       _summaryTabIndex:           2
+    readonly property int       _configureTabIndex:         3
+    readonly property int       _analyzeTabIndex:           4
+    readonly property int       _mavlinkConsoleTabIndex:    5
+    readonly property bool      _analyzeEnabled:            false
+    property bool               _showStartPage:             true
+    property bool               _startPageEntryGranted:     false
+    property bool               _offlineWorkspaceMode:      false
+    property bool               _configureReadOnlyMode:     false
+    property int                _lastVisitedWorkspaceTab:   _planTabIndex
 
     //-------------------------------------------------------------------------
     //-- Global Scope Variables
@@ -133,32 +142,58 @@ ApplicationWindow {
     }
 
     function showPlanView() {
-        _setCurrentTab(_planTabIndex)
-        toolDrawer.visible = false
+        _ensureMainInterfaceAccess(_planTabIndex)
     }
 
     function showFlyView() {
-        _setCurrentTab(_flyTabIndex)
-        toolDrawer.visible = false
+        _ensureMainInterfaceAccess(_flyTabIndex)
     }
 
-    function showTool(toolTitle, toolSource, toolIcon) {
+    function showTool(toolTitle, toolSource, toolIcon, compactHeader = false) {
         toolDrawer.backIcon     = !mainViewTabBar ? "/qmlimages/Plan.svg"
-            : (mainViewTabBar.currentIndex === _analyzeTabIndex ? "/qmlimages/Analyze.svg"
-                : (mainViewTabBar.currentIndex === _flyTabIndex ? "/qmlimages/PaperPlane.svg" : "/qmlimages/Plan.svg"))
+            : ((mainWindow._analyzeEnabled && mainViewTabBar.currentIndex === _analyzeTabIndex) ? "/qmlimages/Analyze.svg"
+                : (mainViewTabBar.currentIndex === _mavlinkConsoleTabIndex ? "/qmlimages/MAVLinkConsoleIcon.svg"
+                    : (mainViewTabBar.currentIndex === _flyTabIndex ? "/qmlimages/PaperPlane.svg" : "/qmlimages/Plan.svg")))
         toolDrawer.toolTitle    = toolTitle
         toolDrawer.toolSource   = toolSource
         toolDrawer.toolIcon     = toolIcon
+        toolDrawer.compactHeader = compactHeader
         toolDrawer.visible      = true
     }
 
     function showAnalyzeTool() {
-        _setCurrentTab(_analyzeTabIndex)
-        toolDrawer.visible = false
+        if (!mainWindow._analyzeEnabled) {
+            showFlyView()
+            return
+        }
+        _ensureMainInterfaceAccess(_analyzeTabIndex)
+    }
+
+    function showMAVLinkConsoleView() {
+        _ensureMainInterfaceAccess(_mavlinkConsoleTabIndex)
+    }
+
+    function _vehicleConfigViewItem() {
+        if (configureViewContent && configureViewContent.item) {
+            return configureViewContent.item
+        }
+        if (toolDrawerLoader.item && toolDrawer.toolSource === "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml") {
+            return toolDrawerLoader.item
+        }
+        return null
     }
 
     function showVehicleConfig() {
-        showTool(qsTr("Vehicle Configuration"), "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml", "/qmlimages/Gears.svg")
+        if (!_ensureMainInterfaceAccess(_configureTabIndex)) {
+            return false
+        }
+
+        const configItem = _vehicleConfigViewItem()
+        if (configItem && typeof configItem.showMenuPanel === "function") {
+            configItem.showMenuPanel()
+        }
+
+        return true
     }
 
     function _findVehicleConfigComponentByKeywords(keywords) {
@@ -189,43 +224,74 @@ ApplicationWindow {
     }
 
     function showVehicleConfigTuningPage() {
-        showVehicleConfig()
+        if (!showVehicleConfig()) {
+            return
+        }
         const tuningComponent = _findVehicleConfigComponentByKeywords(["tuning", "pid"])
-        if (tuningComponent && toolDrawerLoader.item && typeof toolDrawerLoader.item.showVehicleComponentPanel === "function") {
-            toolDrawerLoader.item.showVehicleComponentPanel(tuningComponent)
+        const configItem = _vehicleConfigViewItem()
+        if (tuningComponent && configItem && typeof configItem.showVehicleComponentPanel === "function") {
+            configItem.showVehicleComponentPanel(tuningComponent)
         }
     }
 
     function showVehicleConfigSensorsPage() {
-        showVehicleConfig()
+        if (!showVehicleConfig()) {
+            return
+        }
         const sensorComponent = _findVehicleConfigComponentByKeywords(["sensor", "calibration"])
-        if (sensorComponent && toolDrawerLoader.item && typeof toolDrawerLoader.item.showVehicleComponentPanel === "function") {
-            toolDrawerLoader.item.showVehicleComponentPanel(sensorComponent)
+        const configItem = _vehicleConfigViewItem()
+        if (sensorComponent && configItem && typeof configItem.showVehicleComponentPanel === "function") {
+            configItem.showVehicleComponentPanel(sensorComponent)
         }
     }
 
     function showVehicleConfigFirmwarePage() {
-        showVehicleConfig()
-        if (toolDrawerLoader.item && typeof toolDrawerLoader.item.showPanel === "function") {
-            toolDrawerLoader.item.showPanel("firmware", "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
+        if (!showVehicleConfig()) {
+            return
+        }
+        const configItem = _vehicleConfigViewItem()
+        if (configItem && typeof configItem.showPanel === "function") {
+            configItem.showPanel("firmware", "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
         }
     }
 
     function showVehicleConfigParametersPage() {
-        showVehicleConfig()
-        toolDrawerLoader.item.showParametersPanel()
-    }
-
-    function showKnownVehicleComponentConfigPage(knownVehicleComponent) {
-        showVehicleConfig()
-        let vehicleComponent = globals.activeVehicle.autopilotPlugin.findKnownVehicleComponent(knownVehicleComponent)
-        if (vehicleComponent) {
-            toolDrawerLoader.item.showVehicleComponentPanel(vehicleComponent)
+        if (!showVehicleConfig()) {
+            return
+        }
+        const configItem = _vehicleConfigViewItem()
+        if (configItem && typeof configItem.showParametersPanel === "function") {
+            configItem.showParametersPanel()
         }
     }
 
+    function showKnownVehicleComponentConfigPage(knownVehicleComponent) {
+        if (!showVehicleConfig()) {
+            return
+        }
+        let vehicleComponent = globals.activeVehicle.autopilotPlugin.findKnownVehicleComponent(knownVehicleComponent)
+        const configItem = _vehicleConfigViewItem()
+        if (vehicleComponent && configItem && typeof configItem.showVehicleComponentPanel === "function") {
+            configItem.showVehicleComponentPanel(vehicleComponent)
+        }
+    }
+
+    function showVehicleConfigComponentPanel(vehicleComponent) {
+        if (!showVehicleConfig()) {
+            return
+        }
+        const configItem = _vehicleConfigViewItem()
+        if (vehicleComponent && configItem && typeof configItem.showVehicleComponentPanel === "function") {
+            configItem.showVehicleComponentPanel(vehicleComponent)
+        }
+    }
+
+    function showClusterView() {
+        showTool(qsTr("Cluster Workspace"), "qrc:/qml/QGroundControl/VehicleSetup/ClusterView.qml", "/InstrumentValueIcons/menu.svg", true)
+    }
+
     function showSettingsTool(settingsPage = "") {
-        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
+        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/InstrumentValueIcons/menu.svg", true)
         if (settingsPage !== "") {
             toolDrawerLoader.item.showSettingsPage(settingsPage)
         }
@@ -233,8 +299,136 @@ ApplicationWindow {
 
     function _setCurrentTab(index) {
         if (mainViewTabBar) {
+            if (!mainWindow._analyzeEnabled && index === _analyzeTabIndex) {
+                index = _flyTabIndex
+            }
             mainViewTabBar.currentIndex = index
+            _lastVisitedWorkspaceTab = index
         }
+    }
+
+    function _canAccessTabOffline(tabIndex) {
+        return tabIndex === _planTabIndex
+            || tabIndex === _summaryTabIndex
+            || tabIndex === _configureTabIndex
+    }
+
+    function _canAccessTabInCurrentState(tabIndex) {
+        return _hasAnyConnectedVehicle() || _canAccessTabOffline(tabIndex)
+    }
+
+    function _returnToStartPage() {
+        _startPageEntryGranted = false
+        _offlineWorkspaceMode = false
+        _configureReadOnlyMode = false
+        _showStartPage = true
+        toolDrawer.visible = false
+        _updateEmbeddedPageState()
+    }
+
+    function _updateEmbeddedPageState() {
+        if (summaryViewContent && summaryViewContent.item) {
+            if (typeof summaryViewContent.item.useOfflineVehicleFallback !== "undefined") {
+                summaryViewContent.item.useOfflineVehicleFallback = _offlineWorkspaceMode
+            }
+        }
+
+        if (configureViewContent && configureViewContent.item) {
+            if (typeof configureViewContent.item.useOfflineVehicleFallback !== "undefined") {
+                configureViewContent.item.useOfflineVehicleFallback = _offlineWorkspaceMode
+            }
+            if (typeof configureViewContent.item.readOnlyMode !== "undefined") {
+                configureViewContent.item.readOnlyMode = _configureReadOnlyMode
+            }
+        }
+    }
+
+    function _connectedVehicleCount() {
+        const vehicles = QGroundControl.multiVehicleManager.vehicles
+        let connectedCount = 0
+
+        if (!vehicles) {
+            return 0
+        }
+
+        for (let i = 0; i < vehicles.count; i++) {
+            const vehicle = vehicles.get(i)
+            const vehicleLinkManager = vehicle ? vehicle.vehicleLinkManager : null
+            if (vehicleLinkManager && !vehicleLinkManager.communicationLost) {
+                connectedCount++
+            }
+        }
+
+        return connectedCount
+    }
+
+    function _hasAnyConnectedVehicle() {
+        return _connectedVehicleCount() > 0
+    }
+
+    function _syncStartPageVisibility() {
+        const hasConnectedVehicle = _hasAnyConnectedVehicle()
+
+        if (!hasConnectedVehicle) {
+            if (_offlineWorkspaceMode) {
+                _showStartPage = false
+                toolDrawer.visible = false
+                _updateEmbeddedPageState()
+                return false
+            }
+            _startPageEntryGranted = false
+            _configureReadOnlyMode = false
+            _showStartPage = true
+            toolDrawer.visible = false
+            _updateEmbeddedPageState()
+            return false
+        }
+
+        _offlineWorkspaceMode = false
+        _showStartPage = !_startPageEntryGranted
+        if (_showStartPage) {
+            toolDrawer.visible = false
+        }
+        _updateEmbeddedPageState()
+
+        return true
+    }
+
+    function _ensureMainInterfaceAccess(tabIndex, grantEntry = false) {
+        if (!_hasAnyConnectedVehicle()) {
+            if (_canAccessTabOffline(tabIndex)) {
+                _offlineWorkspaceMode = true
+                _configureReadOnlyMode = tabIndex === _configureTabIndex
+                _startPageEntryGranted = true
+                _showStartPage = false
+                _setCurrentTab(tabIndex)
+                toolDrawer.visible = false
+                _updateEmbeddedPageState()
+                return true
+            }
+
+            _syncStartPageVisibility()
+            return false
+        }
+
+        _offlineWorkspaceMode = false
+        _configureReadOnlyMode = false
+
+        if (grantEntry) {
+            _startPageEntryGranted = true
+        }
+
+        if (!_startPageEntryGranted) {
+            _showStartPage = true
+            toolDrawer.visible = false
+            return false
+        }
+
+        _showStartPage = false
+        _setCurrentTab(tabIndex)
+        toolDrawer.visible = false
+        _updateEmbeddedPageState()
+        return true
     }
 
     function _planViewItem() {
@@ -459,7 +653,8 @@ ApplicationWindow {
             anchors.left:           parent.left
             anchors.right:          parent.right
             anchors.margins:        0
-            height: integratedMainView._headerHeight * 0.85
+            height:                 mainWindow._showStartPage ? 0 : (integratedMainView._headerHeight * 0.85)
+            visible:                !mainWindow._showStartPage
             color:                  integratedMainView._navBarBgColor
             radius:                 0
             border.color:           "transparent"
@@ -526,14 +721,14 @@ ApplicationWindow {
 
                             QGCLabel {
                                 anchors.centerIn:   parent
-                                text:               qsTr("Widgets")
+                                text:               qsTr("Settings")
                                 color:              integratedMainView._navTextColor
                                 opacity:            0.78
                             }
 
                             QGCMouseArea {
                                 anchors.fill: parent
-                                onClicked: mainWindow.showToolSelectDialog()
+                                onClicked: mainWindow.showSettingsTool()
                             }
                         }
                     }
@@ -545,7 +740,7 @@ ApplicationWindow {
 
                 Item {
                     Layout.alignment:       Qt.AlignHCenter
-                    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 82
+                    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 102
                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.4
 
                     TabBar {
@@ -555,7 +750,10 @@ ApplicationWindow {
 
                         TabButton { text: qsTr("Plan") }
                         TabButton { text: qsTr("Fly") }
-                        TabButton { text: qsTr("Analyze") }
+                        TabButton { text: qsTr("Summary") }
+                        TabButton { text: qsTr("Configure") }
+                        TabButton { text: qsTr("Analyze"); visible: mainWindow._analyzeEnabled }
+                        TabButton { text: qsTr("Console") }
                     }
 
                     Row {
@@ -563,17 +761,25 @@ ApplicationWindow {
                         spacing:            ScreenTools.defaultFontPixelWidth * 0.95
 
                         Repeater {
-                            model: [
-                                { label: qsTr("Plan"), icon: "/qmlimages/Plan.svg", width: ScreenTools.defaultFontPixelWidth * 25, iconSize: ScreenTools.defaultFontPixelHeight * 0.85 },
-                                { label: qsTr("Fly"), icon: "/qmlimages/PaperPlane.svg", width: ScreenTools.defaultFontPixelWidth * 25, iconSize: ScreenTools.defaultFontPixelHeight * 0.85 },
-                                { label: qsTr("Analyze"), icon: "/qmlimages/Analyze.svg", width: ScreenTools.defaultFontPixelWidth * 26.25, iconSize: ScreenTools.defaultFontPixelHeight * 0.85 }
-                            ]
+                            model: {
+                                const uniformTabWidth = ScreenTools.defaultFontPixelWidth * 24
+                                const tabs = [
+                                    { label: qsTr("Plan"), icon: "/qmlimages/Plan.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _planTabIndex, offlineAvailable: true },
+                                    { label: qsTr("Fly"), icon: "/qmlimages/PaperPlane.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _flyTabIndex, offlineAvailable: false },
+                                    { label: qsTr("Summary"), icon: "/qmlimages/VehicleSummaryIcon.png", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _summaryTabIndex, offlineAvailable: true },
+                                    { label: qsTr("Configure"), icon: "/InstrumentValueIcons/cog.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _configureTabIndex, offlineAvailable: true }
+                                ]
+                                if (mainWindow._analyzeEnabled) {
+                                    tabs.push({ label: qsTr("Analyze"), icon: "/qmlimages/Analyze.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _analyzeTabIndex, offlineAvailable: false })
+                                }
+                                tabs.push({ label: qsTr("Console"), icon: "/qmlimages/MAVLinkConsoleIcon.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _mavlinkConsoleTabIndex, offlineAvailable: false })
+                                return tabs
+                            }
 
                             delegate: Rectangle {
                                 required property var modelData
-                                required property int index
-
-                                readonly property bool selected: mainViewTabBar.currentIndex === index
+                                readonly property bool selected: mainViewTabBar.currentIndex === modelData.tabIndex
+                                readonly property bool enabledForState: mainWindow._hasAnyConnectedVehicle() || !!modelData.offlineAvailable
 
                                 width:          modelData.width
                                 height:         ScreenTools.defaultFontPixelHeight * 2.2
@@ -595,14 +801,14 @@ ApplicationWindow {
                                             source:             modelData.icon
                                             fillMode:           Image.PreserveAspectFit
                                             color:              integratedMainView._navTextColor
-                                            opacity:            selected ? 1 : 0.72
+                                            opacity:            !enabledForState ? 0.28 : (selected ? 1 : 0.72)
                                         }
                                     }
 
                                     QGCLabel {
                                         text:               modelData.label
                                         color:              integratedMainView._navTextColor
-                                        opacity:            selected ? 1 : 0.72
+                                        opacity:            !enabledForState ? 0.32 : (selected ? 1 : 0.72)
                                         font.weight:        selected ? Font.DemiBold : Font.Normal
                                     }
                                 }
@@ -610,9 +816,8 @@ ApplicationWindow {
                                 QGCMouseArea {
                                     anchors.fill: parent
                                     onClicked: {
-                                        if (mainWindow.allowViewSwitch()) {
-                                            mainViewTabBar.currentIndex = index
-                                            toolDrawer.visible = false
+                                        if (enabledForState && mainWindow.allowViewSwitch()) {
+                                            mainWindow._ensureMainInterfaceAccess(modelData.tabIndex)
                                         }
                                     }
                                 }
@@ -627,31 +832,63 @@ ApplicationWindow {
 
                 Item {
                     Layout.alignment:       Qt.AlignVCenter
-                    Layout.preferredWidth:  rightAvatarBadge.width
-                    Layout.preferredHeight: rightAvatarBadge.height
+                    Layout.preferredWidth:  rightNavCluster.implicitWidth
+                    Layout.preferredHeight: rightNavCluster.implicitHeight
 
-                    Rectangle {
-                        id: rightAvatarBadge
+                    RowLayout {
+                        id: rightNavCluster
+                        width: implicitWidth
+                        height: implicitHeight
                         x: -integratedMainView._rightNavAvatarOffset
-                        width: ScreenTools.defaultFontPixelHeight * 1.7
-                        height:     width
-                        radius:     width / 2
-                        color:      qgcPal.window
-                        border.color: qgcPal.windowShadeLight
-                        border.width: 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.5
 
-                        QGCLabel {
-                            anchors.centerIn:   parent
-                            text:               "U"
-                            font.weight:        Font.DemiBold
+                        Rectangle {
+                            id: returnToStartButton
+                            visible: !mainWindow._showStartPage
+                            width: visible ? (ScreenTools.defaultFontPixelWidth * 12.8) : 0
+                            height: ScreenTools.defaultFontPixelHeight * 2.1
+                            radius: ScreenTools.defaultFontPixelHeight * 0.3
+                            color: returnToStartMouseArea.pressed
+                                        ? Qt.rgba(1, 1, 1, 0.10)
+                                        : (returnToStartMouseArea.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+                            border.color: Qt.rgba(1, 1, 1, 0.18)
+                            border.width: 1
+
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                                QGCColoredImage {
+                                    width: ScreenTools.defaultFontPixelHeight * 0.78
+                                    height: width
+                                    source: "/InstrumentValueIcons/home.svg"
+                                    fillMode: Image.PreserveAspectFit
+                                    color: integratedMainView._navTextColor
+                                }
+
+                                QGCLabel {
+                                    text: qsTr("Start")
+                                    color: integratedMainView._navTextColor
+                                    font.weight: Font.DemiBold
+                                }
+                            }
+
+                            QGCMouseArea {
+                                id: returnToStartMouseArea
+                                anchors.fill: parent
+                                hoverEnabled: !ScreenTools.isMobile
+                                onClicked: mainWindow._returnToStartPage()
+                            }
                         }
                     }
                 }
             }
+
         }
 
         Item {
-            anchors.top:        topNavigationBar.bottom
+            anchors.top:        mainWindow._showStartPage ? parent.top : topNavigationBar.bottom
             anchors.left:       parent.left
             anchors.right:      parent.right
             anchors.bottom:     parent.bottom
@@ -1170,7 +1407,31 @@ ApplicationWindow {
                             y:              0
                             width:          parent ? parent.width : 0
                             height:         parent ? parent.height : 0
+                            _useExternalStartMissionUi: true
                             visible:        mainViewTabBar.currentIndex === _flyTabIndex
+                        }
+
+                        Loader {
+                            id:             summaryViewContent
+                            x:              0
+                            y:              0
+                            width:          parent ? parent.width : 0
+                            height:         parent ? parent.height : 0
+                            source:         "qrc:/qml/QGroundControl/VehicleSetup/VehicleSummary.qml"
+                            active:         mainViewTabBar.currentIndex === _summaryTabIndex
+                            visible:        mainViewTabBar.currentIndex === _summaryTabIndex
+                            onLoaded:       mainWindow._updateEmbeddedPageState()
+                        }
+
+                        Loader {
+                            id:             configureViewContent
+                            x:              0
+                            y:              0
+                            width:          parent ? parent.width : 0
+                            height:         parent ? parent.height : 0
+                            source:         "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml"
+                            visible:        mainViewTabBar.currentIndex === _configureTabIndex
+                            onLoaded:       mainWindow._updateEmbeddedPageState()
                         }
 
                         AnalyzeView {
@@ -1179,14 +1440,24 @@ ApplicationWindow {
                             y:              0
                             width:          parent ? parent.width : 0
                             height:         parent ? parent.height : 0
-                            visible:        mainViewTabBar.currentIndex === _analyzeTabIndex
+                            visible:        mainWindow._analyzeEnabled && (mainViewTabBar.currentIndex === _analyzeTabIndex)
+                        }
+
+                        MAVLinkConsolePage {
+                            id:             mavlinkConsoleViewContent
+                            x:              0
+                            y:              0
+                            width:          parent ? parent.width : 0
+                            height:         parent ? parent.height : 0
+                            visible:        mainViewTabBar.currentIndex === _mavlinkConsoleTabIndex
                         }
                     }
                 }
 
                 Rectangle {
                     id: fallbackFlyMapHost
-                    visible: mainViewTabBar.currentIndex === _flyTabIndex
+                    visible: !mainWindow._showStartPage &&
+                             (mainViewTabBar.currentIndex === _flyTabIndex)
                     x: flyPageContent ? (flyPageContent._leftPaneWidth + flyPageContent._margin) : Math.max(ScreenTools.defaultFontPixelWidth * 24, width * 0.25)
                     y: 0
                     width: Math.max(0, parent.width - x)
@@ -1197,6 +1468,7 @@ ApplicationWindow {
                     property var _activeVehicle: globals.activeVehicle
                     property bool _trafficViewVisible: false
                     property bool _videoOverlayExpanded: false
+                    property bool _mapStripExpanded: true
                     property string _mapNavigationSelection: ""
                     readonly property real _margin: flyPageContent ? flyPageContent._margin : ScreenTools.defaultFontPixelHeight * 0.45
 
@@ -1384,16 +1656,30 @@ ApplicationWindow {
                         anchors.left: parent.left
                         anchors.leftMargin: fallbackFlyMapHost._margin
                         anchors.verticalCenter: parent.verticalCenter
-                        width: ScreenTools.defaultFontPixelHeight * 2.75
-                        height: fallbackStripButtonColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.38)
+                        readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 2.18
+                        readonly property real _innerMargin: ScreenTools.defaultFontPixelHeight * 0.16
+                        readonly property real _expandedWidth: ScreenTools.defaultFontPixelHeight * 2.75
+                        readonly property real _collapsedWidth: 0
+                        readonly property real _expandedHeight: fallbackStripButtonColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.38)
+                        readonly property real _collapsedHeight: 0
+                        width: fallbackFlyMapHost._mapStripExpanded ? _expandedWidth : _collapsedWidth
+                        height: fallbackFlyMapHost._mapStripExpanded ? _expandedHeight : _collapsedHeight
                         color: Qt.rgba(0.06, 0.06, 0.07, 0.9)
                         radius: ScreenTools.defaultFontPixelHeight * 0.18
+                        clip: true
                         z: QGroundControl.zOrderWidgets
+
+                        Behavior on width {
+                            NumberAnimation { duration: 180; easing.type: Easing.InOutCubic }
+                        }
+                        Behavior on height {
+                            NumberAnimation { duration: 180; easing.type: Easing.InOutCubic }
+                        }
 
                         ColumnLayout {
                             id: fallbackStripButtonColumn
                             anchors.fill: parent
-                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.16
+                            anchors.margins: fallbackFloatingMapStrip._innerMargin
                             spacing: ScreenTools.defaultFontPixelHeight * 0.12
 
                             Repeater {
@@ -1418,9 +1704,9 @@ ApplicationWindow {
                                     readonly property bool _selected: fallbackFlyMapHost._isMapStripSelected(modelData.key)
 
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.18
+                                    Layout.preferredHeight: fallbackFloatingMapStrip._buttonHeight
                                     color: _selected ? "#2F6FC7" : (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")
-                                    opacity: _enabled ? 1 : 0.42
+                                    opacity: fallbackFlyMapHost._mapStripExpanded ? (_enabled ? 1 : 0.42) : 0
                                     radius: ScreenTools.defaultFontPixelHeight * 0.18
 
                                     Item {
@@ -1449,11 +1735,39 @@ ApplicationWindow {
                                     QGCMouseArea {
                                         id: fallbackStripMouseArea
                                         anchors.fill: parent
-                                        enabled: parent._enabled
+                                        enabled: fallbackFlyMapHost._mapStripExpanded && parent._enabled
                                         onClicked: fallbackFlyMapHost._triggerMapStripAction(modelData.key)
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    Rectangle {
+                        id: fallbackMapStripToggleHandle
+                        anchors.left: fallbackFloatingMapStrip.right
+                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.15
+                        anchors.verticalCenter: fallbackFloatingMapStrip.verticalCenter
+                        width: ScreenTools.defaultFontPixelHeight * 1.05
+                        height: ScreenTools.defaultFontPixelHeight * 1.9
+                        color: Qt.rgba(0.08, 0.08, 0.09, 0.95)
+                        radius: width * 0.45
+                        border.color: Qt.rgba(1, 1, 1, 0.14)
+                        border.width: 1
+                        z: QGroundControl.zOrderWidgets + 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: fallbackFlyMapHost._mapStripExpanded ? "<" : ">"
+                            color: "#FFFFFF"
+                            font.pixelSize: parent.width * 0.78
+                            font.bold: true
+                            renderType: Text.NativeRendering
+                        }
+
+                        QGCMouseArea {
+                            anchors.fill: parent
+                            onClicked: fallbackFlyMapHost._mapStripExpanded = !fallbackFlyMapHost._mapStripExpanded
                         }
                     }
 
@@ -1795,11 +2109,295 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    Rectangle {
+                        id: fallbackStartMissionLauncherCard
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: fallbackFlyMapHost._margin
+                        anchors.bottomMargin: fallbackFlyMapHost._margin
+                        width: Math.min(ScreenTools.defaultFontPixelWidth * 22, parent.width - (fallbackFlyMapHost._margin * 2))
+                        height: fallbackStartMissionLauncherContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.9)
+                        visible: fallbackFlyMapHost.visible &&
+                                 !!flyPageContent &&
+                                 !!flyPageContent.guidedController &&
+                                 !flyPageContent._startMissionSliderVisible &&
+                                 !flyPageContent._startMissionFeedbackVisible &&
+                                 !flyPageContent._startMissionUnavailableDialogVisible
+                        color: Qt.rgba(0.10, 0.10, 0.11, 0.96)
+                        border.color: Qt.rgba(1, 1, 1, 0.10)
+                        border.width: 1
+                        radius: ScreenTools.defaultFontPixelHeight * 0.28
+                        z: QGroundControl.zOrderWidgets + 20
+
+                        ColumnLayout {
+                            id: fallbackStartMissionLauncherContent
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.42
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.3
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("Start Mission")
+                                color: "#F8FAFC"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.8
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: flyPageContent.guidedController.showStartMission
+                                    ? flyPageContent.guidedController.startMissionMessage
+                                    : qsTr("Press START to check whether the mission can begin.")
+                                color: "#E5E7EB"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                            }
+
+                            QGCButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: qsTr("START")
+                                primary: true
+                                onClicked: flyPageContent._showStartMissionSlider()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: fallbackStartMissionFeedbackPanel
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: fallbackFlyMapHost._margin
+                        anchors.bottomMargin: fallbackFlyMapHost._margin
+                        width: Math.min(
+                            ScreenTools.defaultFontPixelWidth * 32,
+                            Math.max(ScreenTools.defaultFontPixelWidth * 20, fallbackFlyMapHost.width - (fallbackFlyMapHost._margin * 2))
+                        )
+                        height: fallbackStartMissionFeedbackContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.9)
+                        visible: fallbackFlyMapHost.visible &&
+                                 !!flyPageContent &&
+                                 flyPageContent._startMissionFeedbackVisible &&
+                                 !flyPageContent._startMissionSliderVisible &&
+                                 !flyPageContent._startMissionUnavailableDialogVisible
+                        color: flyPageContent && flyPageContent._startMissionFeedbackIsError
+                            ? Qt.rgba(0.28, 0.11, 0.11, 0.96)
+                            : Qt.rgba(0.08, 0.19, 0.30, 0.96)
+                        border.color: flyPageContent && flyPageContent._startMissionFeedbackIsError
+                            ? Qt.rgba(1.0, 0.52, 0.52, 0.35)
+                            : Qt.rgba(0.60, 0.84, 1.0, 0.28)
+                        border.width: 1
+                        radius: ScreenTools.defaultFontPixelHeight * 0.28
+                        z: QGroundControl.zOrderWidgets + 20
+
+                        ColumnLayout {
+                            id: fallbackStartMissionFeedbackContent
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.38
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.4
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Start Mission")
+                                    color: "#F8FAFC"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.74
+                                    font.bold: true
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.15
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    radius: width / 2
+                                    color: Qt.rgba(1, 1, 1, 0.14)
+
+                                    QGCColoredImage {
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.4
+                                        height: width
+                                        source: "/res/XDelete.svg"
+                                        color: "#FFFFFF"
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+
+                                    QGCMouseArea {
+                                        anchors.fill: parent
+                                        onClicked: flyPageContent._hideStartMissionFeedback()
+                                    }
+                                }
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: flyPageContent ? flyPageContent._startMissionFeedbackText : ""
+                                color: "#E5E7EB"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: fallbackStartMissionMapSliderPanel
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: fallbackFlyMapHost._margin
+                        anchors.bottomMargin: fallbackFlyMapHost._margin
+                        width: Math.min(
+                            ScreenTools.defaultFontPixelWidth * 38,
+                            Math.max(ScreenTools.defaultFontPixelWidth * 24, fallbackFlyMapHost.width - (fallbackFlyMapHost._margin * 2))
+                        )
+                        height: ScreenTools.defaultFontPixelHeight * 5.8
+                        visible: fallbackFlyMapHost.visible && !!flyPageContent && flyPageContent._startMissionSliderVisible
+                        color: Qt.rgba(0.10, 0.10, 0.11, 0.96)
+                        border.color: Qt.rgba(1, 1, 1, 0.08)
+                        border.width: 1
+                        radius: ScreenTools.defaultFontPixelHeight * 0.28
+                        z: QGroundControl.zOrderWidgets + 20
+
+                        onVisibleChanged: {
+                            if (visible) {
+                                fallbackStartMissionMapSliderSwitch.forceActiveFocus()
+                            }
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.42
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.3
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: flyPageContent && flyPageContent.guidedController ? flyPageContent.guidedController.startMissionMessage : qsTr("Start Mission")
+                                color: "#F1F3F5"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+                                SliderSwitch {
+                                    id: fallbackStartMissionMapSliderSwitch
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.45
+                                    focus: fallbackStartMissionMapSliderPanel.visible
+                                    confirmText: qsTr("Slide or hold spacebar")
+                                    onAccept: flyPageContent._confirmStartMissionSlider()
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: fallbackStartMissionMapSliderSwitch.height
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    radius: width / 2
+                                    color: "#9CC1D7"
+
+                                    QGCColoredImage {
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.42
+                                        height: width
+                                        source: "/res/XDelete.svg"
+                                        color: "#FFFFFF"
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+
+                                    QGCMouseArea {
+                                        anchors.fill: parent
+                                        onClicked: flyPageContent._hideStartMissionSlider()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        id: fallbackStartMissionUnavailablePanel
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: fallbackFlyMapHost._margin
+                        anchors.bottomMargin: fallbackFlyMapHost._margin
+                        width: Math.max(ScreenTools.defaultFontPixelWidth * 26, Math.min(ScreenTools.defaultFontPixelWidth * 42, parent.width * 0.38))
+                        height: fallbackStartMissionUnavailableContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.2)
+                        visible: fallbackFlyMapHost.visible && !!flyPageContent && flyPageContent._startMissionUnavailableDialogVisible
+                        color: Qt.rgba(0.12, 0.12, 0.13, 0.985)
+                        border.color: Qt.rgba(1.0, 0.52, 0.52, 0.34)
+                        border.width: 1
+                        radius: ScreenTools.defaultFontPixelHeight * 0.34
+                        z: QGroundControl.zOrderWidgets + 21
+
+                        ColumnLayout {
+                            id: fallbackStartMissionUnavailableContent
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.48
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.34
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.38
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Start Mission")
+                                    color: "#F8FAFC"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
+                                    font.bold: true
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.12
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    radius: width / 2
+                                    color: Qt.rgba(1, 1, 1, 0.10)
+
+                                    QGCColoredImage {
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.42
+                                        height: width
+                                        source: "/res/XDelete.svg"
+                                        color: "#FFFFFF"
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+
+                                    QGCMouseArea {
+                                        anchors.fill: parent
+                                        onClicked: flyPageContent._hideStartMissionUnavailableDialog()
+                                    }
+                                }
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: flyPageContent ? flyPageContent._startMissionUnavailableDialogText : ""
+                                color: "#E5E7EB"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.12
+
+                                Item { Layout.fillWidth: true }
+
+                                QGCButton {
+                                    text: qsTr("OK")
+                                    primary: true
+                                    onClicked: flyPageContent._hideStartMissionUnavailableDialog()
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Rectangle {
                     id: fallbackProfileHost
-                    visible: mainViewTabBar.currentIndex === _flyTabIndex
+                    visible: !mainWindow._showStartPage &&
+                             (mainViewTabBar.currentIndex === _flyTabIndex)
                     x: fallbackFlyMapHost.x
                     y: parent.height - height
                     width: fallbackFlyMapHost.width
@@ -1881,6 +2479,7 @@ ApplicationWindow {
                         }
 
                         Rectangle {
+                            id: fallbackProfileToolbar
                             width: parent.width
                             height: ScreenTools.defaultFontPixelHeight * 2.15
                             color: "#2A2A2B"
@@ -2558,7 +3157,1050 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                Rectangle {
+                    id: startPageOverlay
+                    anchors.fill: parent
+                    visible: mainWindow._showStartPage
+                    z: QGroundControl.zOrderTopMost + 100
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#1E1E1E" }
+                        GradientStop { position: 1.0; color: "#222222" }
+                    }
+                    readonly property color _cardBg: "#2D2D2D"
+                    readonly property color _inputBg: "#252525"
+                    readonly property color _borderColor: "#333333"
+                    readonly property color _focusColor: "#2563EB"
+                    readonly property color _primaryText: "#FFFFFF"
+                    readonly property color _secondaryText: "#B0B0B0"
+                    readonly property color _disabledText: "#666666"
+                    readonly property color _primaryBtn: "#2563EB"
+                    readonly property color _primaryBtnHover: "#1D4ED8"
+                    readonly property color _primaryBtnPressed: "#1E40AF"
+                    readonly property color _secondaryBtn: "#333333"
+                    readonly property color _secondaryBtnHover: "#3B3B3B"
+                    readonly property color _secondaryBtnPressed: "#292929"
+                    readonly property real _uiRadius: 8
+                    readonly property int _uiAnimMs: 200
+                    readonly property real _fontTitle: 2.05
+                    readonly property real _fontSubtitle: 1.12
+                    readonly property real _fontSectionTitle: 1.28
+                    readonly property real _fontFieldLabel: 0.74
+                    readonly property real _fontMeta: 0.84
+                    readonly property real _fontLogTime: 0.82
+                    readonly property real _fontLogMessage: 0.90
+                    readonly property real _fontControlScale: 0.90
+                    readonly property real _leftFieldLabelWidth: 28.0
+                    readonly property real _fontRightTitle: 1.24
+                    readonly property real _fontRightStatus: 0.80
+                    readonly property real _fontRightMeta: 0.76
+                    readonly property real _fontRightLogTime: 0.74
+                    readonly property real _fontRightLogMessage: 0.82
+                    readonly property real _fontRightButtonScale: 0.82
+                    readonly property var _linkManager: QGroundControl.linkManager
+                    readonly property var _settingsManager: QGroundControl.settingsManager
+                    readonly property var _mavlinkSettings: _settingsManager ? _settingsManager.mavlinkSettings : null
+                    readonly property var _gcsSystemIdFact: _mavlinkSettings ? _mavlinkSettings.gcsMavlinkSystemID : null
+                    readonly property var _heartbeatTimeoutFact: _mavlinkSettings ? _mavlinkSettings.vehicleHeartbeatTimeout : null
+                    readonly property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
+                    readonly property int _gcsComponentId: 190
+                    readonly property string _startPageAutoConnectConfigName: "Start Page Auto Connect"
+                    property bool _serialPortAvailable: false
+                    readonly property bool _canConnect: _isConnected
+                                                           || (_availableLinkNames.length > 0)
+                                                           || (_serialPortAvailable
+                                                               && _selectedSerialPortIndex >= 0
+                                                               && _selectedSerialPortIndex < _serialPortNames.length)
+                    property var _availableLinkConfigs: []
+                    property var _availableLinkNames: []
+                    property var _serialPortNames: []
+                    property var _serialPortDisplayNames: []
+                    property var _vehicleConnectionStateMap: ({})
+                    property var _temporaryStartSerialConfig: null
+                    property int _selectedLinkIndex: -1
+                    property int _selectedSerialPortIndex: -1
+                    property int _selectedBaudRate: 57600
+                    property bool _selectedFlowControlEnabled: false
+                    property int _selectedDataBits: 8
+                    property int _selectedStopBits: 1
+                    property int _selectedParity: 0
+                    property bool _autoConnectOnBoot: false
+                    property int _connectedVehicleCount: 0
+                    property bool _isConnected: false
+                    property string _statusText: qsTr("Select a link and connect the vehicle")
+                    property string _recentConnectionText: qsTr("Recent connection: No successful connection yet")
+                    readonly property int _heartbeatTimeoutSeconds: (_heartbeatTimeoutFact && !isNaN(Number(_heartbeatTimeoutFact.rawValue))) ? Math.round(Number(_heartbeatTimeoutFact.rawValue)) : 4
+
+                    function _openWorkspaceTab(tabIndex) {
+                        if (_hasAnyConnectedVehicle()) {
+                            return mainWindow._ensureMainInterfaceAccess(tabIndex, true)
+                        }
+                        return mainWindow._ensureMainInterfaceAccess(tabIndex)
+                    }
+
+                    function _appendEvent(message) {
+                        const now = new Date()
+                        const hh = now.getHours().toString().padStart(2, "0")
+                        const mm = now.getMinutes().toString().padStart(2, "0")
+                        const ss = now.getSeconds().toString().padStart(2, "0")
+                        startEventLogModel.insert(0, { timestamp: hh + ":" + mm + ":" + ss, message: message })
+                        while (startEventLogModel.count > 120) {
+                            startEventLogModel.remove(startEventLogModel.count - 1)
+                        }
+                    }
+
+                    function _refreshLinks() {
+                        const configs = []
+                        const names = []
+                        const model = _linkManager ? _linkManager.linkConfigurations : null
+                        if (model) {
+                            for (let i = 0; i < model.count; i++) {
+                                const cfg = model.get(i)
+                                if (!cfg || cfg.dynamic) {
+                                    continue
+                                }
+                                configs.push(cfg)
+                                names.push(cfg.name && cfg.name !== "" ? cfg.name : qsTr("Link %1").arg(i + 1))
+                            }
+                        }
+                        _availableLinkConfigs = configs
+                        _availableLinkNames = names
+                        _selectedLinkIndex = configs.length > 0 ? Math.max(0, Math.min(_selectedLinkIndex, configs.length - 1)) : -1
+                        _refreshSerialSelection()
+                    }
+
+                    function _selectLinkConfigByName(name) {
+                        if (!name) {
+                            return
+                        }
+
+                        for (let i = 0; i < _availableLinkConfigs.length; i++) {
+                            const cfg = _availableLinkConfigs[i]
+                            if (cfg && cfg.name === name) {
+                                _selectedLinkIndex = i
+                                return
+                            }
+                        }
+                    }
+
+                    function _openAddLinkDialog() {
+                        if (!_linkManager) {
+                            _appendEvent(qsTr("Link manager unavailable"))
+                            return
+                        }
+
+                        const editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
+                        if (!editingConfig) {
+                            _appendEvent(qsTr("Unable to create link configuration"))
+                            return
+                        }
+
+                        startPageLinkDialogFactory.open({ editingConfig: editingConfig, originalConfig: null })
+                    }
+
+                    function _refreshSerialSelection(forceRefresh = false) {
+                        if (forceRefresh && _linkManager && ScreenTools.isSerialAvailable) {
+                            _linkManager.refreshSerialPorts()
+                        }
+
+                        const serialPorts = (_linkManager && ScreenTools.isSerialAvailable) ? _linkManager.serialPorts : []
+                        const serialPortStrings = (_linkManager && ScreenTools.isSerialAvailable) ? _linkManager.serialPortStrings : []
+
+                        _serialPortNames = serialPorts ? serialPorts.slice() : []
+                        _serialPortDisplayNames = serialPortStrings ? serialPortStrings.slice() : []
+                        _serialPortAvailable = _serialPortNames.length > 0
+
+                        if (!serialPorts || serialPorts.length === 0) {
+                            _selectedSerialPortIndex = -1
+                            return
+                        }
+
+                        _selectedSerialPortIndex = Math.max(0, Math.min(_selectedSerialPortIndex, serialPorts.length - 1))
+                    }
+
+                    function _selectedSerialPortName() {
+                        if (_selectedSerialPortIndex < 0 || _selectedSerialPortIndex >= _serialPortNames.length) {
+                            return ""
+                        }
+
+                        return _serialPortNames[_selectedSerialPortIndex]
+                    }
+
+                    function _selectedSerialPortDisplayName() {
+                        if (_selectedSerialPortIndex < 0 || _selectedSerialPortIndex >= _serialPortDisplayNames.length) {
+                            return _selectedSerialPortName()
+                        }
+
+                        return _serialPortDisplayNames[_selectedSerialPortIndex]
+                    }
+
+                    function _findSavedConfigByName(name) {
+                        const model = _linkManager ? _linkManager.linkConfigurations : null
+                        if (!model || name === "") {
+                            return null
+                        }
+
+                        for (let i = 0; i < model.count; i++) {
+                            const cfg = model.get(i)
+                            if (cfg && !cfg.dynamic && cfg.name === name) {
+                                return cfg
+                            }
+                        }
+
+                        return null
+                    }
+
+                    function _removeStartPageAutoConnectConfig() {
+                        const existing = _findSavedConfigByName(_startPageAutoConnectConfigName)
+                        if (existing && !existing.link) {
+                            _linkManager.removeConfiguration(existing)
+                            _refreshLinks()
+                        }
+                    }
+
+                    function _persistStartPageAutoConnectConfig(connectionConfig) {
+                        if (!_linkManager || !connectionConfig) {
+                            return false
+                        }
+
+                        const existing = _findSavedConfigByName(_startPageAutoConnectConfigName)
+                        if (existing && existing.link) {
+                            return true
+                        }
+                        if (existing) {
+                            _linkManager.removeConfiguration(existing)
+                        }
+
+                        let config = null
+                        if (!connectionConfig.dynamic) {
+                            config = _linkManager.startConfigurationEditing(connectionConfig)
+                            if (!config) {
+                                return false
+                            }
+                            config.name = _startPageAutoConnectConfigName
+                            config.dynamic = false
+                            config.autoConnect = true
+                            _linkManager.endCreateConfiguration(config)
+                            _refreshLinks()
+                            return true
+                        }
+
+                        if (connectionConfig.linkType !== LinkConfiguration.TypeSerial) {
+                            return false
+                        }
+
+                        config = _linkManager.createConfiguration(LinkConfiguration.TypeSerial, _startPageAutoConnectConfigName)
+                        if (!config) {
+                            return false
+                        }
+
+                        config.dynamic = false
+                        config.name = _startPageAutoConnectConfigName
+                        config.portName = _selectedSerialPortName()
+                        config.baud = _selectedBaudRate
+                        config.flowControl = _selectedFlowControlEnabled ? 1 : 0
+                        config.dataBits = _selectedDataBits
+                        config.stopBits = _selectedStopBits
+                        config.parity = _selectedParity
+                        config.autoConnect = true
+                        _linkManager.endCreateConfiguration(config)
+                        _refreshLinks()
+                        return true
+                    }
+
+                    function _applyStartPagePersistentSettings(connectionConfig) {
+                        if (_autoConnectOnBoot) {
+                            if (_persistStartPageAutoConnectConfig(connectionConfig)) {
+                                _appendEvent(qsTr("Auto connect on boot enabled"))
+                            } else {
+                                _appendEvent(qsTr("Auto connect on boot could not be saved for this connection"))
+                            }
+                        } else {
+                            _removeStartPageAutoConnectConfig()
+                        }
+                    }
+
+                    function _temporarySerialConfig() {
+                        if (!_linkManager || !_serialPortAvailable) {
+                            return null
+                        }
+
+                        _refreshSerialSelection()
+
+                        const portName = _selectedSerialPortName()
+                        if (portName === "") {
+                            return null
+                        }
+
+                        let config = _temporaryStartSerialConfig
+                        if (!config) {
+                            config = _linkManager.createConfiguration(LinkConfiguration.TypeSerial, qsTr("Start Page Serial Link"))
+                            if (!config) {
+                                return null
+                            }
+
+                            config.dynamic = true
+                            _linkManager.endCreateConfiguration(config)
+                            _temporaryStartSerialConfig = config
+                        }
+
+                        config.name = qsTr("Start Page Serial (%1)").arg(_selectedSerialPortDisplayName())
+                        config.portName = portName
+                        config.baud = _selectedBaudRate
+                        config.flowControl = _selectedFlowControlEnabled ? 1 : 0
+                        config.dataBits = _selectedDataBits
+                        config.stopBits = _selectedStopBits
+                        config.parity = _selectedParity
+                        config.autoConnect = _autoConnectOnBoot
+
+                        return config
+                    }
+
+                    function _vehicleKey(vehicle) {
+                        return vehicle && vehicle.id !== undefined && vehicle.id !== null ? ("" + vehicle.id) : ""
+                    }
+
+                    function _vehicleLabel(vehicleIdText) {
+                        return qsTr("Vehicle %1").arg(vehicleIdText)
+                    }
+
+                    function _syncConnectionState(logChanges = true) {
+                        const vehicles = QGroundControl.multiVehicleManager.vehicles
+                        const nextStates = {}
+                        let connectedCount = 0
+
+                        if (vehicles) {
+                            for (let i = 0; i < vehicles.count; i++) {
+                                const vehicle = vehicles.get(i)
+                                const vehicleIdText = _vehicleKey(vehicle)
+                                if (vehicleIdText === "") {
+                                    continue
+                                }
+
+                                const vehicleLinkManager = vehicle ? vehicle.vehicleLinkManager : null
+                                const isConnected = !!(vehicleLinkManager && !vehicleLinkManager.communicationLost)
+                                const previousState = _vehicleConnectionStateMap[vehicleIdText]
+
+                                nextStates[vehicleIdText] = isConnected
+
+                                if (isConnected) {
+                                    connectedCount++
+                                }
+
+                                if (!logChanges) {
+                                    continue
+                                }
+
+                                if (previousState === undefined) {
+                                    if (isConnected) {
+                                        _appendEvent(qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText)))
+                                    }
+                                } else if (previousState !== isConnected) {
+                                    _appendEvent(
+                                        isConnected
+                                            ? qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText))
+                                            : qsTr("%1 disconnected").arg(_vehicleLabel(vehicleIdText))
+                                    )
+                                }
+                            }
+                        }
+
+                        if (logChanges) {
+                            for (const vehicleIdText in _vehicleConnectionStateMap) {
+                                if (_vehicleConnectionStateMap[vehicleIdText] && nextStates[vehicleIdText] === undefined) {
+                                    _appendEvent(qsTr("%1 disconnected").arg(_vehicleLabel(vehicleIdText)))
+                                }
+                            }
+                        }
+
+                        _vehicleConnectionStateMap = nextStates
+                        _connectedVehicleCount = connectedCount
+                        _isConnected = connectedCount > 0
+
+                        if (_isConnected) {
+                            if (_activeVehicle && _activeVehicle.id !== undefined && _activeVehicle.id !== null) {
+                                _statusText = qsTr("Vehicle %1 connected. Review settings, then click Connect Vehicle to enter").arg(_activeVehicle.id)
+                                _recentConnectionText = qsTr("Recent connection: Vehicle %1 connected").arg(_activeVehicle.id)
+                            } else if (_connectedVehicleCount === 1) {
+                                _statusText = qsTr("1 vehicle connected. Review settings, then click Connect Vehicle to enter")
+                                _recentConnectionText = qsTr("Recent connection: 1 vehicle connected")
+                            } else {
+                                _statusText = qsTr("%1 vehicles connected. Review settings, then click Connect Vehicle to enter").arg(_connectedVehicleCount)
+                                _recentConnectionText = qsTr("Recent connection: %1 vehicles connected").arg(_connectedVehicleCount)
+                            }
+                        } else {
+                            _statusText = qsTr("Select a link and connect the vehicle")
+                        }
+
+                        const wasShowingStartPage = mainWindow._showStartPage
+                        mainWindow._syncStartPageVisibility()
+
+                        if (!_isConnected && !wasShowingStartPage) {
+                            _appendEvent(qsTr("No connected vehicle available. Returning to start page"))
+                        }
+                    }
+
+                    function _connectSelected(enterWorkspace = true) {
+                        if (!_linkManager) {
+                            _appendEvent(qsTr("Link manager unavailable"))
+                            return
+                        }
+
+                        _syncConnectionState(false)
+
+                        if (_isConnected) {
+                            if (enterWorkspace) {
+                                _appendEvent(qsTr("Entering main workspace"))
+                                mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
+                            } else {
+                                _appendEvent(qsTr("Vehicle link already active"))
+                            }
+                            return
+                        }
+
+                        let cfg = null
+                        let selectedLinkConfig = null
+                        if (_selectedLinkIndex >= 0 && _selectedLinkIndex < _availableLinkConfigs.length) {
+                            selectedLinkConfig = _availableLinkConfigs[_selectedLinkIndex]
+                        }
+
+                        if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
+                            cfg = selectedLinkConfig
+                        } else {
+                            cfg = _temporarySerialConfig()
+                            if (!cfg) {
+                                cfg = selectedLinkConfig
+                            }
+                        }
+
+                        if (!cfg) {
+                            _appendEvent(qsTr("No available links or serial ports"))
+                            return
+                        }
+
+                        _applyStartPagePersistentSettings(cfg)
+                        _appendEvent((enterWorkspace ? qsTr("Connecting using %1 ...") : qsTr("Testing %1 ...")).arg(cfg.name))
+                        _linkManager.createConnectedLink(cfg)
+                    }
+
+                    function _startDemo() {
+                        QGroundControl.startPX4MockLink(false, false, false)
+                        _appendEvent(qsTr("Starting demo vehicle..."))
+                    }
+
+                    ListModel {
+                        id: startEventLogModel
+                    }
+
+                    Component.onCompleted: {
+                        _refreshLinks()
+                        _autoConnectOnBoot = _findSavedConfigByName(_startPageAutoConnectConfigName) !== null
+                        _appendEvent(qsTr("Start page initialized"))
+                        _syncConnectionState(false)
+                    }
+
+                    onVisibleChanged: {
+                        if (visible) {
+                            _refreshLinks()
+                            _autoConnectOnBoot = _findSavedConfigByName(_startPageAutoConnectConfigName) !== null
+                            _syncConnectionState(false)
+                        }
+                    }
+
+                    Connections {
+                        target: startPageOverlay._linkManager
+                        ignoreUnknownSignals: true
+
+                        function onCommPortsChanged() {
+                            startPageOverlay._refreshSerialSelection()
+                        }
+
+                        function onCommPortStringsChanged() {
+                            startPageOverlay._refreshSerialSelection()
+                        }
+                    }
+
+                    Connections {
+                        target: QGroundControl.multiVehicleManager
+                        ignoreUnknownSignals: true
+                        function onActiveVehicleChanged(activeVehicle) {
+                            startPageOverlay._syncConnectionState()
+                        }
+                        function onVehicleAdded(vehicle) {
+                            startPageOverlay._syncConnectionState()
+                        }
+                        function onVehicleRemoved(vehicle) {
+                            startPageOverlay._syncConnectionState()
+                        }
+                    }
+
+                    Instantiator {
+                        model: QGroundControl.multiVehicleManager.vehicles
+
+                        delegate: Connections {
+                            required property var object
+
+                            target: object && object.vehicleLinkManager ? object.vehicleLinkManager : null
+                            ignoreUnknownSignals: true
+
+                            function onCommunicationLostChanged() {
+                                startPageOverlay._syncConnectionState()
+                            }
+                        }
+                    }
+
+                    QGCPopupDialogFactory {
+                        id: startPageLinkDialogFactory
+
+                        dialogComponent: startPageLinkDialogComponent
+                    }
+
+                    Component {
+                        id: startPageLinkDialogComponent
+
+                        QGCPopupDialog {
+                            title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
+                            buttons:                Dialog.Save | Dialog.Cancel
+                            acceptButtonEnabled:    nameField.text !== ""
+
+                            property var originalConfig
+                            property var editingConfig
+
+                            onAccepted: {
+                                if (linkSettingsLoader.item && typeof linkSettingsLoader.item.saveSettings === "function") {
+                                    linkSettingsLoader.item.saveSettings()
+                                }
+                                editingConfig.name = nameField.text
+                                const savedConfigName = editingConfig.name
+                                if (originalConfig) {
+                                    startPageOverlay._linkManager.endConfigurationEditing(originalConfig, editingConfig)
+                                } else {
+                                    editingConfig.dynamic = false
+                                    startPageOverlay._linkManager.endCreateConfiguration(editingConfig)
+                                }
+                                startPageOverlay._refreshLinks()
+                                startPageOverlay._selectLinkConfigByName(savedConfigName)
+                                startPageOverlay._appendEvent(qsTr("Added link configuration '%1'").arg(savedConfigName))
+                            }
+
+                            onRejected: startPageOverlay._linkManager.cancelConfigurationEditing(editingConfig)
+
+                            ColumnLayout {
+                                spacing: ScreenTools.defaultFontPixelHeight / 2
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                    QGCLabel { text: qsTr("Name") }
+                                    QGCTextField {
+                                        id:                 nameField
+                                        Layout.fillWidth:   true
+                                        text:               editingConfig.name
+                                        placeholderText:    qsTr("Enter name")
+                                    }
+                                }
+
+                                QGCCheckBoxSlider {
+                                    Layout.fillWidth:   true
+                                    text:               qsTr("Automatically Connect on Start")
+                                    checked:            editingConfig.autoConnect
+                                    onCheckedChanged:   editingConfig.autoConnect = checked
+                                }
+
+                                QGCCheckBoxSlider {
+                                    Layout.fillWidth:   true
+                                    text:               qsTr("High Latency")
+                                    checked:            editingConfig.highLatency
+                                    onCheckedChanged:   editingConfig.highLatency = checked
+                                }
+
+                                LabelledComboBox {
+                                    label:                  qsTr("Type")
+                                    enabled:                originalConfig == null
+                                    model:                  startPageOverlay._linkManager.linkTypeStrings
+                                    Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+
+                                    onActivated: (index) => {
+                                        if (index !== editingConfig.linkType) {
+                                            const name = nameField.text
+                                            editingConfig = startPageOverlay._linkManager.createConfiguration(index, name)
+                                        }
+                                    }
+                                }
+
+                                Loader {
+                                    id:     linkSettingsLoader
+                                    source: editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
+                                    asynchronous: true
+
+                                    property var subEditConfig:         editingConfig
+                                    property int _firstColumnWidth:     ScreenTools.defaultFontPixelWidth * 12
+                                    property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 30
+                                    property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
+                                    property int _colSpacing:           ScreenTools.defaultFontPixelWidth / 2
+
+                                    onStatusChanged: {
+                                        if (status === Loader.Error) {
+                                            console.warn("Failed to load link settings page:", source)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width * 0.90, ScreenTools.defaultFontPixelWidth * 144)
+                        height: Math.min(parent.height * 0.88, ScreenTools.defaultFontPixelHeight * 53)
+                        radius: startPageOverlay._uiRadius
+                        color: "transparent"
+                        border.color: startPageOverlay._borderColor
+                        border.width: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.85
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.7
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 7
+                                radius: startPageOverlay._uiRadius
+                                color: startPageOverlay._cardBg
+                                border.color: startPageOverlay._borderColor
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
+
+                                    QGCColoredImage {
+                                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 2.0
+                                        Layout.preferredHeight: Layout.preferredWidth
+                                        source: "/qmlimages/PaperPlane.svg"
+                                        color: "#FFFFFF"
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.2
+                                        QGCLabel { text: "BTFW-GCS"; color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontTitle; font.weight: Font.DemiBold }
+                                        QGCLabel { text: qsTr("Start - Professional connection and telemetry workspace"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSubtitle }
+                                    }
+
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.7
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.preferredWidth: parent.width * 0.66
+                                    radius: startPageOverlay._uiRadius
+                                    color: startPageOverlay._cardBg
+                                    border.color: startPageOverlay._borderColor
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.62
+                                        QGCLabel { text: qsTr("Connection Setup"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSectionTitle; font.weight: Font.DemiBold }
+                                        Item { Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1 }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+                                            QGCLabel { text: qsTr("Link"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCComboBox {
+                                                Layout.fillWidth: true
+                                                sizeToContents: true
+                                                model: startPageOverlay._availableLinkNames.length > 0 ? startPageOverlay._availableLinkNames : [qsTr("No available links")]
+                                                currentIndex: startPageOverlay._selectedLinkIndex >= 0 ? startPageOverlay._selectedLinkIndex : 0
+                                                enabled: startPageOverlay._availableLinkNames.length > 0
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                showFocusBorder: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onActivated: startPageOverlay._selectedLinkIndex = index
+                                            }
+                                            QGCButton {
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6.0
+                                                text: qsTr("Add")
+                                                horizontalAlignment: Text.AlignHCenter
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn)
+                                                textColor: startPageOverlay._primaryText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._openAddLinkDialog()
+                                            }
+                                            QGCButton {
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9.5
+                                                text: qsTr("Refresh")
+                                                horizontalAlignment: Text.AlignHCenter
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._refreshLinks()
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+                                            QGCLabel { text: qsTr("Port"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCComboBox {
+                                                id: serialPortCombo
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16
+                                                sizeToContents: true
+                                                model: startPageOverlay._serialPortDisplayNames.length > 0 ? startPageOverlay._serialPortDisplayNames : ["COM4"]
+                                                currentIndex: startPageOverlay._selectedSerialPortIndex >= 0 ? startPageOverlay._selectedSerialPortIndex : 0
+                                                enabled: startPageOverlay._serialPortAvailable
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                showFocusBorder: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onActivated: startPageOverlay._selectedSerialPortIndex = index
+                                            }
+                                            QGCButton {
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 8.4
+                                                text: qsTr("Refresh")
+                                                horizontalAlignment: Text.AlignHCenter
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: {
+                                                    startPageOverlay._refreshSerialSelection(true)
+                                                    if (serialPortCombo.enabled) {
+                                                        startPageOverlay._appendEvent(qsTr("Serial port list refreshed"))
+                                                    } else {
+                                                        startPageOverlay._appendEvent(qsTr("No serial ports detected"))
+                                                    }
+                                                }
+                                            }
+                                            QGCCheckBox {
+                                                Layout.fillWidth: true
+                                                text: qsTr("Auto connect on boot")
+                                                textFontPointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                boxBackgroundColor: startPageOverlay._inputBg
+                                                boxBorderColor: startPageOverlay._borderColor
+                                                checkColor: startPageOverlay._focusColor
+                                                hoverColor: startPageOverlay._focusColor
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                checked: startPageOverlay._autoConnectOnBoot
+                                                onToggled: {
+                                                    startPageOverlay._autoConnectOnBoot = checked
+                                                    if (!checked && !startPageOverlay._isConnected) {
+                                                        startPageOverlay._removeStartPageAutoConnectConfig()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+                                            QGCLabel { text: qsTr("Baud Rate & Flow Control"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCComboBox {
+                                                id: baudRateCombo
+                                                Layout.fillWidth: true
+                                                sizeToContents: true
+                                                model: {
+                                                    const baudRates = (startPageOverlay._linkManager && ScreenTools.isSerialAvailable)
+                                                        ? startPageOverlay._linkManager.serialBaudRates
+                                                        : []
+                                                    const filteredRates = []
+
+                                                    for (let i = 0; i < baudRates.length; i++) {
+                                                        const baud = parseInt(baudRates[i])
+                                                        if (!isNaN(baud) && baud >= 1200) {
+                                                            filteredRates.push(baudRates[i])
+                                                        }
+                                                    }
+
+                                                    return filteredRates.length > 0 ? filteredRates : ["1200"]
+                                                }
+                                                currentIndex: {
+                                                    const baudText = "" + startPageOverlay._selectedBaudRate
+                                                    const idx = model.indexOf(baudText)
+                                                    return idx >= 0 ? idx : 0
+                                                }
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                showFocusBorder: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onActivated: {
+                                                    const baud = parseInt(currentText)
+                                                    if (!isNaN(baud) && baud > 0) {
+                                                        startPageOverlay._selectedBaudRate = baud
+                                                    }
+                                                }
+                                            }
+                                            QGCComboBox {
+                                                Layout.fillWidth: true
+                                                sizeToContents: true
+                                                model: [qsTr("None"), qsTr("Hardware")]
+                                                currentIndex: startPageOverlay._selectedFlowControlEnabled ? 1 : 0
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                showFocusBorder: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onActivated: (index) => startPageOverlay._selectedFlowControlEnabled = index === 1
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+                                            QGCLabel { text: qsTr("Data / Stop Bits"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10; sizeToContents: true; model: ["Data 5", "Data 6", "Data 7", "Data 8"]; currentIndex: Math.max(0, Math.min(3, startPageOverlay._selectedDataBits - 5)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedDataBits = index + 5 }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; sizeToContents: true; model: ["Stop 1", "Stop 2"]; currentIndex: Math.max(0, Math.min(1, startPageOverlay._selectedStopBits - 1)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedStopBits = index + 1 }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 11; sizeToContents: true; model: [qsTr("No parity"), qsTr("Odd"), qsTr("Even")]; currentIndex: startPageOverlay._selectedParity === 3 ? 1 : (startPageOverlay._selectedParity === 2 ? 2 : 0); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedParity = index === 1 ? 3 : (index === 2 ? 2 : 0) }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12; sizeToContents: true; model: ["MAVLink 1", "MAVLink 2"]; currentIndex: 1; enabled: false; font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
+                                            QGCTextField {
+                                                Layout.fillWidth: true
+                                                text: startPageOverlay._gcsSystemIdFact ? ("" + startPageOverlay._gcsSystemIdFact.rawValue) : "255"
+                                                numericValuesOnly: true
+                                                validator: IntValidator {
+                                                    bottom: 1
+                                                    top: 255
+                                                }
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                showFocusGlow: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                borderWidth: 1
+                                                focusBorderWidth: 1
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                onEditingFinished: {
+                                                    const systemId = parseInt(text)
+                                                    if (!isNaN(systemId) && systemId >= 1 && systemId <= 255 && startPageOverlay._gcsSystemIdFact) {
+                                                        startPageOverlay._gcsSystemIdFact.rawValue = systemId
+                                                        startPageOverlay._appendEvent(qsTr("GCS MAVLink system ID set to %1").arg(systemId))
+                                                    }
+                                                }
+                                            }
+                                            QGCTextField {
+                                                Layout.fillWidth: true
+                                                text: "" + startPageOverlay._gcsComponentId
+                                                readOnly: true
+                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                backgroundColor: startPageOverlay._inputBg
+                                                borderColor: startPageOverlay._borderColor
+                                                focusBorderColor: startPageOverlay._focusColor
+                                                showFocusGlow: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                borderWidth: 1
+                                                focusBorderWidth: 1
+                                                textColor: startPageOverlay._primaryText
+                                            }
+                                        }
+                                        Item { Layout.fillHeight: true; Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 1.8 }
+                                        QGCLabel { Layout.fillWidth: true; text: startPageOverlay._recentConnectionText; color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.55
+                                            QGCButton {
+                                                Layout.fillWidth: true
+                                                text: qsTr("Connect Vehicle")
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                enabled: startPageOverlay._canConnect
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._primaryBtnPressed : (hovered ? startPageOverlay._primaryBtnHover : startPageOverlay._primaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._connectSelected()
+                                            }
+                                            QGCButton {
+                                                Layout.fillWidth: true
+                                                text: qsTr("Offline Access")
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
+                                            }
+                                            QGCButton {
+                                                Layout.fillWidth: true
+                                                text: qsTr("Test Port")
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._connectSelected(false)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.preferredWidth: parent.width * 0.34
+                                    radius: startPageOverlay._uiRadius
+                                    color: startPageOverlay._cardBg
+                                    border.color: startPageOverlay._borderColor
+                                    border.width: 1
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.62
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 4.8
+                                            radius: startPageOverlay._uiRadius
+                                            color: startPageOverlay._inputBg
+                                            border.color: startPageOverlay._borderColor
+                                            border.width: 1
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.6
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    Rectangle { Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.85; Layout.preferredHeight: Layout.preferredWidth; radius: width/2; color: startPageOverlay._isConnected ? "#5CE0A4" : "#FF6B6B" }
+                                                    QGCLabel { text: startPageOverlay._isConnected ? qsTr("Connected") : qsTr("Disconnected"); color: startPageOverlay._primaryText; font.weight: Font.DemiBold; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightStatus }
+                                                    QGCLabel { Layout.fillWidth: true; horizontalAlignment: Text.AlignRight; text: startPageOverlay._statusText; color: startPageOverlay._secondaryText; elide: Text.ElideRight; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightMeta }
+                                                }
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    QGCLabel { text: qsTr("Heartbeat timeout: %1s").arg(Math.round(startPageOverlay._heartbeatTimeoutSeconds)); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightMeta }
+                                                    QGCSlider {
+                                                        Layout.fillWidth: true
+                                                        from: 2
+                                                        to: 15
+                                                        stepSize: 1
+                                                        value: startPageOverlay._heartbeatTimeoutSeconds
+                                                        trackColor: startPageOverlay._inputBg
+                                                        trackBorderColor: startPageOverlay._borderColor
+                                                        handleColor: startPageOverlay._primaryBtn
+                                                        handleBorderColor: startPageOverlay._focusColor
+                                                        labelColor: startPageOverlay._secondaryText
+                                                        onValueChanged: {
+                                                            const heartbeatTimeout = Math.round(value)
+                                                            if (startPageOverlay._heartbeatTimeoutFact && Number(startPageOverlay._heartbeatTimeoutFact.rawValue) !== heartbeatTimeout) {
+                                                                startPageOverlay._heartbeatTimeoutFact.rawValue = heartbeatTimeout
+                                                                startPageOverlay._appendEvent(qsTr("Heartbeat timeout set to %1s").arg(heartbeatTimeout))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            QGCLabel { text: qsTr("Event Log"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightTitle; font.weight: Font.DemiBold }
+                                            Item { Layout.fillWidth: true }
+                                            QGCButton {
+                                                text: qsTr("Clear Log")
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontRightButtonScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startEventLogModel.clear()
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 10
+                                            radius: startPageOverlay._uiRadius
+                                            color: startPageOverlay._inputBg
+                                            border.color: startPageOverlay._borderColor
+                                            border.width: 1
+                                            clip: true
+
+                                            ListView {
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.55
+                                                model: startEventLogModel
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.35
+                                                delegate: RowLayout {
+                                                    width: ListView.view.width
+                                                    QGCLabel { text: "[" + model.timestamp + "]"; color: startPageOverlay._secondaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10.5; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogTime }
+                                                    QGCLabel { text: model.message; color: startPageOverlay._primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogMessage }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                        }
+                    }
+                }
             }
+        }
+
+        Rectangle {
+            id:                 topNavigationSeparator
+            visible:            !mainWindow._showStartPage
+                                && mainViewTabBar
+                                && (mainViewTabBar.currentIndex === _flyTabIndex)
+            anchors.left:       parent.left
+            anchors.right:      parent.right
+            anchors.top:        topNavigationBar.bottom
+            height:             Math.max(6, Math.round(ScreenTools.defaultFontPixelHeight * 0.38))
+            color:              qgcPal.windowShadeDark
+            opacity:            0.92
+            z:                  1000
         }
     }
 
@@ -2632,7 +4274,11 @@ ApplicationWindow {
 
     Rectangle {
         id:             toolDrawer
-        anchors.fill:   parent
+        anchors.left:   parent.left
+        anchors.right:  parent.right
+        anchors.top:    parent.top
+        anchors.bottom: parent.bottom
+        anchors.topMargin: _showUnderMainNavigation ? topNavigationBar.height : 0
         visible:        false
         color:          qgcPal.window
 
@@ -2640,10 +4286,16 @@ ApplicationWindow {
         property string toolTitle
         property alias toolSource:  toolDrawerLoader.source
         property var toolIcon
+        property bool compactHeader: false
+        readonly property bool _isSettingsTool: toolDrawer.toolSource
+                                               && toolDrawer.toolSource.toString().indexOf("AppSettings.qml") !== -1
+        readonly property bool _showUnderMainNavigation: !mainWindow._showStartPage
+                                                         && (toolDrawer.toolSource === "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml")
 
         onVisibleChanged: {
             if (!toolDrawer.visible) {
                 toolDrawerLoader.source = ""
+                toolDrawer.compactHeader = false
             }
         }
 
@@ -2671,15 +4323,26 @@ ApplicationWindow {
                 QGCToolBarButton {
                     id: qgcButton
                     height: parent.height
-                    icon.source: "/res/QGCLogoFull.svg"
-                    logo: true
-                    onClicked: mainWindow.showToolSelectDialog()
+                    icon.source: toolDrawer.compactHeader
+                                 ? (toolDrawer._isSettingsTool
+                                     ? "/InstrumentValueIcons/cheveron-outline-left.svg"
+                                     : (toolDrawer.toolIcon ? toolDrawer.toolIcon : "/InstrumentValueIcons/menu.svg"))
+                                 : "/res/QGCLogoFull.svg"
+                    logo: !toolDrawer.compactHeader
+                    onClicked: {
+                        if (toolDrawer._isSettingsTool) {
+                            mainWindow.showFlyView()
+                        } else {
+                            mainWindow.showToolSelectDialog()
+                        }
+                    }
                 }
 
                 QGCLabel {
                     id:             toolbarDrawerText
                     text:           toolDrawer.toolTitle
                     font.pointSize: ScreenTools.largeFontPointSize
+                    visible:        !toolDrawer.compactHeader
                 }
             }
         }
@@ -2816,8 +4479,19 @@ ApplicationWindow {
         indicatorDrawer.open()
     }
 
-    function closeIndicatorDrawer() {
-        indicatorDrawer.close()
+    function _handleIndicatorDrawerPostCloseAction(postCloseAction) {
+        if (postCloseAction === "returnToVehicleConfigMenu") {
+            showVehicleConfig()
+        }
+    }
+
+    function closeIndicatorDrawer(postCloseAction = "") {
+        indicatorDrawer.postCloseAction = postCloseAction
+        if (indicatorDrawer.visible) {
+            indicatorDrawer.close()
+        } else {
+            _handleIndicatorDrawerPostCloseAction(postCloseAction)
+        }
     }
 
     Popup {
@@ -2836,6 +4510,7 @@ ApplicationWindow {
 
         property var sourceComponent
         property var indicatorItem
+        property string postCloseAction: ""
 
         property bool _expanded:    false
         property real _margins:     ScreenTools.defaultFontPixelHeight / 4
@@ -2854,9 +4529,14 @@ ApplicationWindow {
             indicatorDrawerLoader.sourceComponent   = indicatorDrawer.sourceComponent
         }
         onClosed: {
+            const postCloseAction = indicatorDrawer.postCloseAction
+            indicatorDrawer.postCloseAction = ""
             _expanded                               = false
             indicatorItem                           = undefined
             indicatorDrawerLoader.sourceComponent   = undefined
+            if (postCloseAction !== "") {
+                Qt.callLater(function() { _handleIndicatorDrawerPostCloseAction(postCloseAction) })
+            }
         }
 
         background: Item {
@@ -2966,6 +4646,7 @@ ApplicationWindow {
         }
     }
 }
+
 
 
 

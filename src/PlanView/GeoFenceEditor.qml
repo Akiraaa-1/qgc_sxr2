@@ -10,8 +10,10 @@ import QGroundControl.FactControls
 Rectangle {
     id:     geoFenceEditorRect
     height: geoFenceItems.y + geoFenceItems.height + (_margin * 2)
-    radius: _radius
-    color:  qgcPal.buttonHighlight
+    radius: theme.radius
+    color:  theme.panelColor
+    border.width: 1
+    border.color: theme.borderColor
 
     property var    myGeoFenceController
     property var    flightMap
@@ -20,6 +22,8 @@ Rectangle {
     readonly property real  _margin:            ScreenTools.defaultFontPixelWidth / 2
     readonly property real  _radius:            ScreenTools.defaultFontPixelWidth / 2
 
+    PlanEditorTheme { id: theme }
+
     QGCLabel {
         id:                 geoFenceLabel
         anchors.margins:    _margin
@@ -27,6 +31,7 @@ Rectangle {
         anchors.top:        parent.top
         text:               qsTr("GeoFence")
         anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+        color:              theme.textColor
     }
 
     Rectangle {
@@ -36,8 +41,10 @@ Rectangle {
         anchors.right:      parent.right
         anchors.top:        geoFenceLabel.bottom
         height:             fenceColumn.y + fenceColumn.height + (_margin * 2)
-        color:              qgcPal.windowShadeDark
-        radius:             _radius
+        color:              theme.panelColor
+        radius:             theme.radius
+        border.width:       1
+        border.color:       theme.borderColor
 
         Column {
             id:                 fenceColumn
@@ -55,6 +62,7 @@ Rectangle {
                 text:               myGeoFenceController.supported ?
                                         qsTr("GeoFencing allows you to set a virtual fence around the area you want to fly in.") :
                                         qsTr("This vehicle does not support GeoFence.")
+                color:              theme.secondaryTextColor
             }
 
             Column {
@@ -76,9 +84,10 @@ Rectangle {
                             id:                 textFieldLabel
                             anchors.baseline:   textField.baseline
                             text:               myGeoFenceController.paramLabels[index]
+                            color:              theme.secondaryTextColor
                         }
 
-                        FactTextField {
+                        PlanFactTextField {
                             id:             textField
                             anchors.right:  parent.right
                             width:          _editFieldWidth
@@ -87,7 +96,7 @@ Rectangle {
                             visible:        !parent.showCombo
                         }
 
-                        FactComboBox {
+                        PlanFactComboBox {
                             id:             comboField
                             anchors.right:  parent.right
                             width:          _editFieldWidth
@@ -100,14 +109,14 @@ Rectangle {
                     }
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             insertSection
                     anchors.left:   parent.left
                     anchors.right:  parent.right
                     text:           qsTr("Insert GeoFence")
                 }
 
-                QGCButton {
+                PlanButton {
                     Layout.fillWidth:   true
                     text:               qsTr("Polygon Fence")
 
@@ -119,7 +128,7 @@ Rectangle {
                     }
                 }
 
-                QGCButton {
+                PlanButton {
                     Layout.fillWidth:   true
                     text:               qsTr("Circular Fence")
 
@@ -131,7 +140,7 @@ Rectangle {
                     }
                 }
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             polygonSection
                     anchors.left:   parent.left
                     anchors.right:  parent.right
@@ -141,6 +150,7 @@ Rectangle {
                 QGCLabel {
                     text:       qsTr("None")
                     visible:    polygonSection.checked && myGeoFenceController.polygons.count === 0
+                    color:      theme.secondaryTextColor
                 }
 
                 GridLayout {
@@ -153,12 +163,13 @@ Rectangle {
                         text:               qsTr("Inclusion")
                         Layout.column:      0
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.polygons
 
-                        QGCCheckBox {
+                        PlanCheckBox {
                             checked:            object.inclusion
                             onClicked:          object.inclusion = checked
                             Layout.alignment:   Qt.AlignHCenter
@@ -169,12 +180,13 @@ Rectangle {
                         text:               qsTr("Edit")
                         Layout.column:      1
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.polygons
 
-                        QGCRadioButton {
+                        PlanRadioButton {
                             checked:            _interactive
                             Layout.alignment:   Qt.AlignHCenter
 
@@ -193,12 +205,13 @@ Rectangle {
                         text:               qsTr("Delete")
                         Layout.column:      2
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.polygons
 
-                        QGCButton {
+                        PlanButton {
                             text:               qsTr("Del")
                             Layout.alignment:   Qt.AlignHCenter
                             onClicked:          myGeoFenceController.deletePolygon(index)
@@ -206,7 +219,7 @@ Rectangle {
                     }
                 } // GridLayout
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             circleSection
                     anchors.left:   parent.left
                     anchors.right:  parent.right
@@ -216,6 +229,7 @@ Rectangle {
                 QGCLabel {
                     text:       qsTr("None")
                     visible:    circleSection.checked && myGeoFenceController.circles.count === 0
+                    color:      theme.secondaryTextColor
                 }
 
                 GridLayout {
@@ -229,12 +243,13 @@ Rectangle {
                         text:               qsTr("Inclusion")
                         Layout.column:      0
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.circles
 
-                        QGCCheckBox {
+                        PlanCheckBox {
                             checked:            object.inclusion
                             onClicked:          object.inclusion = checked
                             Layout.alignment:   Qt.AlignHCenter
@@ -245,12 +260,13 @@ Rectangle {
                         text:               qsTr("Edit")
                         Layout.column:      1
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.circles
 
-                        QGCRadioButton {
+                        PlanRadioButton {
                             checked:            _interactive
                             Layout.alignment:   Qt.AlignHCenter
 
@@ -269,12 +285,13 @@ Rectangle {
                         text:               qsTr("Radius")
                         Layout.column:      2
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.circles
 
-                        FactTextField {
+                        PlanFactTextField {
                             fact:               object.radius
                             Layout.fillWidth:   true
                             Layout.alignment:   Qt.AlignHCenter
@@ -285,12 +302,13 @@ Rectangle {
                         text:               qsTr("Delete")
                         Layout.column:      3
                         Layout.alignment:   Qt.AlignHCenter
+                        color:              theme.secondaryTextColor
                     }
 
                     Repeater {
                         model: myGeoFenceController.circles
 
-                        QGCButton {
+                        PlanButton {
                             text:               qsTr("Del")
                             Layout.alignment:   Qt.AlignHCenter
                             onClicked:          myGeoFenceController.deleteCircle(index)
@@ -298,14 +316,14 @@ Rectangle {
                     }
                 } // GridLayout
 
-                SectionHeader {
+                PlanSectionHeader {
                     id:             breachReturnSection
                     anchors.left:   parent.left
                     anchors.right:  parent.right
                     text:           qsTr("Breach Return Point")
                 }
 
-                QGCButton {
+                PlanButton {
                     text:               qsTr("Add Breach Return Point")
                     visible:            breachReturnSection.visible && !myGeoFenceController.breachReturnPoint.isValid
                     anchors.left:       parent.left
@@ -314,7 +332,7 @@ Rectangle {
                     onClicked: myGeoFenceController.breachReturnPoint = flightMap.center
                 }
 
-                QGCButton {
+                PlanButton {
                     text:               qsTr("Remove Breach Return Point")
                     visible:            breachReturnSection.visible && myGeoFenceController.breachReturnPoint.isValid
                     anchors.left:       parent.left
@@ -331,9 +349,10 @@ Rectangle {
 
                     QGCLabel {
                         text: qsTr("Altitude")
+                        color: theme.secondaryTextColor
                     }
 
-                    FactTextField {
+                    PlanFactTextField {
                         fact: myGeoFenceController.breachReturnAltitude
                     }
                 }

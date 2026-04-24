@@ -5,12 +5,15 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FactControls
+import QGroundControl.PlanView
 
 ColumnLayout {
     spacing: _margin
     visible: tabBar.currentIndex === 2
 
     property var missionItem
+
+    PlanEditorTheme { id: theme }
 
     MouseArea {
         Layout.preferredWidth:  childrenRect.width
@@ -40,12 +43,15 @@ ColumnLayout {
         RowLayout {
             spacing: ScreenTools.defaultFontPixelWidth / 2
 
-            QGCLabel { text: QGroundControl.altitudeFrameShortDescription(missionItem.cameraCalc.distanceMode) }
+            QGCLabel {
+                text:   QGroundControl.altitudeFrameShortDescription(missionItem.cameraCalc.distanceMode)
+                color:  theme.textColor
+            }
             QGCColoredImage {
                 height:     ScreenTools.defaultFontPixelHeight / 2
                 width:      height
                 source:     "/res/DropArrow.svg"
-                color:      qgcPal.text
+                color:      theme.secondaryTextColor
             }
         }
     }
@@ -57,20 +63,20 @@ ColumnLayout {
         columns:            2
         enabled:            missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeFrameCalcAboveTerrain
 
-        QGCLabel { text: qsTr("Tolerance") }
-        FactTextField {
+        QGCLabel { text: qsTr("Tolerance"); color: theme.secondaryTextColor }
+        PlanFactTextField {
             fact:               missionItem.terrainAdjustTolerance
             Layout.fillWidth:   true
         }
 
-        QGCLabel { text: qsTr("Max Climb Rate") }
-        FactTextField {
+        QGCLabel { text: qsTr("Max Climb Rate"); color: theme.secondaryTextColor }
+        PlanFactTextField {
             fact:               missionItem.terrainAdjustMaxClimbRate
             Layout.fillWidth:   true
         }
 
-        QGCLabel { text: qsTr("Max Descent Rate") }
-        FactTextField {
+        QGCLabel { text: qsTr("Max Descent Rate"); color: theme.secondaryTextColor }
+        PlanFactTextField {
             fact:               missionItem.terrainAdjustMaxDescentRate
             Layout.fillWidth:   true
         }

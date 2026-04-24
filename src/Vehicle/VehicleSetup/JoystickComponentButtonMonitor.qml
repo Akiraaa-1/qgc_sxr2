@@ -9,11 +9,14 @@ import QGroundControl.VehicleSetup
 import QGroundControl.FactControls
 
 Flow {
+    id: root
     spacing: ScreenTools.defaultFontPixelWidth
 
     property var _joystick: joystickManager.activeJoystick
+    readonly property bool _popupStyled: popupStyle.inPopupContext(root)
 
     QGCPalette { id: qgcPal }
+    QGCPopupStyle { id: popupStyle }
 
     Connections {
         target: _joystick
@@ -33,14 +36,19 @@ Flow {
             implicitWidth: ScreenTools.defaultFontPixelHeight * 1.5
             implicitHeight: width
             border.width: 1
-            border.color: qgcPal.text
-            color: pressed ? qgcPal.buttonHighlight : qgcPal.button
+            border.color: root._popupStyled ? popupStyle.borderColor : qgcPal.text
+            color: root._popupStyled
+                ? (pressed ? popupStyle.accentColor : popupStyle.inputBackground)
+                : (pressed ? qgcPal.buttonHighlight : qgcPal.button)
+            radius: root._popupStyled ? popupStyle.cornerRadius : ScreenTools.defaultBorderRadius
 
             property bool pressed
 
             QGCLabel {
                 anchors.fill: parent
-                color: pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
+                color: root._popupStyled
+                    ? popupStyle.primaryTextColor
+                    : (pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText)
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 text: modelData

@@ -16,7 +16,7 @@ public:
     bool requiresSetup() const override { return false; }
     bool setupComplete() const override { return true; }
     QUrl setupSource() const override { return QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AutoPilotPlugins/Common/MotorComponent.qml")); }
-    QUrl summaryQmlSource() const override { return QUrl(); }
+    QUrl summaryQmlSource() const override { return QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AutoPilotPlugins/Common/MotorComponentSummary.qml")); }
 
 private:
     const QString _name;

@@ -41,3 +41,10 @@ qt_add_qml_module(FlightMapModule
         MapScale.qml
     NO_PLUGIN
 )
+
+target_include_directories(FlightMapModule
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../QmlControls
+        ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem
+)

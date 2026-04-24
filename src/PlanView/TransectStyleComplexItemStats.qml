@@ -3,6 +3,7 @@ import QtQuick.Controls
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.PlanView
 
 // Statistics section for TransectStyleComplexItems
 Grid {
@@ -12,15 +13,17 @@ Grid {
     columns:        2
     columnSpacing:  ScreenTools.defaultFontPixelWidth
 
-    QGCLabel { text: qsTr("Survey Area") }
-    QGCLabel { text: QGroundControl.unitsConversion.squareMetersToAppSettingsAreaUnits(missionItem.coveredArea).toFixed(2) + " " + QGroundControl.unitsConversion.appSettingsAreaUnitsString }
+    PlanEditorTheme { id: theme }
 
-    QGCLabel { text: qsTr("Photo Count") }
-    QGCLabel { text: missionItem.cameraShots }
+    QGCLabel { text: qsTr("Survey Area"); color: theme.secondaryTextColor }
+    QGCLabel { text: QGroundControl.unitsConversion.squareMetersToAppSettingsAreaUnits(missionItem.coveredArea).toFixed(2) + " " + QGroundControl.unitsConversion.appSettingsAreaUnitsString; color: theme.textColor }
 
-    QGCLabel { text: qsTr("Photo Interval") }
-    QGCLabel { text: missionItem.timeBetweenShots.toFixed(1) + " " + qsTr("secs") }
+    QGCLabel { text: qsTr("Photo Count"); color: theme.secondaryTextColor }
+    QGCLabel { text: missionItem.cameraShots; color: theme.textColor }
 
-    QGCLabel { text: qsTr("Trigger Distance") }
-    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + missionItem.cameraCalc.adjustedFootprintFrontal.units }
+    QGCLabel { text: qsTr("Photo Interval"); color: theme.secondaryTextColor }
+    QGCLabel { text: missionItem.timeBetweenShots.toFixed(1) + " " + qsTr("secs"); color: theme.textColor }
+
+    QGCLabel { text: qsTr("Trigger Distance"); color: theme.secondaryTextColor }
+    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + missionItem.cameraCalc.adjustedFootprintFrontal.units; color: theme.textColor }
 }

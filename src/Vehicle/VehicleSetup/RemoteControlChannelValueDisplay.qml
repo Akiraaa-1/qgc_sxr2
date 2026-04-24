@@ -18,6 +18,7 @@ Item {
     property int channelValue: _valueBarRange / 2 + _valueBarMin
     property int deadbandValue: 0
     property bool deadbandEnabled: false
+    property bool useDarkStyle: false
 
     id: control
     implicitHeight: ScreenTools.defaultFontPixelHeight
@@ -38,13 +39,17 @@ Item {
     }
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPopupStyle { id: popupStyle }
 
     Rectangle {
         id: fullValueRangeBar
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width
         height: parent.height / 2
-        color: qgcPal.windowShade
+        radius: height / 2
+        color: control.useDarkStyle ? popupStyle.inputBackground : qgcPal.windowShade
+        border.width: control.useDarkStyle ? 1 : 0
+        border.color: popupStyle.borderColor
     }
 
     Rectangle {
@@ -53,8 +58,8 @@ Item {
         height: parent.height
         width: _deadbandWidth
         x: _deadbandOffset
-        radius: ScreenTools.defaultFontPixelHeight / 4
-        color: qgcPal.buttonHighlight
+        radius: popupStyle.cornerRadius / 2
+        color: control.useDarkStyle ? popupStyle.accentColor : qgcPal.buttonHighlight
         opacity: 0.35
         visible: control.deadbandEnabled && control.deadbandValue > 0
         readonly property real _rangeSpan: Math.max(1, control.channelValueMax - control.channelValueMin)
@@ -68,13 +73,14 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: 1
         height: parent.height
-        color: qgcPal.window
+        color: control.useDarkStyle ? popupStyle.borderColor : qgcPal.window
     }
 
     QGCLabel {
         id: notMappedLabel
         anchors.centerIn: parent
         text: qsTr("Not Mapped")
+        color: control.useDarkStyle ? popupStyle.primaryTextColor : qgcPal.text
         visible: control.mode === RemoteControlChannelValueDisplay.MappedValue && !control.channelMapped
     }
 
@@ -89,7 +95,7 @@ Item {
             return (normalized * parent.width) - (width / 2)
         }
         radius: width / 2
-        color: qgcPal.text
+        color: control.useDarkStyle ? popupStyle.accentColor : qgcPal.text
         visible: control.mode === RemoteControlChannelValueDisplay.RawValue || control.channelMapped
     }
 }

@@ -7,7 +7,7 @@ import QGroundControl.Controls
 
 Rectangle {
     id:     vehicleConfigView
-    color:  qgcPal.window
+    color:  "#2F3032"
     z:      QGroundControl.zOrderTopMost
 
     // This need to block click event leakage to underlying map.
@@ -17,23 +17,40 @@ Rectangle {
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-    readonly property real      _defaultTextHeight: ScreenTools.defaultFontPixelHeight
-    readonly property real      _defaultTextWidth:  ScreenTools.defaultFontPixelWidth
-    readonly property real      _horizontalMargin:  _defaultTextWidth / 2
-    readonly property real      _verticalMargin:    _defaultTextHeight / 2
-    readonly property real      _buttonWidth:       _defaultTextWidth * 18
-    readonly property string    _armedVehicleText:  qsTr("This operation cannot be performed while the vehicle is armed.")
+    readonly property real  _defaultTextHeight:         ScreenTools.defaultFontPixelHeight
+    readonly property real  _defaultTextWidth:          ScreenTools.defaultFontPixelWidth
+    readonly property real  _horizontalMargin:          _defaultTextWidth / 2
+    readonly property real  _verticalMargin:            _defaultTextHeight / 2
+    readonly property real  _buttonWidth:               _defaultTextWidth * 18
+    readonly property string _armedVehicleText:         qsTr("This operation cannot be performed while the vehicle is armed.")
+    readonly property real  _cornerRadius:              8
+    readonly property int   _stateAnimationDuration:    200
+    readonly property color _panelColor:                "#2D2D2D"
+    readonly property color _panelHoverColor:           "#343434"
+    readonly property color _panelPressedColor:         "#252525"
+    readonly property color _inputColor:                "#252525"
+    readonly property color _borderColor:               "#333333"
+    readonly property color _primaryTextColor:          "#FFFFFF"
+    readonly property color _secondaryTextColor:        "#B0B0B0"
+    readonly property color _disabledTextColor:         "#666666"
+    readonly property color _accentColor:               "#2563EB"
+    readonly property color _menuPopupColor:            "#1A1A1A"
 
+    property bool   useOfflineVehicleFallback:      false
+    property bool   readOnlyMode:                   false
     property var    _activeVehicle:                 QGroundControl.multiVehicleManager.activeVehicle
+                                                    ? QGroundControl.multiVehicleManager.activeVehicle
+                                                    : (useOfflineVehicleFallback ? QGroundControl.multiVehicleManager.offlineEditingVehicle : null)
     property bool   _vehicleArmed:                  _activeVehicle ? _activeVehicle.armed : false
     property string _messagePanelText:              qsTr("missing message panel text")
-    property bool   _fullParameterVehicleAvailable: _activeVehicle && QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable && !_activeVehicle.parameterManager.missingParameters
+    property bool   _parametersReadyForActiveVehicle: _activeVehicle ? _activeVehicle.parameterManager.parametersReady : false
+    property bool   _fullParameterVehicleAvailable: _parametersReadyForActiveVehicle && !_activeVehicle.parameterManager.missingParameters
     property var    _corePlugin:                    QGroundControl.corePlugin
 
     // Tree view state
     property int    _selectedComponentIndex: -1     // -1 = summary or special button
     property int    _selectedSectionIndex:   -1
-    property string _selectedSpecial:        ""     // "summary", "parameters", "firmware", "opticalflow"
+    property string _selectedSpecial:        ""     // "menu", "summary", "parameters", "firmware", "opticalflow"
     property var    _expandedComponents:     ({})
     property int    _expandedRevision:       0
     property string _searchQuery:            ""
@@ -122,25 +139,68 @@ Rectangle {
         }
     }
 
+    function showMenuPanel() {
+        if (mainWindow.allowViewSwitch()) {
+            _showMenuPanel()
+        }
+    }
+
     function _showSummaryPanel() {
         _selectedSpecial = "summary"
         _selectedComponentIndex = -1
         _selectedSectionIndex = -1
+        if (readOnlyMode) {
+            panelLoader.setSourceComponent(offlineReadOnlyPanelComponent)
+            return
+        }
         if (_fullParameterVehicleAvailable) {
             if (_activeVehicle.autopilotPlugin.vehicleComponents.length === 0) {
                 panelLoader.setSourceComponent(noComponentsVehicleSummaryComponent)
             } else {
                 panelLoader.setSource("qrc:/qml/QGroundControl/VehicleSetup/VehicleSummary.qml")
             }
-        } else if (QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable) {
+        } else if (_activeVehicle && _parametersReadyForActiveVehicle && _activeVehicle.parameterManager.missingParameters) {
             panelLoader.setSourceComponent(missingParametersVehicleSummaryComponent)
         } else {
             panelLoader.setSourceComponent(disconnectedVehicleAndParamsSummaryComponent)
         }
     }
 
+    function _showMenuPanel() {
+        _selectedSpecial = "menu"
+        _selectedComponentIndex = -1
+        _selectedSectionIndex = -1
+        if (readOnlyMode) {
+            panelLoader.setSourceComponent(offlineReadOnlyPanelComponent)
+            return
+        }
+        if (_fullParameterVehicleAvailable) {
+            if (_activeVehicle.autopilotPlugin.vehicleComponents.length === 0) {
+                panelLoader.setSourceComponent(noComponentsVehicleSummaryComponent)
+            } else {
+                panelLoader.setSource("qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigMenu.qml")
+            }
+        } else if (_activeVehicle && _parametersReadyForActiveVehicle && _activeVehicle.parameterManager.missingParameters) {
+            panelLoader.setSourceComponent(missingParametersVehicleSummaryComponent)
+        } else {
+            panelLoader.setSourceComponent(disconnectedVehicleAndParamsSummaryComponent)
+        }
+    }
+
+    function _refreshRootPanelForParameterState() {
+        if (_selectedSpecial === "summary") {
+            _showSummaryPanel()
+        } else if (_selectedSpecial === "menu") {
+            _showMenuPanel()
+        }
+    }
+
     function showPanel(specialName, qmlSource) {
         if (mainWindow.allowViewSwitch()) {
+            if (readOnlyMode) {
+                _showMenuPanel()
+                return
+            }
             _selectedSpecial = specialName
             _selectedComponentIndex = -1
             _selectedSectionIndex = -1
@@ -150,6 +210,7 @@ Rectangle {
 
     function _navigateToComponent(compIndex, sectionIndex) {
         if (!mainWindow.allowViewSwitch()) return
+        if (readOnlyMode) return
         if (!_fullParameterVehicleAvailable) return
 
         var components = _activeVehicle.autopilotPlugin.vehicleComponents
@@ -159,6 +220,11 @@ Rectangle {
         var autopilotPlugin = _activeVehicle.autopilotPlugin
         var prereq = autopilotPlugin.prerequisiteSetup(vehicleComponent)
         if (prereq !== "") {
+            // Move out of menu state so the Back to Menu button remains available
+            // when we show prerequisite guidance instead of the target setup page.
+            _selectedSpecial = "prereq"
+            _selectedComponentIndex = -1
+            _selectedSectionIndex = -1
             _messagePanelText = qsTr("%1 setup must be completed prior to %2 setup.").arg(prereq).arg(vehicleComponent.name)
             panelLoader.setSourceComponent(messagePanelComponent)
             return
@@ -200,13 +266,15 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: _showSummaryPanel()
+    Component.onCompleted: _showMenuPanel()
+
+    onReadOnlyModeChanged: _showMenuPanel()
 
     Connections {
         target: QGroundControl.corePlugin
         function onShowAdvancedUIChanged(showAdvancedUI) {
             if (!showAdvancedUI) {
-                _showSummaryPanel()
+                _showMenuPanel()
             }
         }
     }
@@ -215,8 +283,23 @@ Rectangle {
         target: QGroundControl.multiVehicleManager
         function onParameterReadyVehicleAvailableChanged(parametersReady) {
             if (parametersReady || _selectedSpecial === "summary" || _selectedSpecial !== "firmware") {
-                _showSummaryPanel()
+                _showMenuPanel()
             }
+        }
+    }
+
+    Connections {
+        target: _activeVehicle ? _activeVehicle.parameterManager : null
+        ignoreUnknownSignals: true
+
+        function onParametersReadyChanged(parametersReady) {
+            if (parametersReady) {
+                _refreshRootPanelForParameterState()
+            }
+        }
+
+        function onMissingParametersChanged(missingParameters) {
+            _refreshRootPanelForParameterState()
         }
     }
 
@@ -226,13 +309,64 @@ Rectangle {
             if (panelLoader.item && typeof panelLoader.item.sectionNameFilter !== "undefined") {
                 panelLoader.item.sectionNameFilter = _sectionName(_selectedComponentIndex, _selectedSectionIndex)
             }
+            if (panelLoader.item && typeof panelLoader.item.useDarkStyle !== "undefined") {
+                panelLoader.item.useDarkStyle = true
+            }
+        }
+    }
+
+    Component {
+        id: offlineReadOnlyPanelComponent
+
+        Rectangle {
+            color: vehicleConfigView._panelColor
+            radius: vehicleConfigView._cornerRadius
+            border.width: 1
+            border.color: vehicleConfigView._borderColor
+
+            Column {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - (_defaultTextWidth * 4), ScreenTools.defaultFontPixelWidth * 48)
+                spacing: ScreenTools.defaultFontPixelHeight * 0.8
+
+                QGCLabel {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    font.pointSize: ScreenTools.largeFontPointSize
+                    font.weight: Font.DemiBold
+                    color: vehicleConfigView._primaryTextColor
+                    text: qsTr("Offline Configure (Read-Only)")
+                }
+
+                QGCLabel {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: vehicleConfigView._secondaryTextColor
+                    text: qsTr("You are browsing configuration offline. Editing and calibration actions are disabled until a vehicle is connected and parameters are downloaded.")
+                }
+
+                QGCLabel {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    color: vehicleConfigView._secondaryTextColor
+                    text: _activeVehicle
+                        ? qsTr("Offline vehicle: %1").arg(_activeVehicle.vehicleClassInternalName())
+                        : qsTr("Offline vehicle information is not available.")
+                }
+            }
         }
     }
 
     Component {
         id: noComponentsVehicleSummaryComponent
         Rectangle {
-            color: qgcPal.windowShade
+            color: vehicleConfigView._panelColor
+            radius: vehicleConfigView._cornerRadius
+            border.width: 1
+            border.color: vehicleConfigView._borderColor
             QGCLabel {
                 anchors.margins:        _defaultTextWidth * 2
                 anchors.fill:           parent
@@ -240,6 +374,7 @@ Rectangle {
                 horizontalAlignment:    Text.AlignHCenter
                 wrapMode:               Text.WordWrap
                 font.pointSize:         ScreenTools.mediumFontPointSize
+                color:                  vehicleConfigView._secondaryTextColor
                 text:                   qsTr("%1 does not currently support configuration of your vehicle. ").arg(QGroundControl.appName) +
                                         "If your vehicle is already configured you can still Fly."
             }
@@ -250,7 +385,10 @@ Rectangle {
         id: disconnectedVehicleAndParamsSummaryComponent
         Rectangle {
             id: disconnectedRect
-            color: qgcPal.windowShade
+            color: vehicleConfigView._panelColor
+            radius: vehicleConfigView._cornerRadius
+            border.width: 1
+            border.color: vehicleConfigView._borderColor
             Column {
                 anchors.centerIn:   parent
                 spacing:            ScreenTools.defaultFontPixelHeight
@@ -260,17 +398,26 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode:           Text.WordWrap
                     font.pointSize:     ScreenTools.largeFontPointSize
+                    color:              vehicleConfigView._secondaryTextColor
                     text:               !_activeVehicle
                                             ? qsTr("Vehicle configuration pages will display after you connect your vehicle and parameters have been downloaded.")
                                             : (_activeVehicle.parameterManager.parameterDownloadSkipped
                                                 ? qsTr("Parameter download was skipped because the vehicle is flying. Configuration pages will be available after parameters are downloaded.")
-                                                : qsTr("Waiting for vehicle parameters to download…"))
+                                                : qsTr("Waiting for vehicle parameters to download..."))
                 }
                 QGCButton {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text:       qsTr("Download Parameters")
                     visible:    _activeVehicle && _activeVehicle.parameterManager.parameterDownloadSkipped
                     enabled:    _activeVehicle && _activeVehicle.parameterManager.parameterDownloadSkipped && _activeVehicle.parameterManager.loadProgress === 0
+                    backgroundColor: vehicleConfigView._accentColor
+                    borderColor: vehicleConfigView._accentColor
+                    textColor: vehicleConfigView._primaryTextColor
+                    overlayColor: "#1D4ED8"
+                    hoverOverlayOpacity: 0.20
+                    pressedOverlayOpacity: 0.35
+                    backRadius: vehicleConfigView._cornerRadius
+                    showBorder: true
                     onClicked:  _activeVehicle.parameterManager.refreshAllParameters()
                 }
             }
@@ -281,7 +428,10 @@ Rectangle {
         id: missingParametersVehicleSummaryComponent
 
         Rectangle {
-            color: qgcPal.windowShade
+            color: vehicleConfigView._panelColor
+            radius: vehicleConfigView._cornerRadius
+            border.width: 1
+            border.color: vehicleConfigView._borderColor
 
             QGCLabel {
                 anchors.margins:        _defaultTextWidth * 2
@@ -290,6 +440,7 @@ Rectangle {
                 horizontalAlignment:    Text.AlignHCenter
                 wrapMode:               Text.WordWrap
                 font.pointSize:         ScreenTools.mediumFontPointSize
+                color:                  vehicleConfigView._secondaryTextColor
                 text:                   qsTr("Vehicle did not return the full parameter list. ") +
                                         qsTr("As a result, the configuration pages are not available.")
             }
@@ -299,7 +450,12 @@ Rectangle {
     Component {
         id: messagePanelComponent
 
-        Item {
+        Rectangle {
+            color: vehicleConfigView._panelColor
+            radius: vehicleConfigView._cornerRadius
+            border.width: 1
+            border.color: vehicleConfigView._borderColor
+
             QGCLabel {
                 anchors.margins:        _defaultTextWidth * 2
                 anchors.fill:           parent
@@ -307,222 +463,265 @@ Rectangle {
                 horizontalAlignment:    Text.AlignHCenter
                 wrapMode:               Text.WordWrap
                 font.pointSize:         ScreenTools.mediumFontPointSize
+                color:                  vehicleConfigView._secondaryTextColor
                 text:                   _messagePanelText
             }
         }
     }
 
-    ColumnLayout {
-        id:                 leftPanel
-        width:              Math.max(buttonColumn.implicitWidth + _horizontalMargin, ScreenTools.defaultFontPixelWidth * 22)
+    Rectangle {
+        id:                 leftPanelCard
+        visible:            false
+        width:              0
         anchors.topMargin:  _verticalMargin
         anchors.top:        parent.top
         anchors.bottom:     parent.bottom
         anchors.leftMargin: _horizontalMargin
         anchors.left:       parent.left
-        spacing:            _verticalMargin / 2
+        color:              _panelColor
+        radius:             _cornerRadius
+        border.width:       1
+        border.color:       _borderColor
 
-        QGCTextField {
-            id:                 searchField
-            Layout.fillWidth:   true
-            placeholderText:    qsTr("Search configuration...")
-            visible:            _fullParameterVehicleAvailable
+        property real _panelPadding: _verticalMargin
 
-            onTextChanged: {
-                vehicleConfigView._searchQuery = text
+        ColumnLayout {
+            id:                 leftPanel
+            anchors.fill:       parent
+            anchors.margins:    leftPanelCard._panelPadding
+            spacing:            _verticalMargin / 2
+
+            QGCTextField {
+                id:                 searchField
+                Layout.fillWidth:   true
+                placeholderText:    qsTr("Search configuration...")
+                placeholderTextColor: vehicleConfigView._secondaryTextColor
+                visible:            _fullParameterVehicleAvailable
+                backgroundColor:    vehicleConfigView._inputColor
+                borderColor:        vehicleConfigView._borderColor
+                focusBorderColor:   vehicleConfigView._accentColor
+                focusGlowColor:     vehicleConfigView._accentColor
+                borderRadius:       vehicleConfigView._cornerRadius
+                borderWidth:        1
+                focusBorderWidth:   1
+                showFocusGlow:      true
+                textColor:          vehicleConfigView._primaryTextColor
+
+                onTextChanged: {
+                    vehicleConfigView._searchQuery = text
+                }
             }
-        }
 
-        QGCFlickable {
-            Layout.fillWidth:   true
-            Layout.fillHeight:  true
-            contentHeight:      buttonColumn.height + _verticalMargin
-            flickableDirection:  Flickable.VerticalFlick
-            clip:               true
+            QGCFlickable {
+                Layout.fillWidth:   true
+                Layout.fillHeight:  true
+                contentHeight:      buttonColumn.height + _verticalMargin
+                flickableDirection: Flickable.VerticalFlick
+                clip:               true
+                boundsBehavior:     Flickable.StopAtBounds
 
-            ColumnLayout {
-                id:         buttonColumn
-                width:      parent.width
-                spacing:    0
+                ColumnLayout {
+                    id:         buttonColumn
+                    width:      parent.width
+                    spacing:    0
 
-                // Summary button
-                ConfigButton {
-                    id:                 summaryButton
-                    icon.source:        "/qmlimages/VehicleSummaryIcon.png"
-                    checked:            vehicleConfigView._selectedSpecial === "summary"
-                    text:               qsTr("Summary")
-                    Layout.fillWidth:   true
-                    visible:            vehicleConfigView._searchQuery.trim() === ""
+                    // Summary button
+                    ConfigButton {
+                        id:                 summaryButton
+                        icon.source:        "/qmlimages/VehicleSummaryIcon.png"
+                        checked:            vehicleConfigView._selectedSpecial === "summary"
+                        text:               qsTr("Summary")
+                        Layout.fillWidth:   true
+                        visible:            vehicleConfigView._searchQuery.trim() === ""
+                        textColor:          checked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                        icon.color:         textColor
 
-                    onClicked: showSummaryPanel()
-                }
+                        onClicked: showSummaryPanel()
+                    }
 
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
-                    visible: vehicleConfigView._searchQuery.trim() === ""
-                }
-
-                // Vehicle component tree
-                Repeater {
-                    id:     componentRepeater
-                    model:  _fullParameterVehicleAvailable ? _activeVehicle.autopilotPlugin.vehicleComponents : 0
-
-                    ColumnLayout {
-                        id:             compColumn
-                        spacing:        0
+                    Item {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
+                        visible: vehicleConfigView._searchQuery.trim() === ""
+                    }
 
-                        required property int index
-                        required property var modelData
+                    // Vehicle component tree
+                    Repeater {
+                        id:     componentRepeater
+                        model:  _fullParameterVehicleAvailable ? _activeVehicle.autopilotPlugin.vehicleComponents : 0
 
-                        property var    comp:           modelData
-                        property string compName:       comp ? comp.name : ""
-                        property var    compSections:   comp ? comp.sections : []
-                        property bool   isSelected:     vehicleConfigView._selectedComponentIndex === index && vehicleConfigView._selectedSpecial === ""
-                        property bool   hasSections:    compSections.length > 1
-                        property bool   isSearching:    vehicleConfigView._searchQuery.trim() !== ""
-                        property bool   matchesSearch:  comp ? vehicleConfigView._componentMatchesSearch(comp) : false
-                        property bool   isExpanded:     hasSections && (isSearching ? matchesSearch : vehicleConfigView._isExpanded(index))
+                        ColumnLayout {
+                            id:             compColumn
+                            spacing:        0
+                            Layout.fillWidth: true
 
-                        visible: {
-                            if (!comp) return false
-                            if (comp.setupSource.toString() === "") return false
-                            if (isSearching) return matchesSearch
-                            return true
-                        }
+                            required property int index
+                            required property var modelData
 
-                        ConfigButton {
-                            Layout.fillWidth:   true
-                            icon.source:        compColumn.comp ? compColumn.comp.iconResource : ""
-                            setupComplete:      compColumn.comp ? compColumn.comp.setupComplete : true
-                            text:               compColumn.compName
-                            expandable:         compColumn.hasSections
-                            expanded:           compColumn.isExpanded
-                            checked:            compColumn.isSelected && vehicleConfigView._selectedSectionIndex === -1
+                            property var    comp:           modelData
+                            property string compName:       comp ? comp.name : ""
+                            property var    compSections:   comp ? comp.sections : []
+                            property bool   isSelected:     vehicleConfigView._selectedComponentIndex === index && vehicleConfigView._selectedSpecial === ""
+                            property bool   hasSections:    compSections.length > 1
+                            property bool   isSearching:    vehicleConfigView._searchQuery.trim() !== ""
+                            property bool   matchesSearch:  comp ? vehicleConfigView._componentMatchesSearch(comp) : false
+                            property bool   isExpanded:     hasSections && (isSearching ? matchesSearch : vehicleConfigView._isExpanded(index))
 
-                            onClicked: {
-                                vehicleConfigView._navigateToComponent(compColumn.index, -1)
-                                if (compColumn.hasSections) {
-                                    if (compColumn.isSelected && compColumn.isExpanded) {
-                                        vehicleConfigView._setExpanded(compColumn.index, false)
-                                    } else if (!compColumn.isExpanded) {
-                                        vehicleConfigView._setExpanded(compColumn.index, true)
-                                    }
-                                }
+                            visible: {
+                                if (!comp) return false
+                                if (comp.setupSource.toString() === "") return false
+                                if (isSearching) return matchesSearch
+                                return true
                             }
 
-                            onToggleExpand: {
-                                if (!mainWindow.allowViewSwitch()) return
-                                var expanding = !compColumn.isExpanded
-                                vehicleConfigView._setExpanded(compColumn.index, expanding)
-                                if (!expanding && compColumn.isSelected) {
-                                    vehicleConfigView._navigateToComponent(compColumn.index, -1)
-                                }
-                            }
-                        }
-
-                        // Section sub-items
-                        Repeater {
-                            model: compColumn.isExpanded ? compColumn.compSections : []
-
-                            Button {
-                                id:             sectionBtn
-                                Layout.fillWidth: true
-                                padding:        ScreenTools.defaultFontPixelWidth * 0.75
-                                leftPadding:    ScreenTools.defaultFontPixelWidth * 3
-                                hoverEnabled:   !ScreenTools.isMobile
-
-                                property int sectionIndex: index
-                                property bool sectionChecked: compColumn.isSelected && vehicleConfigView._selectedSectionIndex === sectionIndex
-                                property bool sectionMatchesSearch: {
-                                    if (!compColumn.isSearching) return true
-                                    return vehicleConfigView._sectionMatchesSearch(compColumn.comp, modelData)
-                                }
-                                property bool sectionContentVisible: {
-                                    if (!compColumn.isSelected) return true
-                                    if (!panelLoader.item) return true
-                                    if (typeof panelLoader.item.sectionVisible !== "function") return true
-                                    return panelLoader.item.sectionVisible(modelData)
-                                }
-                                property color textColor: sectionChecked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
-                                visible: sectionMatchesSearch && sectionContentVisible
-
-                                background: Rectangle {
-                                    color:   qgcPal.buttonHighlight
-                                    opacity: sectionBtn.sectionChecked || sectionBtn.pressed ? 1 : sectionBtn.enabled && sectionBtn.hovered ? 0.2 : 0
-                                    radius:  ScreenTools.defaultFontPixelWidth / 2
-                                }
-
-                                contentItem: RowLayout {
-                                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
-
-                                    Rectangle {
-                                        width:   ScreenTools.defaultFontPixelWidth
-                                        height:  width
-                                        radius:  width / 2
-                                        color:   compColumn.comp && typeof compColumn.comp.sectionSetupComplete === "function"
-                                                     ? (compColumn.comp.sectionSetupComplete(modelData) ? qgcPal.colorGreen : qgcPal.colorOrange)
-                                                     : "transparent"
-                                        visible: compColumn.comp && typeof compColumn.comp.sectionSetupComplete === "function"
-                                                     && !compColumn.comp.sectionSetupComplete(modelData)
-                                    }
-
-                                    QGCLabel {
-                                        text:  vehicleConfigView._translateSection(compColumn.comp, modelData)
-                                        color: sectionBtn.textColor
-                                        font.pointSize: ScreenTools.defaultFontPointSize * 0.9
-                                        horizontalAlignment: Text.AlignLeft
-                                        Layout.fillWidth: true
-                                    }
-                                }
+                            ConfigButton {
+                                Layout.fillWidth:   true
+                                icon.source:        compColumn.comp ? compColumn.comp.iconResource : ""
+                                setupComplete:      compColumn.comp ? compColumn.comp.setupComplete : true
+                                text:               compColumn.compName
+                                expandable:         compColumn.hasSections
+                                expanded:           compColumn.isExpanded
+                                checked:            compColumn.isSelected && vehicleConfigView._selectedSectionIndex === -1
+                                textColor:          checked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                                icon.color:         setupComplete ? textColor : vehicleConfigView._accentColor
 
                                 onClicked: {
-                                    vehicleConfigView._navigateToComponent(compColumn.index, sectionIndex)
+                                    vehicleConfigView._navigateToComponent(compColumn.index, -1)
+                                    if (compColumn.hasSections) {
+                                        if (compColumn.isSelected && compColumn.isExpanded) {
+                                            vehicleConfigView._setExpanded(compColumn.index, false)
+                                        } else if (!compColumn.isExpanded) {
+                                            vehicleConfigView._setExpanded(compColumn.index, true)
+                                        }
+                                    }
+                                }
+
+                                onToggleExpand: {
+                                    if (!mainWindow.allowViewSwitch()) return
+                                    var expanding = !compColumn.isExpanded
+                                    vehicleConfigView._setExpanded(compColumn.index, expanding)
+                                    if (!expanding && compColumn.isSelected) {
+                                        vehicleConfigView._navigateToComponent(compColumn.index, -1)
+                                    }
+                                }
+                            }
+
+                            // Section sub-items
+                            Repeater {
+                                model: compColumn.isExpanded ? compColumn.compSections : []
+
+                                Button {
+                                    id:             sectionBtn
+                                    Layout.fillWidth: true
+                                    padding:        ScreenTools.defaultFontPixelWidth * 0.75
+                                    leftPadding:    ScreenTools.defaultFontPixelWidth * 3
+                                    hoverEnabled:   !ScreenTools.isMobile
+
+                                    property int sectionIndex: index
+                                    property bool sectionChecked: compColumn.isSelected && vehicleConfigView._selectedSectionIndex === sectionIndex
+                                    property bool sectionMatchesSearch: {
+                                        if (!compColumn.isSearching) return true
+                                        return vehicleConfigView._sectionMatchesSearch(compColumn.comp, modelData)
+                                    }
+                                    property bool sectionContentVisible: {
+                                        if (!compColumn.isSelected) return true
+                                        if (!panelLoader.item) return true
+                                        if (typeof panelLoader.item.sectionVisible !== "function") return true
+                                        return panelLoader.item.sectionVisible(modelData)
+                                    }
+                                    property color textColor: sectionChecked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                                    visible: sectionMatchesSearch && sectionContentVisible
+
+                                    background: Rectangle {
+                                        color: sectionBtn.sectionChecked
+                                            ? Qt.rgba(vehicleConfigView._accentColor.r, vehicleConfigView._accentColor.g, vehicleConfigView._accentColor.b, 0.28)
+                                            : (sectionBtn.pressed
+                                                ? vehicleConfigView._panelPressedColor
+                                                : (sectionBtn.enabled && sectionBtn.hovered
+                                                    ? vehicleConfigView._panelHoverColor
+                                                    : "transparent"))
+                                        border.width: sectionBtn.sectionChecked ? 1 : 0
+                                        border.color: sectionBtn.sectionChecked ? vehicleConfigView._accentColor : "transparent"
+                                        radius: vehicleConfigView._cornerRadius
+
+                                        Behavior on color { ColorAnimation { duration: vehicleConfigView._stateAnimationDuration } }
+                                        Behavior on border.color { ColorAnimation { duration: vehicleConfigView._stateAnimationDuration } }
+                                    }
+
+                                    contentItem: RowLayout {
+                                        spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                                        Rectangle {
+                                            width:   ScreenTools.defaultFontPixelWidth
+                                            height:  width
+                                            radius:  width / 2
+                                            color:   vehicleConfigView._accentColor
+                                            visible: compColumn.comp && typeof compColumn.comp.sectionSetupComplete === "function"
+                                                         && !compColumn.comp.sectionSetupComplete(modelData)
+                                        }
+
+                                        QGCLabel {
+                                            text:  vehicleConfigView._translateSection(compColumn.comp, modelData)
+                                            color: sectionBtn.textColor
+                                            font.pointSize: ScreenTools.defaultFontPointSize * 0.9
+                                            horizontalAlignment: Text.AlignLeft
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+
+                                    onClicked: {
+                                        vehicleConfigView._navigateToComponent(compColumn.index, sectionIndex)
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Optical Flow (special)
-                ConfigButton {
-                    visible:            _activeVehicle ? _activeVehicle.flowImageIndex > 0 : false
-                    text:               qsTr("Optical Flow")
-                    Layout.fillWidth:   true
-                    checked:            vehicleConfigView._selectedSpecial === "opticalflow"
-                    onClicked:          showPanel("opticalflow", "qrc:/qml/QGroundControl/VehicleSetup/OpticalFlowSensor.qml")
-                }
+                    // Optical Flow (special)
+                    ConfigButton {
+                        visible:            _activeVehicle ? _activeVehicle.flowImageIndex > 0 : false
+                        text:               qsTr("Optical Flow")
+                        Layout.fillWidth:   true
+                        checked:            vehicleConfigView._selectedSpecial === "opticalflow"
+                        textColor:          checked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                        icon.color:         textColor
+                        onClicked:          showPanel("opticalflow", "qrc:/qml/QGroundControl/VehicleSetup/OpticalFlowSensor.qml")
+                    }
 
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
-                    visible: vehicleConfigView._searchQuery.trim() === ""
-                }
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight / 2
+                        visible: vehicleConfigView._searchQuery.trim() === ""
+                    }
 
-                ConfigButton {
-                    id:                 parametersButton
-                    visible:            QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable &&
-                                        !_activeVehicle.usingHighLatencyLink &&
-                                        _corePlugin.showAdvancedUI &&
-                                        vehicleConfigView._searchQuery.trim() === ""
-                    text:               qsTr("Parameters")
-                    Layout.fillWidth:   true
-                    icon.source:        "/qmlimages/subMenuButtonImage.png"
-                    checked:            vehicleConfigView._selectedSpecial === "parameters"
-                    onClicked:          showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
-                }
+                    ConfigButton {
+                        id:                 parametersButton
+                        visible:            QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable &&
+                                            !_activeVehicle.usingHighLatencyLink &&
+                                            _corePlugin.showAdvancedUI &&
+                                            vehicleConfigView._searchQuery.trim() === ""
+                        text:               qsTr("Parameters")
+                        Layout.fillWidth:   true
+                        icon.source:        "/qmlimages/subMenuButtonImage.png"
+                        checked:            vehicleConfigView._selectedSpecial === "parameters"
+                        textColor:          checked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                        icon.color:         textColor
+                        onClicked:          showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
+                    }
 
-                ConfigButton {
-                    id:                 firmwareButton
-                    icon.source:        "/qmlimages/FirmwareUpgradeIcon.png"
-                    visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade &&
-                                        vehicleConfigView._searchQuery.trim() === ""
-                    text:               qsTr("Firmware")
-                    Layout.fillWidth:   true
-                    checked:            vehicleConfigView._selectedSpecial === "firmware"
+                    ConfigButton {
+                        id:                 firmwareButton
+                        icon.source:        "/qmlimages/FirmwareUpgradeIcon.png"
+                        visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade &&
+                                            vehicleConfigView._searchQuery.trim() === ""
+                        text:               qsTr("Firmware")
+                        Layout.fillWidth:   true
+                        checked:            vehicleConfigView._selectedSpecial === "firmware"
+                        textColor:          checked || pressed ? vehicleConfigView._primaryTextColor : vehicleConfigView._secondaryTextColor
+                        icon.color:         textColor
 
-                    onClicked: showPanel("firmware", "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
+                        onClicked: showPanel("firmware", "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
+                    }
                 }
             }
         }
@@ -530,39 +729,71 @@ Rectangle {
 
     Rectangle {
         id:                     divider
+        visible:                false
         anchors.topMargin:      _verticalMargin
         anchors.bottomMargin:   _verticalMargin
         anchors.leftMargin:     _horizontalMargin
-        anchors.left:           leftPanel.right
+        anchors.left:           leftPanelCard.right
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
-        width:                  1
-        color:                  qgcPal.windowShade
+        width:                  0
+        color:                  _borderColor
     }
 
-    Loader {
-        id:                     panelLoader
-        anchors.topMargin:      _verticalMargin
-        anchors.bottomMargin:   _verticalMargin
-        anchors.leftMargin:     _horizontalMargin
-        anchors.rightMargin:    _horizontalMargin
-        anchors.left:           divider.right
+    Rectangle {
+        id:                     panelHost
+        anchors.topMargin:      0
+        anchors.bottomMargin:   0
+        anchors.leftMargin:     0
+        anchors.rightMargin:    0
+        anchors.left:           parent.left
         anchors.right:          parent.right
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
+        color:                  "#2F3032"
+        radius:                 0
+        border.width:           0
+        border.color:           "transparent"
+        clip:                   true
 
-        function setSource(source, vehicleComponent) {
-            panelLoader.source = ""
-            panelLoader.vehicleComponent = vehicleComponent
-            panelLoader.source = source
+        Loader {
+            id:                     panelLoader
+            anchors.fill:           parent
+            anchors.margins:        0
+
+            function setSource(source, vehicleComponent) {
+                panelLoader.source = ""
+                panelLoader.vehicleComponent = vehicleComponent
+                panelLoader.source = source
+            }
+
+            function setSourceComponent(sourceComponent, vehicleComponent) {
+                panelLoader.sourceComponent = undefined
+                panelLoader.vehicleComponent = vehicleComponent
+                panelLoader.sourceComponent = sourceComponent
+            }
+
+            property var vehicleComponent
+            readonly property var vehicleConfigViewRef: vehicleConfigView
         }
+    }
 
-        function setSourceComponent(sourceComponent, vehicleComponent) {
-            panelLoader.sourceComponent = undefined
-            panelLoader.vehicleComponent = vehicleComponent
-            panelLoader.sourceComponent = sourceComponent
-        }
-
-        property var vehicleComponent
+    QGCButton {
+        id: backToMenuButton
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.35
+        z: QGroundControl.zOrderWidgets
+        text: qsTr("Back to Menu")
+        visible: _fullParameterVehicleAvailable && vehicleConfigView._selectedSpecial !== "menu"
+        backgroundColor: "#6B7280"
+        borderColor: "#80879A"
+        textColor: "#FFFFFF"
+        overlayColor: "#4B5563"
+        hoverOverlayOpacity: 0.20
+        pressedOverlayOpacity: 0.34
+        backRadius: vehicleConfigView._cornerRadius
+        showBorder: true
+        onClicked: vehicleConfigView.showMenuPanel()
     }
 }

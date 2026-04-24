@@ -118,6 +118,7 @@ qt_add_qml_module(AutoPilotPluginsPX4Module
 
         # Hand-coded pages and components
         ActuatorComponent.qml
+        ActuatorComponentSummary.qml
         ActuatorFact.qml
         ActuatorSlider.qml
         AirframeComponent.qml
