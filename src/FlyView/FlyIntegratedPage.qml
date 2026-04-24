@@ -1994,7 +1994,7 @@ Item {
                         }
 
                         Rectangle {
-                            Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 6.8, ScreenTools.defaultFontPixelHeight * 4.2)
+                            Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 5.2, ScreenTools.defaultFontPixelHeight * 3.4)
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.42
                             Layout.alignment: Qt.AlignVCenter
                             color: clusterWorkspaceButtonMouseArea.pressed
@@ -2006,17 +2006,8 @@ Item {
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.26
-                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.26
-                                spacing: ScreenTools.defaultFontPixelWidth * 0.16
-
-                                QGCColoredImage {
-                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.58
-                                    Layout.preferredHeight: Layout.preferredWidth
-                                    color: clusterWorkspaceButtonMouseArea.pressed ? qgcPal.buttonHighlightText : "#FFFFFF"
-                                    fillMode: Image.PreserveAspectFit
-                                    source: "/InstrumentValueIcons/menu.svg"
-                                }
+                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.18
+                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.18
 
                                 QGCLabel {
                                     Layout.fillWidth: true

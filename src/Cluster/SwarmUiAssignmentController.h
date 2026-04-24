@@ -13,7 +13,7 @@ class SwarmUiAssignmentController : public QObject
 public:
     explicit SwarmUiAssignmentController(QObject *parent = nullptr);
 
-    Q_INVOKABLE void caculate_pos(int sysid, double x, double y, double z);
+    Q_INVOKABLE void caculate_pos(int sysid, double x, double y, double z, bool deferSync = false);
     Q_INVOKABLE void set_main_airplane(int sysid, int grpId, double x, double y, double z);
     Q_INVOKABLE void store_airplane_group(int sysid, int groupId, bool flag = false, bool setAsFollower = false);
     Q_INVOKABLE void set_absolute_altitude(int sysid, double altitude);

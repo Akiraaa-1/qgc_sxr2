@@ -9,9 +9,14 @@ SwarmUiAssignmentController::SwarmUiAssignmentController(QObject *parent)
 {
 }
 
-void SwarmUiAssignmentController::caculate_pos(int sysid, double x, double y, double z)
+void SwarmUiAssignmentController::caculate_pos(int sysid, double x, double y, double z, bool deferSync)
 {
-    (void) _bridge.setVehicleOffsets(sysid, x, y, z);
+    Q_UNUSED(deferSync);
+
+    const QVariantMap result = _bridge.setVehicleOffsets(sysid, x, y, z);
+    if (!result.value(QStringLiteral("success")).toBool()) {
+        _emitOperationResult(sysid, SwarmOperationAckHandler::OperationUnknown, 0, 0, result);
+    }
 }
 
 void SwarmUiAssignmentController::set_main_airplane(int sysid, int grpId, double x, double y, double z)
@@ -21,14 +26,31 @@ void SwarmUiAssignmentController::set_main_airplane(int sysid, int grpId, double
     Q_UNUSED(z);
 
     const QList<int> vehicles = SwarmUiSharedState::instance().vehiclesInGroup(grpId);
+    if (vehicles.isEmpty()) {
+        QVariantMap result;
+        result[QStringLiteral("success")] = false;
+        result[QStringLiteral("message")] = tr("Group %1 has no synced vehicles available for leader selection.").arg(grpId);
+        _emitOperationResult(sysid, SwarmOperationAckHandler::OperationLeaderChange, 0, 0, result);
+        return;
+    }
+
+    bool targetVehicleFound = false;
     for (const int vehicleId : vehicles) {
         const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(vehicleId);
         const bool leader = (vehicleId == sysid);
+        targetVehicleFound = targetVehicleFound || leader;
         const QVariantMap result = _bridge.setVehicleLeader(vehicleId, leader);
         if (result.value(QStringLiteral("success")).toBool()) {
             SwarmUiSharedState::instance().setVehicleLeader(vehicleId, leader);
         }
         _emitOperationResult(vehicleId, SwarmOperationAckHandler::OperationLeaderChange, oldLeader ? 1 : 0, leader ? 1 : 0, result);
+    }
+
+    if (!targetVehicleFound) {
+        QVariantMap result;
+        result[QStringLiteral("success")] = false;
+        result[QStringLiteral("message")] = tr("Vehicle %1 is not part of Group %2 in the current swarm state.").arg(sysid).arg(grpId);
+        _emitOperationResult(sysid, SwarmOperationAckHandler::OperationLeaderChange, 0, 0, result);
     }
 }
 
@@ -63,7 +85,10 @@ void SwarmUiAssignmentController::store_airplane_group(int sysid, int groupId, b
 void SwarmUiAssignmentController::set_absolute_altitude(int sysid, double altitude)
 {
     SwarmUiSharedState::instance().refreshFromVehicle(sysid);
-    (void) _bridge.setVehicleAbsoluteAltitude(sysid, altitude);
+    const QVariantMap result = _bridge.setVehicleAbsoluteAltitude(sysid, altitude);
+    if (!result.value(QStringLiteral("success")).toBool()) {
+        _emitOperationResult(sysid, SwarmOperationAckHandler::OperationUnknown, 0, 0, result);
+    }
 }
 
 void SwarmUiAssignmentController::emitMainAltitudeChanged(int vehicleId, double altitude)
