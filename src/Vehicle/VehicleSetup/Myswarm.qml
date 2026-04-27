@@ -212,6 +212,16 @@ Window {
         return vehicle.parameterManager.getParameter(-1, factName);
     }
 
+    function _clusterFactNumber(vehicle, factName, defaultValue) {
+        var fact = _clusterFact(vehicle, factName);
+        if (!fact) {
+            return defaultValue;
+        }
+
+        var value = Number(fact.rawValue);
+        return isNaN(value) ? defaultValue : value;
+    }
+
     function _syncVehiclesFromGroundStation() {
         var vehicles = QGroundControl.multiVehicleManager.vehicles;
         if (!vehicles || plan_id.length === 0) {
@@ -234,6 +244,8 @@ Window {
         modelmp = {0: 0};
         idpos_map = {};
         main_node_name = [0, 0, 0, 0];
+        var syncedAbsoluteHeights = {};
+        var syncedMainHeights = {"1": 0, "2": 0, "3": 0, "4": 0};
         clearAllMainStatus();
 
         for (var nodeIndex = 0; nodeIndex < plan_arr.length; nodeIndex++) {
@@ -254,10 +266,9 @@ Window {
             }
 
             var vehicleId = Number(vehicle.id);
-            var groupFact = _clusterFact(vehicle, "SWARM_GROUP_ID");
-            var leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER");
-            var groupId = groupFact ? Number(groupFact.rawValue) : 1;
-            var isLeader = leaderFact ? Number(leaderFact.rawValue) !== 0 : false;
+            var groupId = _clusterFactNumber(vehicle, "SWARM_GROUP_ID", 1);
+            var isLeader = _clusterFactNumber(vehicle, "SWARM_SET_LEADER", 0) !== 0;
+            var absoluteAltitude = _clusterFactNumber(vehicle, "SWARM_ABS_ALT", NaN);
 
             if (groupId < 1 || groupId > 4) {
                 groupId = 1;
@@ -275,10 +286,27 @@ Window {
 
             if (isLeader) {
                 main_node_name[groupId - 1] = vehicleId.toString();
+                if (!isNaN(absoluteAltitude)) {
+                    syncedMainHeights[groupId.toString()] = absoluteAltitude;
+                }
+            }
+
+            if (!isNaN(absoluteAltitude)) {
+                syncedAbsoluteHeights[vehicleId.toString()] = absoluteAltitude;
             }
         }
 
+        droneAbsoluteHeight = syncedAbsoluteHeights;
+        groupMainHeight = syncedMainHeights;
         updateGroupCounts();
+
+        for (var groupIndex = 1; groupIndex <= 4; groupIndex++) {
+            updateGroupScale(groupIndex);
+        }
+
+        if (mouse_area.pickNode) {
+            updateRelativePosition(mouse_area.pickNode);
+        }
     }
 
     Component.onCompleted: syncFromGroundStationTimer.start()
@@ -286,6 +314,8 @@ Window {
     onVisibleChanged: {
         if (visible) {
             syncFromGroundStationTimer.start()
+        } else {
+            syncFromGroundStationTimer.stop()
         }
     }
 
@@ -336,6 +366,9 @@ Window {
             // 同时添加到交互信息框
             var msgType = (result === 0) ? "success" : "error";
             addMessage(message, msgType);
+            if (root.visible) {
+                syncFromGroundStationTimer.restart()
+            }
         }
     }
 

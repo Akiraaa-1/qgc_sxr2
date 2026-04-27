@@ -3659,14 +3659,39 @@ ApplicationWindow {
                         id: startPageLinkDialogComponent
 
                         QGCPopupDialog {
-                            title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
-                            buttons:                Dialog.Save | Dialog.Cancel
-                            acceptButtonEnabled:    nameField.text !== ""
+                            id: startPageLinkDialog
+                            title:                  ""
+                            buttons:                0
+                            maxContentAvailableWidth: Math.min(mainWindow.width - (ScreenTools.defaultFontPixelWidth * 8), ScreenTools.defaultFontPixelWidth * 64)
+                            maxContentAvailableHeight: mainWindow.height - (ScreenTools.defaultFontPixelHeight * 8)
 
                             property var originalConfig
                             property var editingConfig
+                            readonly property real _dialogContentWidth: ScreenTools.defaultFontPixelWidth * 46
+                            readonly property real _fieldLabelWidth: ScreenTools.defaultFontPixelWidth * 15
+                            readonly property real _sectionSpacing: ScreenTools.defaultFontPixelHeight * 0.8
+                            readonly property real _cardPadding: ScreenTools.defaultFontPixelHeight * 0.9
+                            readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 1.8
+                            readonly property bool _canSave: nameField.text.trim() !== ""
+                            readonly property bool _showLinkParameters: editingConfig
+                                                                       && editingConfig.linkType !== LinkConfiguration.TypeSerial
+                                                                       && _settingsSource(editingConfig) !== ""
 
-                            onAccepted: {
+                            QGCPopupStyle { id: popupStyle }
+
+                            function _settingsSource(config) {
+                                if (!config || !config.settingsURL) {
+                                    return ""
+                                }
+
+                                return Qt.resolvedUrl("AppSettings/" + config.settingsURL)
+                            }
+
+                            function _saveDialog() {
+                                if (!_canSave) {
+                                    return
+                                }
+
                                 if (linkSettingsLoader.item && typeof linkSettingsLoader.item.saveSettings === "function") {
                                     linkSettingsLoader.item.saveSettings()
                                 }
@@ -3681,68 +3706,232 @@ ApplicationWindow {
                                 startPageOverlay._refreshLinks()
                                 startPageOverlay._selectLinkConfigByName(savedConfigName)
                                 startPageOverlay._appendEvent(qsTr("Added link configuration '%1'").arg(savedConfigName))
+                                close()
                             }
 
-                            onRejected: startPageOverlay._linkManager.cancelConfigurationEditing(editingConfig)
+                            function _cancelDialog() {
+                                startPageOverlay._linkManager.cancelConfigurationEditing(editingConfig)
+                                close()
+                            }
 
                             ColumnLayout {
-                                spacing: ScreenTools.defaultFontPixelHeight / 2
+                                width: startPageLinkDialog._dialogContentWidth
+                                spacing: startPageLinkDialog._sectionSpacing
 
-                                RowLayout {
+                                Rectangle {
                                     Layout.fillWidth: true
-                                    spacing: ScreenTools.defaultFontPixelWidth
+                                    implicitHeight: headerLayout.implicitHeight + (startPageLinkDialog._cardPadding * 2)
+                                    color: popupStyle.popupBackground
+                                    radius: popupStyle.cornerRadius
+                                    border.width: 1
+                                    border.color: popupStyle.borderColor
 
-                                    QGCLabel { text: qsTr("Name") }
-                                    QGCTextField {
-                                        id:                 nameField
-                                        Layout.fillWidth:   true
-                                        text:               editingConfig.name
-                                        placeholderText:    qsTr("Enter name")
-                                    }
-                                }
+                                    ColumnLayout {
+                                        id: headerLayout
+                                        anchors.fill: parent
+                                        anchors.margins: startPageLinkDialog._cardPadding
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                                QGCCheckBoxSlider {
-                                    Layout.fillWidth:   true
-                                    text:               qsTr("Automatically Connect on Start")
-                                    checked:            editingConfig.autoConnect
-                                    onCheckedChanged:   editingConfig.autoConnect = checked
-                                }
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
+                                            color: popupStyle.primaryTextColor
+                                            font.pointSize: ScreenTools.defaultFontPointSize + 2
+                                            font.bold: true
+                                        }
 
-                                QGCCheckBoxSlider {
-                                    Layout.fillWidth:   true
-                                    text:               qsTr("High Latency")
-                                    checked:            editingConfig.highLatency
-                                    onCheckedChanged:   editingConfig.highLatency = checked
-                                }
-
-                                LabelledComboBox {
-                                    label:                  qsTr("Type")
-                                    enabled:                originalConfig == null
-                                    model:                  startPageOverlay._linkManager.linkTypeStrings
-                                    Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
-
-                                    onActivated: (index) => {
-                                        if (index !== editingConfig.linkType) {
-                                            const name = nameField.text
-                                            editingConfig = startPageOverlay._linkManager.createConfiguration(index, name)
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: qsTr("Create and configure a communication link profile.")
+                                            color: popupStyle.secondaryTextColor
+                                            font.pointSize: ScreenTools.defaultFontPointSize - 1
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
                                 }
 
-                                Loader {
-                                    id:     linkSettingsLoader
-                                    source: editingConfig && editingConfig.settingsURL ? editingConfig.settingsURL : ""
-                                    asynchronous: true
+                                Rectangle {
+                                    Layout.fillWidth:   true
+                                    implicitHeight:     dialogForm.implicitHeight + (startPageLinkDialog._cardPadding * 2)
+                                    color:              popupStyle.panelBackground
+                                    radius:             popupStyle.cornerRadius
+                                    border.width:       1
+                                    border.color:       popupStyle.borderColor
 
-                                    property var subEditConfig:         editingConfig
-                                    property int _firstColumnWidth:     ScreenTools.defaultFontPixelWidth * 12
-                                    property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 30
-                                    property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
-                                    property int _colSpacing:           ScreenTools.defaultFontPixelWidth / 2
+                                    ColumnLayout {
+                                        id: dialogForm
+                                        anchors.fill: parent
+                                        anchors.margins: startPageLinkDialog._cardPadding
+                                        spacing: startPageLinkDialog._sectionSpacing
 
-                                    onStatusChanged: {
-                                        if (status === Loader.Error) {
-                                            console.warn("Failed to load link settings page:", source)
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: ScreenTools.defaultFontPixelWidth
+
+                                            QGCLabel {
+                                                Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth
+                                                text: qsTr("Name")
+                                                color: popupStyle.primaryTextColor
+                                                font.pointSize: ScreenTools.defaultFontPointSize
+                                            }
+
+                                            QGCTextField {
+                                                id:                 nameField
+                                                Layout.fillWidth:   true
+                                                text:               editingConfig.name
+                                                placeholderText:    qsTr("Enter name")
+                                                borderRadius:       popupStyle.cornerRadius
+                                                borderWidth:        1
+                                                focusBorderWidth:   1
+                                                showFocusGlow:      true
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 1
+                                            color: popupStyle.borderColor
+                                            opacity: 0.8
+                                        }
+
+                                        QGCCheckBoxSlider {
+                                            Layout.fillWidth:   true
+                                            text:               qsTr("Automatically Connect on Start")
+                                            checked:            editingConfig.autoConnect
+                                            onCheckedChanged:   editingConfig.autoConnect = checked
+                                            textColor:          popupStyle.primaryTextColor
+                                            trackColor:         popupStyle.secondaryButtonColor
+                                            trackOnColor:       popupStyle.accentColor
+                                            trackBorderColor:   popupStyle.borderColor
+                                            handleColor:        popupStyle.primaryTextColor
+                                        }
+
+                                        QGCCheckBoxSlider {
+                                            Layout.fillWidth:   true
+                                            text:               qsTr("High Latency")
+                                            checked:            editingConfig.highLatency
+                                            onCheckedChanged:   editingConfig.highLatency = checked
+                                            textColor:          popupStyle.primaryTextColor
+                                            trackColor:         popupStyle.secondaryButtonColor
+                                            trackOnColor:       popupStyle.accentColor
+                                            trackBorderColor:   popupStyle.borderColor
+                                            handleColor:        popupStyle.primaryTextColor
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 1
+                                            color: popupStyle.borderColor
+                                            opacity: 0.8
+                                        }
+
+                                        LabelledComboBox {
+                                            Layout.fillWidth:       true
+                                            label:                  qsTr("Type")
+                                            comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 18
+                                            enabled:                originalConfig == null
+                                            model:                  startPageOverlay._linkManager.linkTypeStrings
+                                            Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+
+                                            onActivated: (index) => {
+                                                if (index !== editingConfig.linkType) {
+                                                    const name = nameField.text
+                                                    editingConfig = startPageOverlay._linkManager.createConfiguration(index, name)
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            visible: startPageLinkDialog._showLinkParameters
+                                            implicitHeight: linkSettingsLayout.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.4)
+                                            color: popupStyle.inputBackground
+                                            radius: popupStyle.cornerRadius
+                                            border.width: 1
+                                            border.color: popupStyle.borderColor
+
+                                            ColumnLayout {
+                                                id: linkSettingsLayout
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.7
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.55
+
+                                                QGCLabel {
+                                                    Layout.fillWidth: true
+                                                    text: qsTr("Link Parameters")
+                                                    color: popupStyle.secondaryTextColor
+                                                    font.pointSize: ScreenTools.defaultFontPointSize - 1
+                                                    font.bold: true
+                                                }
+
+                                                Loader {
+                                                    id:     linkSettingsLoader
+                                                    Layout.fillWidth: true
+                                                    source: startPageLinkDialog._settingsSource(editingConfig)
+                                                    asynchronous: true
+
+                                                    property var subEditConfig:         editingConfig
+                                                    property int _firstColumnWidth:     startPageLinkDialog._fieldLabelWidth
+                                                    property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 24
+                                                    property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
+                                                    property int _colSpacing:           ScreenTools.defaultFontPixelWidth / 2
+
+                                                    onStatusChanged: {
+                                                        if (status === Loader.Error) {
+                                                            console.warn("Failed to load link settings page:", source)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: footerLayout.implicitHeight + (startPageLinkDialog._cardPadding * 2)
+                                    color: popupStyle.popupBackground
+                                    radius: popupStyle.cornerRadius
+                                    border.width: 1
+                                    border.color: popupStyle.borderColor
+
+                                    ColumnLayout {
+                                        id: footerLayout
+                                        anchors.fill: parent
+                                        anchors.margins: startPageLinkDialog._cardPadding
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.5
+
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: qsTr("The dialog stays centered and becomes scrollable automatically when the content is taller than the screen.")
+                                            color: popupStyle.secondaryTextColor
+                                            font.pointSize: ScreenTools.defaultFontPointSize - 2
+                                            wrapMode: Text.WordWrap
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.75
+
+                                            Item { Layout.fillWidth: true }
+
+                                            QGCButton {
+                                                text: qsTr("Cancel")
+                                                Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 9, implicitWidth + (ScreenTools.defaultFontPixelWidth * 2))
+                                                Layout.minimumWidth: Layout.preferredWidth
+                                                Layout.preferredHeight: startPageLinkDialog._buttonHeight
+                                                onClicked: startPageLinkDialog._cancelDialog()
+                                            }
+
+                                            QGCButton {
+                                                text: qsTr("Save")
+                                                primary: true
+                                                enabled: startPageLinkDialog._canSave
+                                                Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 9, implicitWidth + (ScreenTools.defaultFontPixelWidth * 2))
+                                                Layout.minimumWidth: Layout.preferredWidth
+                                                Layout.preferredHeight: startPageLinkDialog._buttonHeight
+                                                onClicked: startPageLinkDialog._saveDialog()
+                                            }
                                         }
                                     }
                                 }

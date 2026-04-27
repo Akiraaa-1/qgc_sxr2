@@ -52,6 +52,12 @@ if(NOT QGC_BUILD_TESTING)
     set(BUILD_TESTING OFF CACHE INTERNAL "Disable testing by default" FORCE)
 endif()
 
+# Qt Creator + Ninja on Windows can get stuck in CMake's VERIFY_GLOBS step
+# for large CPM dependency trees. Keep regeneration manual in that setup.
+if(WIN32 AND (CMAKE_GENERATOR STREQUAL "Ninja"))
+    set(CMAKE_SUPPRESS_REGENERATION ON)
+endif()
+
 # ============================================================================
 # Project Configuration
 # ============================================================================
