@@ -73,7 +73,16 @@ bool LinkInterface::_allocateMavlinkChannel()
 
     qCDebug(LinkInterfaceLog) << "_allocateMavlinkChannel" << _mavlinkChannel;
 
-    mavlink_set_proto_version(_mavlinkChannel, MAVLINK_VERSION); // We only support v2 protcol
+    const SharedLinkConfigurationPtr linkConfig = linkConfiguration();
+    const int mavlinkVersion = linkConfig ? linkConfig->mavlinkVersion() : 2;
+    mavlink_status_t *const mavlinkStatus = mavlink_get_channel_status(_mavlinkChannel);
+    if (mavlinkVersion <= 1) {
+        mavlinkStatus->flags |= MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
+        mavlink_set_proto_version(_mavlinkChannel, 1);
+    } else {
+        mavlinkStatus->flags &= ~MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
+        mavlink_set_proto_version(_mavlinkChannel, MAVLINK_VERSION);
+    }
     initMavlinkSigning();
 
     return true;
@@ -134,10 +143,14 @@ void LinkInterface::reportMavlinkV1Traffic()
 
         const SharedLinkConfigurationPtr linkConfig = linkConfiguration();
         const QString linkName = linkConfig ? linkConfig->name() : QStringLiteral("unknown");
+        if (linkConfig && (linkConfig->mavlinkVersion() <= 1)) {
+            qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on link" << linkName << "(configured for MAVLink v1)";
+            return;
+        }
         qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on link" << linkName;
         const QString message = tr("MAVLink v1 traffic detected on link '%1'. "
-                                   "%2 only supports MAVLink v2. "
-                                   "Please ensure your vehicle is configured to use MAVLink v2.")
+                                   "%2 is configured for MAVLink v2 on this link. "
+                                   "Please ensure your vehicle is configured to use MAVLink v2, or switch this link to MAVLink 1.")
                                     .arg(linkName).arg(qgcApp()->applicationName());
         qgcApp()->showAppMessage(message);
     }

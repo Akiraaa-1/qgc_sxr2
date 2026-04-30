@@ -43,6 +43,7 @@ void LogReplayConfiguration::copyFrom(const LinkConfiguration *source)
 void LogReplayConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     setLogFilename(settings.value("logFilename", "").toString());
 
@@ -52,6 +53,7 @@ void LogReplayConfiguration::loadSettings(QSettings &settings, const QString &ro
 void LogReplayConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue("logFilename", _logFilename);
 

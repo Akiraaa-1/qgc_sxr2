@@ -79,6 +79,7 @@ void MockConfiguration::copyFrom(const LinkConfiguration *source)
 void MockConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     setFirmwareType(static_cast<MAV_AUTOPILOT>(settings.value(_firmwareTypeKey, static_cast<int>(MAV_AUTOPILOT_PX4)).toInt()));
     setVehicleType(static_cast<MAV_TYPE>(settings.value(_vehicleTypeKey, static_cast<int>(MAV_TYPE_QUADROTOR)).toInt()));
@@ -110,6 +111,7 @@ void MockConfiguration::loadSettings(QSettings &settings, const QString &root)
 void MockConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue(_firmwareTypeKey, firmwareType());
     settings.setValue(_vehicleTypeKey, vehicleType());

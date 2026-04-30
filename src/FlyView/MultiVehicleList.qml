@@ -16,6 +16,7 @@ Item {
     property var    selectedVehicles:     QGroundControl.multiVehicleManager.selectedVehicles
     property int    _expandedVehicleId:   -1
     property var    _clusterFeedbackByVehicleId: ({})
+    property var    _clusterPendingByVehicleId: ({})
 
     implicitHeight: vehicleList.contentHeight
 
@@ -101,6 +102,88 @@ Item {
         _clusterFeedbackByVehicleId = nextMap
     }
 
+    function _clusterPending(vehicle) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return null
+        }
+
+        const value = _clusterPendingByVehicleId["" + vehicle.id]
+        return value === undefined ? null : value
+    }
+
+    function _setClusterPending(vehicle, paramName, expectedValue, successText, failureText) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return
+        }
+
+        const nextMap = Object.assign({}, _clusterPendingByVehicleId)
+        nextMap["" + vehicle.id] = {
+            "paramName": paramName,
+            "expectedValue": expectedValue,
+            "successText": successText,
+            "failureText": failureText
+        }
+        _clusterPendingByVehicleId = nextMap
+    }
+
+    function _clearClusterPending(vehicle) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
+            return
+        }
+
+        const key = "" + vehicle.id
+        if (_clusterPendingByVehicleId[key] === undefined) {
+            return
+        }
+
+        const nextMap = Object.assign({}, _clusterPendingByVehicleId)
+        delete nextMap[key]
+        _clusterPendingByVehicleId = nextMap
+    }
+
+    function _handleClusterParamSetSuccess(vehicle, componentId, paramName) {
+        const pending = _clusterPending(vehicle)
+        if (!pending || pending.paramName !== paramName) {
+            return
+        }
+
+        _setClusterFeedback(vehicle, pending.successText)
+        _clearClusterPending(vehicle)
+    }
+
+    function _handleClusterParamSetFailure(vehicle, componentId, paramName) {
+        const pending = _clusterPending(vehicle)
+        if (!pending || pending.paramName !== paramName) {
+            return
+        }
+
+        _setClusterFeedback(vehicle, pending.failureText)
+        _clearClusterPending(vehicle)
+    }
+
+    function _handleClusterPendingWritesChanged(vehicle, pendingWrites) {
+        const pending = _clusterPending(vehicle)
+        if (!pending || pendingWrites) {
+            return
+        }
+
+        const fact = _clusterFact(vehicle, pending.paramName)
+        if (!fact) {
+            _setClusterFeedback(vehicle, pending.failureText)
+            _clearClusterPending(vehicle)
+            return
+        }
+
+        const currentValue = Number(fact.rawValue)
+        const expectedValue = Number(pending.expectedValue)
+        if (!isNaN(currentValue) && !isNaN(expectedValue) && currentValue === expectedValue) {
+            _setClusterFeedback(vehicle, pending.successText)
+        } else {
+            _setClusterFeedback(vehicle, pending.failureText)
+        }
+        _clearClusterPending(vehicle)
+    }
+
     function _toggleClusterExpanded(vehicle) {
         if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
             return
@@ -120,14 +203,20 @@ Item {
             return
         }
 
+        _setClusterPending(
+            vehicle,
+            "SWARM_GROUP_ID",
+            groupId,
+            qsTr("Group %1 applied").arg(groupId),
+            qsTr("Failed to set Group %1").arg(groupId)
+        )
+        _setClusterFeedback(vehicle, qsTr("Sending Group %1...").arg(groupId))
         groupFact.setRawValue(groupId)
 
         const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
         if (leaderFact) {
             leaderFact.setRawValue(0)
         }
-
-        _setClusterFeedback(vehicle, qsTr("Group %1 sent").arg(groupId))
     }
 
     function _clearClusterGroup(vehicle) {
@@ -141,14 +230,20 @@ Item {
             return
         }
 
+        _setClusterPending(
+            vehicle,
+            "SWARM_GROUP_ID",
+            0,
+            qsTr("Cluster assignment cleared"),
+            qsTr("Failed to clear cluster assignment")
+        )
+        _setClusterFeedback(vehicle, qsTr("Clearing cluster assignment..."))
         groupFact.setRawValue(0)
 
         const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
         if (leaderFact) {
             leaderFact.setRawValue(0)
         }
-
-        _setClusterFeedback(vehicle, qsTr("Cluster assignment cleared"))
     }
 
     function _setClusterLeader(vehicle, leader) {
@@ -162,8 +257,15 @@ Item {
             return
         }
 
+        _setClusterPending(
+            vehicle,
+            "SWARM_SET_LEADER",
+            leader ? 1 : 0,
+            leader ? qsTr("Leader role applied") : qsTr("Leader role cleared"),
+            leader ? qsTr("Failed to set leader role") : qsTr("Failed to clear leader role")
+        )
+        _setClusterFeedback(vehicle, leader ? qsTr("Sending leader role...") : qsTr("Clearing leader role..."))
         leaderFact.setRawValue(leader ? 1 : 0)
-        _setClusterFeedback(vehicle, leader ? qsTr("Leader flag sent") : qsTr("Leader flag cleared"))
     }
 
     function armAvailable() {
@@ -484,6 +586,23 @@ Item {
                             opacity: 0.8
                             font.pointSize: ScreenTools.defaultFontPointSize * 0.9
                         }
+                    }
+                }
+
+                Connections {
+                    target: _vehicle ? _vehicle.parameterManager : null
+                    ignoreUnknownSignals: true
+
+                    function on_ParamSetSuccess(componentId, paramName) {
+                        _handleClusterParamSetSuccess(_vehicle, componentId, paramName)
+                    }
+
+                    function on_ParamSetFailure(componentId, paramName) {
+                        _handleClusterParamSetFailure(_vehicle, componentId, paramName)
+                    }
+
+                    function onPendingWritesChanged(pendingWrites) {
+                        _handleClusterPendingWritesChanged(_vehicle, pendingWrites)
                     }
                 }
             }

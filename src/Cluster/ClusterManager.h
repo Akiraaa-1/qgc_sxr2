@@ -4,6 +4,7 @@
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QString>
+#include <QtCore/QTimer>
 #include <QtCore/QVariantList>
 #include <QtCore/QVariantMap>
 #include <QtQmlIntegration/QtQmlIntegration>
@@ -99,14 +100,21 @@ signals:
 
 private slots:
     void _handleActiveVehicleChanged(Vehicle *vehicle);
+    void _handleVehicleAdded(Vehicle *vehicle);
     void _handleVehicleRemoved(Vehicle *vehicle);
     void _handleOperationAckReceived(const QVariantMap &result);
+    void _syncAssignmentsFromVehicles();
 
 private:
     struct VehicleAssignment
     {
         int groupId = -1;
         bool leader = false;
+
+        bool operator==(const VehicleAssignment &other) const
+        {
+            return (groupId == other.groupId) && (leader == other.leader);
+        }
     };
 
     [[nodiscard]] Vehicle *_activeVehicle() const;
@@ -118,10 +126,12 @@ private:
     void _setLastCommandResult(const QVariantMap &result);
     void _setLastAck(const QVariantMap &result);
     void _emitAssignmentSignals(int vehicleId);
+    void _refreshAndEmitIfChanged();
 
     QHash<int, VehicleAssignment> _assignments;
     SwarmCommandBridge *_swarmCommandBridge = nullptr;
     SwarmOperationAckHandler *_swarmOperationAckHandler = nullptr;
+    QTimer *_stateSyncTimer = nullptr;
     QString _lastCommandAction;
     int _lastCommandGroup = -1;
     int _lastCommandCode = -1;

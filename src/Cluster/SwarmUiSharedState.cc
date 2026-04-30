@@ -115,6 +115,9 @@ void SwarmUiSharedState::_refreshVehicleState(int vehicleId)
 
     ParameterManager *const parameterManager = vehicle->parameterManager();
     if (!parameterManager || !parameterManager->parametersReady()) {
+        if (!_groupByVehicle.contains(vehicleId)) {
+            _groupByVehicle.insert(vehicleId, 1);
+        }
         return;
     }
 
@@ -128,6 +131,8 @@ void SwarmUiSharedState::_refreshVehicleState(int vehicleId)
                 _groupByVehicle.remove(vehicleId);
             }
         }
+    } else if (!_groupByVehicle.contains(vehicleId)) {
+        _groupByVehicle.insert(vehicleId, 1);
     }
 
     if (parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_SET_LEADER"))) {

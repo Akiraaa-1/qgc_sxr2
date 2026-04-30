@@ -3,6 +3,7 @@
 #include "MultiVehicleManager.h"
 #include "QGCLoggingCategory.h"
 #include "SwarmCommandBridge.h"
+#include "SwarmUiSharedState.h"
 #include "Vehicle.h"
 
 QGC_LOGGING_CATEGORY(ClusterManagerLog, "Cluster.ClusterManager")
@@ -11,6 +12,7 @@ ClusterManager::ClusterManager(QObject *parent)
     : QObject(parent)
     , _swarmCommandBridge(new SwarmCommandBridge(this))
     , _swarmOperationAckHandler(new SwarmOperationAckHandler(this))
+    , _stateSyncTimer(new QTimer(this))
 {
     MultiVehicleManager *const multiVehicleManager = MultiVehicleManager::instance();
     if (!multiVehicleManager) {
@@ -20,7 +22,14 @@ ClusterManager::ClusterManager(QObject *parent)
 
     (void) connect(_swarmOperationAckHandler, &SwarmOperationAckHandler::operationAckReceived, this, &ClusterManager::_handleOperationAckReceived);
     (void) connect(multiVehicleManager, &MultiVehicleManager::activeVehicleChanged, this, &ClusterManager::_handleActiveVehicleChanged);
+    (void) connect(multiVehicleManager, &MultiVehicleManager::vehicleAdded, this, &ClusterManager::_handleVehicleAdded);
     (void) connect(multiVehicleManager, &MultiVehicleManager::vehicleRemoved, this, &ClusterManager::_handleVehicleRemoved);
+
+    _stateSyncTimer->setInterval(500);
+    (void) connect(_stateSyncTimer, &QTimer::timeout, this, &ClusterManager::_syncAssignmentsFromVehicles);
+    _stateSyncTimer->start();
+
+    _syncAssignmentsFromVehicles();
 }
 
 int ClusterManager::assignedVehicleCount() const
@@ -111,20 +120,19 @@ void ClusterManager::assignVehicleToGroup(int vehicleId, int groupId)
         return;
     }
 
-    VehicleAssignment assignment = _assignments.value(vehicleId);
-    if (assignment.groupId == groupId) {
+    const int currentGroupId = vehicleGroup(vehicleId);
+    const bool currentLeader = vehicleLeader(vehicleId);
+    if (currentGroupId == groupId) {
         _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("set-group"), groupId, tr("Vehicle %1 is already assigned to Group %2.").arg(vehicleId).arg(groupId)));
         return;
     }
 
-    assignment.groupId = groupId;
-    _assignments.insert(vehicleId, assignment);
     if (_swarmCommandBridge) {
-        _setLastCommandResult(_swarmCommandBridge->setVehicleGroup(vehicleId, groupId, !assignment.leader));
+        _setLastCommandResult(_swarmCommandBridge->setVehicleGroup(vehicleId, groupId, !currentLeader));
     } else {
         _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("set-group"), groupId, tr("Vehicle %1 was assigned to Group %2 locally.").arg(vehicleId).arg(groupId)));
     }
-    _emitAssignmentSignals(vehicleId);
+    _refreshAndEmitIfChanged();
 }
 
 void ClusterManager::assignActiveVehicleToGroup(int groupId)
@@ -164,22 +172,21 @@ void ClusterManager::toggleLeaderForVehicle(int vehicleId)
         return;
     }
 
-    VehicleAssignment assignment = _assignments.value(vehicleId);
-    if (assignment.groupId < 1) {
+    const int currentGroupId = vehicleGroup(vehicleId);
+    const bool currentLeader = vehicleLeader(vehicleId);
+    if (currentGroupId < 1) {
         _setLastCommandResult(_buildLocalResult(ResultNoGroupAssigned, QStringLiteral("set-leader"), -1, tr("Assign Vehicle %1 to a group before changing its leader role.").arg(vehicleId)));
         return;
     }
 
-    assignment.leader = !assignment.leader;
-    _assignments.insert(vehicleId, assignment);
     if (_swarmCommandBridge) {
-        _setLastCommandResult(_swarmCommandBridge->setVehicleLeader(vehicleId, assignment.leader));
+        _setLastCommandResult(_swarmCommandBridge->setVehicleLeader(vehicleId, !currentLeader));
     } else {
-        _setLastCommandResult(_buildLocalResult(ResultSuccess, assignment.leader ? QStringLiteral("set-leader") : QStringLiteral("unset-leader"), assignment.groupId, assignment.leader
+        _setLastCommandResult(_buildLocalResult(ResultSuccess, !currentLeader ? QStringLiteral("set-leader") : QStringLiteral("unset-leader"), currentGroupId, !currentLeader
             ? tr("Vehicle %1 was marked as leader locally.").arg(vehicleId)
             : tr("Vehicle %1 was marked as follower locally.").arg(vehicleId)));
     }
-    _emitAssignmentSignals(vehicleId);
+    _refreshAndEmitIfChanged();
 }
 
 void ClusterManager::toggleLeaderForActiveVehicle()
@@ -194,6 +201,8 @@ void ClusterManager::toggleLeaderForActiveVehicle()
 
 void ClusterManager::clearAllAssignments()
 {
+    _syncAssignmentsFromVehicles();
+
     if (_assignments.isEmpty()) {
         return;
     }
@@ -210,15 +219,13 @@ void ClusterManager::clearAllAssignments()
     }
 
     const int clearedCount = _assignments.size();
-    _assignments.clear();
-    emit assignmentsChanged();
-    emit activeVehicleClusterStateChanged();
+    _refreshAndEmitIfChanged();
 
     if (_swarmCommandBridge) {
         if (failedVehicles == 0) {
-            _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("clear-all"), -1, tr("Cleared %1 cluster assignments and synced them through the current parameter pipeline.").arg(clearedCount)));
+            _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("clear-all"), -1, tr("Queued clear requests for %1 cluster assignments through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(clearedCount)));
         } else {
-            _setLastCommandResult(_buildLocalResult(ResultError, QStringLiteral("clear-all"), -1, tr("Cleared %1 local cluster assignments, but %2 vehicle sync operations were rejected by the current parameter pipeline.").arg(clearedCount).arg(failedVehicles)));
+            _setLastCommandResult(_buildLocalResult(ResultError, QStringLiteral("clear-all"), -1, tr("Queued clear requests for %1 cluster assignments, but %2 vehicle sync operations were rejected before dispatch.").arg(clearedCount).arg(failedVehicles)));
         }
     } else {
         _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("clear-all"), -1, tr("Cleared %1 local cluster assignments.").arg(clearedCount)));
@@ -290,7 +297,14 @@ void ClusterManager::clearLastAck()
 void ClusterManager::_handleActiveVehicleChanged(Vehicle *vehicle)
 {
     Q_UNUSED(vehicle);
+    _syncAssignmentsFromVehicles();
     emit activeVehicleClusterStateChanged();
+}
+
+void ClusterManager::_handleVehicleAdded(Vehicle *vehicle)
+{
+    Q_UNUSED(vehicle);
+    _syncAssignmentsFromVehicles();
 }
 
 void ClusterManager::_handleVehicleRemoved(Vehicle *vehicle)
@@ -299,7 +313,8 @@ void ClusterManager::_handleVehicleRemoved(Vehicle *vehicle)
         return;
     }
 
-    (void) _clearVehicleAssignmentInternal(vehicle->id(), false);
+    SwarmUiSharedState::instance().removeVehicle(vehicle->id());
+    _syncAssignmentsFromVehicles();
 }
 
 void ClusterManager::_handleOperationAckReceived(const QVariantMap &result)
@@ -344,8 +359,7 @@ QVariantMap ClusterManager::_buildLocalResult(ResultCode code, const QString &ac
 
 bool ClusterManager::_clearVehicleAssignmentInternal(int vehicleId, bool syncToVehicle)
 {
-    const auto it = _assignments.constFind(vehicleId);
-    if (it == _assignments.cend()) {
+    if (vehicleGroup(vehicleId) < 1) {
         return false;
     }
 
@@ -355,8 +369,7 @@ bool ClusterManager::_clearVehicleAssignmentInternal(int vehicleId, bool syncToV
         _setLastCommandResult(_buildLocalResult(ResultSuccess, QStringLiteral("clear-assignment"), -1, tr("Vehicle %1 cluster assignment was cleared locally.").arg(vehicleId)));
     }
 
-    _assignments.remove(vehicleId);
-    _emitAssignmentSignals(vehicleId);
+    _refreshAndEmitIfChanged();
     return true;
 }
 
@@ -431,4 +444,44 @@ void ClusterManager::_emitAssignmentSignals(int vehicleId)
     if (vehicle && (vehicle->id() == vehicleId)) {
         emit activeVehicleClusterStateChanged();
     }
+}
+
+void ClusterManager::_syncAssignmentsFromVehicles()
+{
+    SwarmUiSharedState::instance().refreshFromAllVehicles();
+
+    QHash<int, VehicleAssignment> nextAssignments;
+    MultiVehicleManager *const multiVehicleManager = MultiVehicleManager::instance();
+    if (multiVehicleManager && multiVehicleManager->vehicles()) {
+        for (int i = 0; i < multiVehicleManager->vehicles()->count(); ++i) {
+            Vehicle *const vehicle = qobject_cast<Vehicle *>(multiVehicleManager->vehicles()->get(i));
+            if (!vehicle) {
+                continue;
+            }
+
+            const int vehicleId = vehicle->id();
+            const int groupId = SwarmUiSharedState::instance().vehicleGroup(vehicleId);
+            if (groupId < 1) {
+                continue;
+            }
+
+            VehicleAssignment assignment;
+            assignment.groupId = groupId;
+            assignment.leader = SwarmUiSharedState::instance().vehicleLeader(vehicleId);
+            nextAssignments.insert(vehicleId, assignment);
+        }
+    }
+
+    if (_assignments == nextAssignments) {
+        return;
+    }
+
+    _assignments = nextAssignments;
+    emit assignmentsChanged();
+    emit activeVehicleClusterStateChanged();
+}
+
+void ClusterManager::_refreshAndEmitIfChanged()
+{
+    _syncAssignmentsFromVehicles();
 }

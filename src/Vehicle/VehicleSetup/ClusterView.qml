@@ -78,7 +78,7 @@ Rectangle {
         }
 
         if (clusterManager.lastCommandSuccess) {
-            return qsTr("Cluster Action Sent")
+            return qsTr("Cluster Action Queued")
         }
 
         return clusterManager.lastCommandCode === ClusterManager.ResultNotImplemented
@@ -105,6 +105,54 @@ Rectangle {
 
     function _activeVehicleAssigned() {
         return clusterManager.activeVehicleGroup > 0
+    }
+
+    function _groupVehicles(groupId) {
+        if (!_vehicles) {
+            return []
+        }
+
+        const vehicles = []
+        for (let i = 0; i < _vehicles.count; i++) {
+            const vehicle = _vehicles.get(i)
+            if (vehicle && clusterManager.vehicleGroup(vehicle.id) === groupId) {
+                vehicles.push(vehicle)
+            }
+        }
+        return vehicles
+    }
+
+    function _groupActionEnabled(groupId, action) {
+        const vehicles = _groupVehicles(groupId)
+        for (let i = 0; i < vehicles.length; i++) {
+            const vehicle = vehicles[i]
+            const report = vehicle.healthAndArmingCheckReport
+            const canArm = !(report && report.supported && !report.canArm)
+            const canTakeoff = !(report && report.supported && !report.canTakeoff)
+            const canStartMission = !(report && report.supported && !report.canStartMission)
+
+            if (action === "arm" && !vehicle.armed && canArm) {
+                return true
+            }
+            if (action === "disarm" && vehicle.armed && !vehicle.flying) {
+                return true
+            }
+            if (action === "takeoff" && vehicle.armed && !vehicle.flying && vehicle.supports
+                    && (vehicle.supports.guidedTakeoffWithAltitude || vehicle.supports.guidedTakeoffWithoutAltitude) && canTakeoff) {
+                return true
+            }
+            if (action === "land" && vehicle.armed && vehicle.flying && vehicle.supports && vehicle.supports.guidedMode) {
+                return true
+            }
+            if (action === "pause" && vehicle.armed && vehicle.flying && vehicle.supports && vehicle.supports.pauseVehicle) {
+                return true
+            }
+            if (action === "resume" && vehicle.armed && vehicle.flying && canStartMission) {
+                return true
+            }
+        }
+
+        return false
     }
 
     function _countConnectedVehicles() {
@@ -802,42 +850,42 @@ Rectangle {
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Arm")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "arm")
                                             onClicked: clusterManager.armGroup(groupId)
                                         }
 
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Disarm")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "disarm")
                                             onClicked: clusterManager.disarmGroup(groupId)
                                         }
 
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Takeoff")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "takeoff")
                                             onClicked: clusterManager.takeoffGroup(groupId)
                                         }
 
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Land")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "land")
                                             onClicked: clusterManager.landGroup(groupId)
                                         }
 
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Pause")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "pause")
                                             onClicked: clusterManager.pauseGroup(groupId)
                                         }
 
                                         QGCButton {
                                             Layout.fillWidth: true
                                             text: qsTr("Resume")
-                                            enabled: hasAssignments
+                                            enabled: hasAssignments && root._groupActionEnabled(groupId, "resume")
                                             onClicked: clusterManager.resumeGroup(groupId)
                                         }
                                     }

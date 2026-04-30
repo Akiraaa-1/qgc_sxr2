@@ -80,8 +80,8 @@ option(QGC_ENABLE_QT_VIDEOSTREAMING "Enable QtMultimedia video backend" OFF)
 # MAVLink Configuration
 # ============================================================================
 
-set(QGC_MAVLINK_GIT_REPO "https://github.com/mavlink/mavlink.git" CACHE STRING "MAVLink repository URL")
-set(QGC_MAVLINK_GIT_TAG "b1fb5a1a32c41c6e46fea70600d626a0b5a8edbe" CACHE STRING "MAVLink repository commit/tag")
+set(QGC_MAVLINK_GIT_REPO "https://github.com/XABTFW/qgc_change_mavlink.git" CACHE STRING "MAVLink repository URL")
+set(QGC_MAVLINK_GIT_TAG "151bac84ae954d7022ef02437e786c1cfb3452b9" CACHE STRING "MAVLink repository commit/tag")
 set(QGC_MAVLINK_DIALECT "all" CACHE STRING "MAVLink dialect")
 set(QGC_MAVLINK_VERSION "2.0" CACHE STRING "MAVLink protocol version")
 

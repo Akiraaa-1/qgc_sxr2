@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 import QtQml.Models
 
 import QGroundControl
 import QGroundControl.Controls
+import QGroundControl.FactControls
 import QGroundControl.FlightMap
 import QGroundControl.FlyView
 import QGroundControl.VehicleSetup
@@ -16,17 +18,29 @@ Item {
     height: parent ? parent.height : 0
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-    property var _missionController: planControllerInternal ? planControllerInternal.missionController : null
     property var guidedController: guidedActionsController
     property var planController: planControllerInternal
-    property bool _isFullWindowItemDark: mapView ? mapView.isSatelliteMap : false
+    property var _missionController: planControllerInternal ? planControllerInternal.missionController : null
+    property bool _isFullWindowItemDark: (typeof mapView !== "undefined" && mapView) ? mapView.isSatelliteMap : false
     property bool _showFlightPath: true
     property string _vehicleSearchText: ""
     property int _vehicleStatusPageIndex: 0
     property bool _profilePanelExpanded: true
     property bool _profilePlaybackActive: false
     property real _profileProgress: 0
+    property real last_x: 0
     property real _profilePlaybackSpeed: 1
+    property bool _profileDebugLogging: false
+    property real _profileLiveDistance: 0
+    property real _profileLiveAltitude: NaN
+    property int _profileLivePointIndex: -1
+    property string _profileLiveSegment: ""
+    property bool _allowTakeoffSegment: true  // 控制是否允许进入起飞段
+    property bool _profileReturnSegmentActive: false
+    property real _profileReturnAltitudeSnapshot: NaN
+    property bool _vehicleIsFlying: _activeVehicle !== null && _activeVehicle.flying === true
+    property real _vehicleActualAltitude: NaN
+    property real _vehicleClimbRate: NaN
     property string _mapNavigationSelection: ""
     property var _profileMissionPoints: []
     property bool _trafficViewVisible: false
@@ -46,6 +60,8 @@ Item {
     property bool _profileVehicleTreeExpanded: true
     property bool _profileMissionTreeExpanded: true
     property var _vehicleStatusIconMap: ({})
+    property string _pendingFlightMode: ""
+    property int _pendingFlightModeVehicleId: -1
     property int _expandedClusterVehicleId: -1
     property var _clusterFeedbackByVehicleId: ({})
     property var _clusterPendingByVehicleId: ({})
@@ -55,8 +71,62 @@ Item {
         { "source": "/InstrumentValueIcons/airplane-outline.svg",  "label": qsTr("Airplane") }
     ]
     readonly property var _profileSiteGroups: root._buildProfileSiteGroups(root._profileMissionPoints)
-    on_ActiveVehicleChanged: root._profileMissionPoints = root._buildMissionProfilePoints()
-    Component.onCompleted: root._profileMissionPoints = root._buildMissionProfilePoints()
+    readonly property bool _flightModeConfirmationVisible: !!_activeVehicle
+                                                           && (_pendingFlightModeVehicleId === _activeVehicle.id)
+                                                           && (_pendingFlightMode !== "")
+                                                           && (_pendingFlightMode !== _activeVehicle.flightMode)
+
+    readonly property real _defaultRtlReturnAltMeters: 40  // 默认返航高度，可以在这里修改
+
+    FactPanelController { id: profileFactsController }
+
+    Component {
+        id: activeVehicleFactsControllerComponent
+
+        FactPanelController { }
+    }
+
+    Loader {
+        id: activeVehicleFactsLoader
+    }
+
+    property var activeVehicleFactsController: activeVehicleFactsLoader.item
+
+    function _rebuildActiveVehicleFactsController() {
+        activeVehicleFactsLoader.sourceComponent = null
+        if (_activeVehicle) {
+            activeVehicleFactsLoader.sourceComponent = activeVehicleFactsControllerComponent
+        }
+    }
+
+    on_ActiveVehicleChanged: {
+        if (flightModeMenu.opened) {
+            flightModeMenu.close()
+        }
+        root._rebuildActiveVehicleFactsController()
+        root._refreshVehicleTelemetry()
+        root._profileMissionPoints = root._buildMissionProfilePoints()
+        root._profileReturnAltitudeSnapshot = NaN
+        root._profileReturnSegmentActive = false
+        root._profileLiveDistance = 0
+        root._profileLiveAltitude = NaN
+        root._profileLivePointIndex = -1
+        root._profileLiveSegment = ""
+        root._updateProfileLiveState()
+        root._syncPendingFlightMode()
+    }
+    Component.onCompleted: {
+        root._rebuildActiveVehicleFactsController()
+        root._refreshVehicleTelemetry()
+        root._profileMissionPoints = root._buildMissionProfilePoints()
+        root._profileReturnAltitudeSnapshot = NaN
+        root._profileReturnSegmentActive = false
+        root._profileLiveDistance = 0
+        root._profileLiveAltitude = NaN
+        root._profileLivePointIndex = -1
+        root._profileLiveSegment = ""
+        root._updateProfileLiveState()
+    }
 
     readonly property real _margin: ScreenTools.defaultFontPixelHeight * 0.45
     readonly property real _radius: ScreenTools.defaultFontPixelHeight * 0.35
@@ -97,6 +167,215 @@ Item {
         return Math.max(_profilePanelMinExpandedHeight, Math.min(_profilePanelMaxExpandedHeight, safeValue))
     }
     function _hasFactValue(fact) { return fact && !isNaN(Number(fact.rawValue)) }
+    function _isGuidedPanelActionAvailable(action) {
+        if (!root._activeVehicle || !guidedActionsController) {
+            return false
+        }
+
+        switch (action) {
+        case guidedActionsController.actionRTL:
+            return root._activeVehicle.armed
+                && root._activeVehicle.flying
+                && root._activeVehicle.supports.guidedMode
+                && root._activeVehicle.flightMode !== root._activeVehicle.rtlFlightMode
+                && root._activeVehicle.flightMode !== root._activeVehicle.smartRTLFlightMode
+        case guidedActionsController.actionLand:
+            return root._activeVehicle.armed
+                && root._activeVehicle.supports.guidedMode
+                && !root._activeVehicle.fixedWing
+                && root._activeVehicle.flightMode !== root._activeVehicle.landFlightMode
+        case guidedActionsController.actionEmergencyStop:
+            return root._activeVehicle.armed && root._activeVehicle.flying
+        default:
+            return true
+        }
+    }
+    function _guidedPanelActionTitle(action) {
+        switch (action) {
+        case guidedActionsController.actionRTL:
+            return guidedActionsController.rtlTitle
+        case guidedActionsController.actionLand:
+            return guidedActionsController.landTitle
+        case guidedActionsController.actionEmergencyStop:
+            return guidedActionsController.emergencyStopTitle
+        default:
+            return qsTr("Confirm")
+        }
+    }
+    function _guidedPanelActionMessage(action) {
+        switch (action) {
+        case guidedActionsController.actionRTL:
+            return guidedActionsController.rtlMessage
+        case guidedActionsController.actionLand:
+            return guidedActionsController.landMessage
+        case guidedActionsController.actionEmergencyStop:
+            return guidedActionsController.emergencyStopMessage
+        default:
+            return qsTr("Execute the selected action?")
+        }
+    }
+    function _guidedPanelActionUnavailableMessage(action) {
+        switch (action) {
+        case guidedActionsController.actionRTL:
+            return qsTr("Return/RTL is only available when the vehicle is armed, flying, and supports guided mode.")
+        case guidedActionsController.actionLand:
+            return qsTr("Land is only available when the vehicle is armed and supports guided landing.")
+        case guidedActionsController.actionEmergencyStop:
+            return qsTr("Emergency Stop is only available when the vehicle is armed and flying.")
+        default:
+            return qsTr("This action is currently unavailable.")
+        }
+    }
+    function _triggerGuidedPanelAction(action) {
+        if (!root._activeVehicle || !guidedActionsController) {
+            return
+        }
+
+        if (!root._isGuidedPanelActionAvailable(action)) {
+            QGroundControl.showMessageDialog(
+                root,
+                root._guidedPanelActionTitle(action),
+                root._guidedPanelActionUnavailableMessage(action))
+            return
+        }
+
+        QGroundControl.showMessageDialog(
+            root,
+            root._guidedPanelActionTitle(action),
+            root._guidedPanelActionMessage(action),
+            Dialog.Yes | Dialog.Cancel,
+            function() { guidedActionsController.executeAction(action, null, 0, false) })
+    }
+    function _requestFlightModeChange(flightMode) {
+        const vehicle = root._activeVehicle
+        if (!vehicle || !vehicle.flightModeSetAvailable) {
+            return
+        }
+
+        const targetMode = flightMode === undefined || flightMode === null ? "" : ("" + flightMode)
+        const currentMode = vehicle.flightMode === undefined || vehicle.flightMode === null ? "" : ("" + vehicle.flightMode)
+        if (targetMode === "" || targetMode === currentMode) {
+            return
+        }
+
+        QGroundControl.showMessageDialog(
+            root,
+            qsTr("Change Flight Mode"),
+            qsTr("Change flight mode to %1?").arg(targetMode),
+            Dialog.Yes | Dialog.Cancel,
+            function() {
+                if (vehicle) {
+                    vehicle.flightMode = targetMode
+                }
+            })
+    }
+    function _refreshVehicleTelemetry() {
+        const altitudeFact = _activeVehicle ? _activeVehicle.altitudeRelative : null
+        const climbRateFact = _activeVehicle ? _activeVehicle.climbRate : null
+        const rawAltitude = altitudeFact ? Number(altitudeFact.rawValue) : NaN
+        const rawClimbRate = climbRateFact ? Number(climbRateFact.rawValue) : NaN
+
+        root._vehicleActualAltitude = isNaN(rawAltitude) ? NaN : rawAltitude
+        root._vehicleClimbRate = isNaN(rawClimbRate) ? NaN : rawClimbRate
+    }
+    function _factMetersValue(fact, parameterName = "") {
+        if (!_hasFactValue(fact)) {
+            return NaN
+        }
+
+        const rawValue = Number(fact.rawValue)
+        if (isNaN(rawValue)) {
+            return NaN
+        }
+
+        if (parameterName === "RTL_ALT") {
+            // ArduPilot RTL_ALT is in centimeters
+            return rawValue / 100
+        }
+        if (parameterName === "RTL_ALT_M") {
+            const rtlAltIsMeters = activeVehicleFactsController ? activeVehicleFactsController.parameterExists(-1, "noremap.RTL_ALT_M") : false
+            return rtlAltIsMeters ? rawValue : (rawValue / 100)
+        }
+        if (parameterName === "RTL_ALTITUDE") {
+            return rawValue < 0 ? NaN : (rawValue / 100)
+        }
+        return rawValue
+    }
+    function _plannedReturnAltitudeMeters(fallbackAltitude = NaN, returnDistance = NaN) {
+        const lastAltitude = Number(fallbackAltitude)
+        const safeLastAltitude = isNaN(lastAltitude) ? NaN : Math.max(0, lastAltitude)
+        const px4Firmware = !!(_activeVehicle && _activeVehicle.px4Firmware)
+        const apmFirmware = !!(_activeVehicle && _activeVehicle.apmFirmware)
+        const multiRotor = !!(_activeVehicle && _activeVehicle.multiRotor)
+        const fixedWing = !!(_activeVehicle && _activeVehicle.fixedWing)
+
+        if (px4Firmware) {
+            // 使用 activeVehicleFactsController 来获取当前 vehicle 的参数
+            let returnAltMeters = NaN
+
+            if (activeVehicleFactsController) {
+                const returnAltFact = activeVehicleFactsController.getParameterFact(-1, "RTL_RETURN_ALT", false)
+                if (returnAltFact && _hasFactValue(returnAltFact)) {
+                    returnAltMeters = Number(returnAltFact.rawValue)
+                }
+            }
+
+            const thresholdMeters = _px4RtlReturnDistanceThresholdMeters()
+            const isNearHome = !isNaN(Number(returnDistance)) && Number(returnDistance) <= thresholdMeters
+
+            // PX4 keeps the RTL climb at current altitude when the return point is already near home.
+            if (isNearHome) {
+                if (!isNaN(safeLastAltitude)) {
+                    return safeLastAltitude
+                }
+                const result = !isNaN(returnAltMeters) ? Math.max(0, returnAltMeters) : 0
+                return result
+            }
+
+            // When far from home, always climb to RTL_RETURN_ALT or higher
+            if (!isNaN(returnAltMeters)) {
+                const result = !isNaN(safeLastAltitude)
+                    ? Math.max(safeLastAltitude, returnAltMeters)
+                    : Math.max(0, returnAltMeters)
+                return result
+            }
+
+            // 如果仍然无法获取参数，返回当前高度
+            const result = !isNaN(safeLastAltitude) ? safeLastAltitude : 0
+            return result
+        }
+
+        if (apmFirmware && multiRotor) {
+            const rtlAltFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_ALT", false) : null
+            const rtlAltMeters = _factMetersValue(rtlAltFact, "RTL_ALT")
+
+            // ArduPilot多旋翼：如果RTL_ALT > 0，则爬升到该高度或当前高度（取较大值）
+            if (!isNaN(rtlAltMeters) && rtlAltMeters > 0) {
+                const result = !isNaN(safeLastAltitude)
+                    ? Math.max(safeLastAltitude, rtlAltMeters)
+                    : rtlAltMeters
+                return result
+            }
+            const result = !isNaN(safeLastAltitude) ? safeLastAltitude : 0
+            return result
+        }
+
+        if (apmFirmware && fixedWing) {
+            const rtlAltFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_ALTITUDE", false) : null
+            const rtlAltMeters = _factMetersValue(rtlAltFact, "RTL_ALTITUDE")
+            if (!isNaN(rtlAltMeters)) {
+                const result = !isNaN(safeLastAltitude)
+                    ? Math.max(safeLastAltitude, rtlAltMeters)
+                    : rtlAltMeters
+                return result
+            }
+            const result = !isNaN(safeLastAltitude) ? safeLastAltitude : 0
+            return result
+        }
+
+        const fallback = !isNaN(safeLastAltitude) ? safeLastAltitude : 0
+        return fallback
+    }
     function _factText(fact, fallback = "--", includeUnits = true) {
         if (!_hasFactValue(fact)) { return fallback }
         const units = includeUnits && fact.units !== "" ? (" " + fact.units) : ""
@@ -257,6 +536,49 @@ Item {
             ? qsTr("Battery %1%2").arg(battery.percentRemaining.valueString).arg(battery.percentRemaining.units)
             : qsTr("Battery --")
     }
+    function _clearPendingFlightMode() {
+        _pendingFlightMode = ""
+        _pendingFlightModeVehicleId = -1
+    }
+    function _setPendingFlightMode(flightMode) {
+        if (!_activeVehicle || !flightMode) {
+            _clearPendingFlightMode()
+            return
+        }
+        if (!_activeVehicle.flightModeSetAvailable || !_activeVehicle.flightModes || _activeVehicle.flightModes.indexOf(flightMode) === -1) {
+            _clearPendingFlightMode()
+            return
+        }
+        if (flightMode === _activeVehicle.flightMode) {
+            _clearPendingFlightMode()
+            return
+        }
+        _pendingFlightMode = flightMode
+        _pendingFlightModeVehicleId = _activeVehicle.id
+    }
+    function _confirmPendingFlightMode() {
+        if (!_flightModeConfirmationVisible || !_activeVehicle) {
+            return
+        }
+        const targetFlightMode = _pendingFlightMode
+        _activeVehicle.flightMode = targetFlightMode
+        if (_activeVehicle.flightMode === targetFlightMode) {
+            _clearPendingFlightMode()
+        }
+    }
+    function _syncPendingFlightMode() {
+        if (!_activeVehicle) {
+            _clearPendingFlightMode()
+            return
+        }
+        if (_pendingFlightModeVehicleId !== _activeVehicle.id) {
+            _clearPendingFlightMode()
+            return
+        }
+        if (_pendingFlightMode === "" || _pendingFlightMode === _activeVehicle.flightMode) {
+            _clearPendingFlightMode()
+        }
+    }
     function _vehicleParameterManager(vehicle) {
         return vehicle ? vehicle.parameterManager : null
     }
@@ -334,18 +656,30 @@ Item {
         const value = _clusterPendingByVehicleId["" + vehicle.id]
         return value === undefined ? null : value
     }
-    function _setClusterPending(vehicle, paramName, expectedValue, successText, failureText) {
+    function _setClusterPendingValues(vehicle, expectedValues, successText, failureText) {
         if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
             return
         }
+
+        const normalizedExpectedValues = {}
+        for (const paramName in expectedValues) {
+            if (expectedValues[paramName] !== undefined) {
+                normalizedExpectedValues[paramName] = expectedValues[paramName]
+            }
+        }
+
         const nextMap = Object.assign({}, _clusterPendingByVehicleId)
         nextMap["" + vehicle.id] = {
-            "paramName": paramName,
-            "expectedValue": expectedValue,
+            "expectedValues": normalizedExpectedValues,
             "successText": successText,
             "failureText": failureText
         }
         _clusterPendingByVehicleId = nextMap
+    }
+    function _setClusterPending(vehicle, paramName, expectedValue, successText, failureText) {
+        const expectedValues = {}
+        expectedValues[paramName] = expectedValue
+        _setClusterPendingValues(vehicle, expectedValues, successText, failureText)
     }
     function _clearClusterPending(vehicle) {
         if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
@@ -359,17 +693,87 @@ Item {
         delete nextMap[key]
         _clusterPendingByVehicleId = nextMap
     }
-    function _handleClusterParamSetSuccess(vehicle, componentId, paramName) {
-        const pending = _clusterPending(vehicle)
-        if (!pending || pending.paramName !== paramName) {
+    function _clearClusterVehicleState(vehicle) {
+        if (!vehicle || vehicle.id === undefined || vehicle.id === null) {
             return
         }
-        _setClusterFeedback(vehicle, pending.successText)
-        _clearClusterPending(vehicle)
+
+        const key = "" + vehicle.id
+
+        if (_expandedClusterVehicleId === vehicle.id) {
+            _expandedClusterVehicleId = -1
+        }
+
+        if (_clusterFeedbackByVehicleId[key] !== undefined) {
+            const nextFeedbackMap = Object.assign({}, _clusterFeedbackByVehicleId)
+            delete nextFeedbackMap[key]
+            _clusterFeedbackByVehicleId = nextFeedbackMap
+        }
+
+        if (_clusterPendingByVehicleId[key] !== undefined) {
+            const nextPendingMap = Object.assign({}, _clusterPendingByVehicleId)
+            delete nextPendingMap[key]
+            _clusterPendingByVehicleId = nextPendingMap
+        }
+    }
+    function _clusterPendingTracksParam(pending, paramName) {
+        return !!(pending && pending.expectedValues && pending.expectedValues[paramName] !== undefined)
+    }
+    function _clusterExpectedValueMatches(vehicle, paramName, expectedValue) {
+        const fact = _clusterFact(vehicle, paramName)
+        if (!fact) {
+            return false
+        }
+
+        const currentValue = Number(fact.rawValue)
+        const numericExpectedValue = Number(expectedValue)
+        if (!isNaN(currentValue) && !isNaN(numericExpectedValue)) {
+            return currentValue === numericExpectedValue
+        }
+
+        return ("" + fact.rawValue) === ("" + expectedValue)
+    }
+    function _clusterAllPendingValuesMatch(vehicle, pending) {
+        if (!pending || !pending.expectedValues) {
+            return false
+        }
+
+        for (const paramName in pending.expectedValues) {
+            if (!_clusterExpectedValueMatches(vehicle, paramName, pending.expectedValues[paramName])) {
+                return false
+            }
+        }
+
+        return true
+    }
+    function _clusterVehiclesInGroup(groupId, excludedVehicleId = -1) {
+        const vehicles = QGroundControl.multiVehicleManager.vehicles
+        const groupVehicles = []
+        if (!vehicles || groupId < 1) {
+            return groupVehicles
+        }
+
+        for (let i = 0; i < vehicles.count; i++) {
+            const vehicle = vehicles.get(i)
+            if (!vehicle || vehicle.id === undefined || vehicle.id === null || vehicle.id === excludedVehicleId) {
+                continue
+            }
+            if (_clusterGroup(vehicle) === groupId) {
+                groupVehicles.push(vehicle)
+            }
+        }
+
+        return groupVehicles
+    }
+    function _handleClusterParamSetSuccess(vehicle, componentId, paramName) {
+        const pending = _clusterPending(vehicle)
+        if (!pending || !_clusterPendingTracksParam(pending, paramName)) {
+            return
+        }
     }
     function _handleClusterParamSetFailure(vehicle, componentId, paramName) {
         const pending = _clusterPending(vehicle)
-        if (!pending || pending.paramName !== paramName) {
+        if (!pending || !_clusterPendingTracksParam(pending, paramName)) {
             return
         }
         _setClusterFeedback(vehicle, pending.failureText)
@@ -380,17 +784,7 @@ Item {
         if (!pending || pendingWrites) {
             return
         }
-
-        const fact = _clusterFact(vehicle, pending.paramName)
-        if (!fact) {
-            _setClusterFeedback(vehicle, pending.failureText)
-            _clearClusterPending(vehicle)
-            return
-        }
-
-        const currentValue = Number(fact.rawValue)
-        const expectedValue = Number(pending.expectedValue)
-        if (!isNaN(currentValue) && !isNaN(expectedValue) && currentValue === expectedValue) {
+        if (_clusterAllPendingValuesMatch(vehicle, pending)) {
             _setClusterFeedback(vehicle, pending.successText)
         } else {
             _setClusterFeedback(vehicle, pending.failureText)
@@ -409,16 +803,21 @@ Item {
             _setClusterFeedback(vehicle, qsTr("SWARM_GROUP_ID unavailable"))
             return
         }
-        _setClusterPending(
+        const expectedValues = {
+            "SWARM_GROUP_ID": groupId
+        }
+        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (leaderFact) {
+            expectedValues["SWARM_SET_LEADER"] = 0
+        }
+        _setClusterPendingValues(
             vehicle,
-            "SWARM_GROUP_ID",
-            groupId,
+            expectedValues,
             qsTr("Group %1 applied").arg(groupId),
             qsTr("Failed to set Group %1").arg(groupId)
         )
         _setClusterFeedback(vehicle, qsTr("Sending Group %1...").arg(groupId))
         groupFact.setRawValue(groupId)
-        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
         if (leaderFact) {
             leaderFact.setRawValue(0)
         }
@@ -429,26 +828,61 @@ Item {
             _setClusterFeedback(vehicle, qsTr("SWARM_GROUP_ID unavailable"))
             return
         }
-        _setClusterPending(
+        const expectedValues = {
+            "SWARM_GROUP_ID": 0
+        }
+        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
+        if (leaderFact) {
+            expectedValues["SWARM_SET_LEADER"] = 0
+        }
+        _setClusterPendingValues(
             vehicle,
-            "SWARM_GROUP_ID",
-            0,
+            expectedValues,
             qsTr("Cluster assignment cleared"),
             qsTr("Failed to clear cluster assignment")
         )
         _setClusterFeedback(vehicle, qsTr("Clearing cluster assignment..."))
         groupFact.setRawValue(0)
-        const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
         if (leaderFact) {
             leaderFact.setRawValue(0)
         }
     }
     function _setClusterLeader(vehicle, leader) {
+        const groupId = _clusterGroup(vehicle)
+        if (leader && groupId < 1) {
+            _setClusterFeedback(vehicle, qsTr("Assign a group before setting leader"))
+            return
+        }
+
         const leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER")
         if (!leaderFact) {
             _setClusterFeedback(vehicle, qsTr("SWARM_SET_LEADER unavailable"))
             return
         }
+
+        if (leader) {
+            const peerVehicles = _clusterVehiclesInGroup(groupId, vehicle.id)
+            for (let i = 0; i < peerVehicles.length; i++) {
+                const peerVehicle = peerVehicles[i]
+                if (!_clusterLeader(peerVehicle)) {
+                    continue
+                }
+
+                const peerLeaderFact = _clusterFact(peerVehicle, "SWARM_SET_LEADER")
+                if (!peerLeaderFact) {
+                    continue
+                }
+
+                _setClusterPending(peerVehicle,
+                                   "SWARM_SET_LEADER",
+                                   0,
+                                   qsTr("Leader role cleared"),
+                                   qsTr("Failed to clear leader role"))
+                _setClusterFeedback(peerVehicle, qsTr("Clearing leader role..."))
+                peerLeaderFact.setRawValue(0)
+            }
+        }
+
         _setClusterPending(
             vehicle,
             "SWARM_SET_LEADER",
@@ -459,39 +893,311 @@ Item {
         _setClusterFeedback(vehicle, leader ? qsTr("Setting leader role...") : qsTr("Clearing leader role..."))
         leaderFact.setRawValue(leader ? 1 : 0)
     }
+    function _debugNumber(value) {
+        const numericValue = Number(value)
+        return isNaN(numericValue) ? "NaN" : numericValue.toFixed(2)
+    }
+    function _debugCoordinate(coord) {
+        if (!coord || !coord.isValid) {
+            return "invalid"
+        }
+        return coord.latitude.toFixed(6) + "," + coord.longitude.toFixed(6) + "," + _debugNumber(coord.altitude)
+    }
+    function _vehicleRelativeAltitudeMeters() { return root._vehicleActualAltitude }
+    function _coordinatesClose(coord1, coord2, thresholdMeters = 3) {
+        if (!coord1 || !coord2 || !coord1.isValid || !coord2.isValid) {
+            return false
+        }
+        return Number(coord1.distanceTo(coord2)) <= Number(thresholdMeters)
+    }
+    function _isVehicleInReturnMode() {
+        if (!_activeVehicle) {
+            return false
+        }
+
+        const modeText = (_activeVehicle.flightMode === undefined || _activeVehicle.flightMode === null)
+            ? ""
+            : ("" + _activeVehicle.flightMode).toLowerCase().trim()
+        if (modeText === "") {
+            return false
+        }
+
+        const returnModes = [_activeVehicle.rtlFlightMode, _activeVehicle.smartRTLFlightMode]
+        for (let i = 0; i < returnModes.length; i++) {
+            const returnMode = (returnModes[i] === undefined || returnModes[i] === null)
+                ? ""
+                : ("" + returnModes[i]).toLowerCase().trim()
+            if (returnMode !== "" && modeText === returnMode) {
+                return true
+            }
+        }
+
+        return modeText.indexOf("rtl") !== -1
+            || modeText.indexOf("return") !== -1
+            || modeText.indexOf("safe recovery") !== -1
+    }
+    function _isVehicleInLandingMode() {
+        if (!_activeVehicle) {
+            return false
+        }
+
+        const modeText = (_activeVehicle.flightMode === undefined || _activeVehicle.flightMode === null)
+            ? ""
+            : ("" + _activeVehicle.flightMode).toLowerCase().trim()
+        if (modeText === "") {
+            return false
+        }
+
+        const landMode = (_activeVehicle.landFlightMode === undefined || _activeVehicle.landFlightMode === null)
+            ? ""
+            : ("" + _activeVehicle.landFlightMode).toLowerCase().trim()
+        if (landMode !== "" && modeText === landMode) {
+            return true
+        }
+
+        return modeText.indexOf("land") !== -1
+    }
+    function _shouldTrackReturnProfileSegment(landingPositionValid, liveClimbRate = NaN) {
+        if (_isVehicleInReturnMode()) {
+            return true
+        }
+        if (_isVehicleInLandingMode()) {
+            return true
+        }
+        return !!(landingPositionValid
+            && (root._profileLiveSegment === "return-climb" || root._profileLiveSegment === "landing"))
+    }
+    function _missionHomeCoordinate() {
+        if (_missionController && _missionController.plannedHomePosition && _missionController.plannedHomePosition.isValid) {
+            return _missionController.plannedHomePosition
+        }
+        if (_activeVehicle && _activeVehicle.homePosition && _activeVehicle.homePosition.isValid) {
+            return _activeVehicle.homePosition
+        }
+        return null
+    }
+    function _missionHomeAltitude() {
+        const homeCoord = _missionHomeCoordinate()
+        const homeAltitude = homeCoord && homeCoord.isValid ? Number(homeCoord.altitude) : NaN
+        return isNaN(homeAltitude) ? NaN : homeAltitude
+    }
+    function _profileAltitudeFromAMSL(amslAltitude) {
+        const numericAltitude = Number(amslAltitude)
+        if (isNaN(numericAltitude)) {
+            return NaN
+        }
+
+        const homeAltitude = _missionHomeAltitude()
+        return isNaN(homeAltitude) ? numericAltitude : (numericAltitude - homeAltitude)
+    }
+    function _px4RtlReturnDistanceThresholdMeters() {
+        const rtlMinDistFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_MIN_DIST", false) : null
+        const rtlMinDistMeters = _factMetersValue(rtlMinDistFact, "RTL_MIN_DIST")
+        return isNaN(rtlMinDistMeters) ? 10 : Math.max(0, rtlMinDistMeters)
+    }
+    function _missionProfileItemData(item, fallbackLabel = null) {
+        if (!item || item.homePosition === true || item.specifiesCoordinate !== true || item.isStandaloneCoordinate === true) {
+            return null
+        }
+
+        const isSimpleItem = item.isSimpleItem === true
+        const coord = item.exitCoordinate && item.exitCoordinate.isValid
+            ? item.exitCoordinate
+            : (item.coordinate && item.coordinate.isValid ? item.coordinate : null)
+        if (!coord) {
+            return null
+        }
+
+        const altitude = !isNaN(Number(item.amslExitAlt))
+            ? _profileAltitudeFromAMSL(item.amslExitAlt)
+            : (!isNaN(Number(coord.altitude))
+                ? Number(coord.altitude)
+                : ((item.altitude && _hasFactValue(item.altitude)) ? Number(item.altitude.rawValue) : NaN))
+        if (isNaN(altitude)) {
+            return null
+        }
+
+        const itemDistanceFromStart = Number(item.distanceFromStart)
+        const itemComplexDistance = (!isSimpleItem && !isNaN(Number(item.complexDistance)))
+            ? Number(item.complexDistance)
+            : 0
+        const sequence = (item.sequenceNumber !== undefined && item.sequenceNumber !== null)
+            ? Number(item.sequenceNumber)
+            : fallbackLabel
+
+        return {
+            "label": sequence,
+            "distance": !isNaN(itemDistanceFromStart) ? (itemDistanceFromStart + itemComplexDistance) : NaN,
+            "altitude": altitude,
+            "coordinate": coord
+        }
+    }
+    function _generatedTakeoffProfilePoint(homeCoord, visualItems) {
+        if (!homeCoord || !homeCoord.isValid || !visualItems || visualItems.count <= 0) {
+            return null
+        }
+
+        for (let i = 0; i < visualItems.count; i++) {
+            const pointData = _missionProfileItemData(visualItems.get(i), i)
+            if (!pointData) {
+                continue
+            }
+            if (!pointData.coordinate || !pointData.coordinate.isValid) {
+                continue
+            }
+
+            const pointAltitude = Number(pointData.altitude)
+            if (isNaN(pointAltitude) || pointAltitude <= 0.1) {
+                return null
+            }
+
+            if (_coordinatesClose(pointData.coordinate, homeCoord, 1.5)) {
+                return null
+            }
+
+            return {
+                "label": "0",
+                "distance": 0,
+                "altitude": pointAltitude,
+                "coordinate": homeCoord
+            }
+        }
+
+        return null
+    }
+    function _missionReturnAnchor() {
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        const visualItems = missionController ? missionController.visualItems : null
+        if (!visualItems || visualItems.count <= 1) {
+            return null
+        }
+
+        for (let i = visualItems.count - 1; i >= 1; i--) {
+            const pointData = _missionProfileItemData(visualItems.get(i), i)
+            if (!pointData) {
+                continue
+            }
+
+            return {
+                "index": i,
+                "coordinate": pointData.coordinate,
+                "altitude": pointData.altitude
+            }
+        }
+
+        return null
+    }
+    function _appendReturnProfilePoints(points, distance, returnAnchor = null) {
+        if (!points || points.length === 0) {
+            return distance
+        }
+
+        const homeCoord = _missionHomeCoordinate()
+        const anchor = returnAnchor || _missionReturnAnchor()
+        const anchorCoordinate = anchor && anchor.coordinate && anchor.coordinate.isValid
+            ? anchor.coordinate
+            : null
+        const anchorAltitude = anchor && !isNaN(Number(anchor.altitude))
+            ? Number(anchor.altitude)
+            : NaN
+        const lastPoint = points[points.length - 1]
+        const sourceCoordinate = anchorCoordinate || (lastPoint && lastPoint.coordinate && lastPoint.coordinate.isValid ? lastPoint.coordinate : null)
+        const sourceAltitude = !isNaN(anchorAltitude)
+            ? anchorAltitude
+            : (lastPoint ? Number(lastPoint.altitude) : NaN)
+        if (!homeCoord || !homeCoord.isValid || !sourceCoordinate || !sourceCoordinate.isValid) {
+            return distance
+        }
+
+        const returnDistance = Number(sourceCoordinate.distanceTo(homeCoord))
+        if (isNaN(returnDistance) || returnDistance <= 0.5) {
+            return distance
+        }
+
+        root._profileReturnAltitudeSnapshot = root._plannedReturnAltitudeMeters(sourceAltitude, returnDistance)
+        const returnAltitude = isNaN(root._profileReturnAltitudeSnapshot)
+            ? (isNaN(sourceAltitude) ? 0 : sourceAltitude)
+            : Number(root._profileReturnAltitudeSnapshot)
+
+        // Add a pure climb leg at the last mission coordinate so RTL renders as climb -> cruise -> descend.
+        points.push({
+            "label": "",
+            "distance": distance,
+            "altitude": returnAltitude,
+            "coordinate": sourceCoordinate,
+            "profileGenerated": true,
+            "profileHiddenMarker": true
+        })
+
+        distance += returnDistance
+
+        points.push({
+            "label": "R",
+            "distance": distance,
+            "altitude": returnAltitude,
+            "coordinate": homeCoord,
+            "profileGenerated": true
+        })
+
+        points.push({
+            "label": "H",
+            "distance": distance,
+            "altitude": 0,
+            "coordinate": homeCoord,
+            "profileGenerated": true
+        })
+
+        return distance
+    }
     function _buildMissionProfilePoints() {
         const points = []
+        root._profileReturnAltitudeSnapshot = NaN
         const missionController = planControllerInternal ? planControllerInternal.missionController : null
         const visualItems = missionController ? missionController.visualItems : null
         let distance = 0
         let previousCoord = null
 
+        // Add an explicit ground-origin point at home so takeoff can render as a climb from 0 m.
+        const homeCoord = _missionHomeCoordinate()
+        if (homeCoord && homeCoord.isValid) {
+            points.push({
+                "label": "",
+                "distance": 0,
+                "altitude": 0,
+                "coordinate": homeCoord,
+                "profileHiddenMarker": true,
+                "profileGroundOrigin": true
+            })
+            previousCoord = homeCoord
+        }
+
+        const generatedTakeoffPoint = _generatedTakeoffProfilePoint(homeCoord, visualItems)
+        if (generatedTakeoffPoint) {
+            points.push(generatedTakeoffPoint)
+        }
+
         if (visualItems && visualItems.count > 0) {
             for (let i = 0; i < visualItems.count; i++) {
-                const item = visualItems.get(i)
-                if (!item || !item.coordinate || !item.coordinate.isValid) {
-                    continue
-                }
-                const coord = item.coordinate
-                const altitude = !isNaN(Number(coord.altitude))
-                    ? Number(coord.altitude)
-                    : ((item.altitude && _hasFactValue(item.altitude)) ? Number(item.altitude.rawValue) : NaN)
-                if (isNaN(altitude)) {
+                const pointData = _missionProfileItemData(visualItems.get(i), points.length + 1)
+                if (!pointData) {
                     continue
                 }
 
-                if (previousCoord && previousCoord.isValid) {
-                    distance += previousCoord.distanceTo(coord)
+                const coord = pointData.coordinate
+                let pointDistance = Number(pointData.distance)
+                if (isNaN(pointDistance)) {
+                    if (previousCoord && previousCoord.isValid) {
+                        distance += previousCoord.distanceTo(coord)
+                    }
+                    pointDistance = distance
                 }
                 previousCoord = coord
+                distance = pointDistance
 
-                const sequence = (item.sequenceNumber !== undefined && item.sequenceNumber !== null)
-                    ? Number(item.sequenceNumber)
-                    : points.length + 1
                 points.push({
-                    "label": sequence,
-                    "distance": distance,
-                    "altitude": altitude,
+                    "label": pointData.label,
+                    "distance": pointDistance,
+                    "altitude": pointData.altitude,
                     "coordinate": coord
                 })
             }
@@ -513,11 +1219,14 @@ Item {
                 points.push({
                     "label": points.length + 1,
                     "distance": distance,
-                    "altitude": Number(coord.altitude),
+                    "altitude": _profileAltitudeFromAMSL(coord.altitude),
                     "coordinate": coord
                 })
             }
         }
+
+        const returnSourcePoint = points.length > 0 ? points[points.length - 1] : null
+        distance = _appendReturnProfilePoints(points, distance, returnSourcePoint)
 
         if (points.length < 2) {
             const fallbackAlt = (_activeVehicle && _hasFactValue(_activeVehicle.altitudeRelative))
@@ -537,7 +1246,7 @@ Item {
 
         return points
     }
-    function _profileStats(points) {
+    function _profileStats(points, liveAltitude = NaN) {
         if (!points || points.length === 0) {
             return { "minAlt": 0, "maxAlt": 40, "totalDistance": 5000 }
         }
@@ -547,6 +1256,13 @@ Item {
             const alt = Number(points[i].altitude)
             minAlt = Math.min(minAlt, alt)
             maxAlt = Math.max(maxAlt, alt)
+        }
+        if (!isNaN(Number(liveAltitude))) {
+            minAlt = Math.min(minAlt, Number(liveAltitude))
+            maxAlt = Math.max(maxAlt, Number(liveAltitude))
+        }
+        if (!isNaN(root._profileReturnAltitudeSnapshot)) {
+            maxAlt = Math.max(maxAlt, Number(root._profileReturnAltitudeSnapshot))
         }
         if (Math.abs(maxAlt - minAlt) < 6) {
             maxAlt += 3
@@ -742,6 +1458,515 @@ Item {
     function _profileElapsedSeconds(points, progress) {
         return _profileTotalDurationSeconds(points) * Math.max(0, Math.min(1, Number(progress)))
     }
+    function _profileAltitudeAtDistance(points, distance) {
+        if (!points || points.length === 0) {
+            return NaN
+        }
+        const targetDistance = Math.max(0, Number(distance))
+        if (points.length === 1 || targetDistance <= Number(points[0].distance)) {
+            return Number(points[0].altitude)
+        }
+        for (let i = 1; i < points.length; i++) {
+            const prevPoint = points[i - 1]
+            const nextPoint = points[i]
+            if (targetDistance <= Number(nextPoint.distance)) {
+                const span = Math.max(Number(nextPoint.distance) - Number(prevPoint.distance), 1)
+                const t = (targetDistance - Number(prevPoint.distance)) / span
+                return Number(prevPoint.altitude) + ((Number(nextPoint.altitude) - Number(prevPoint.altitude)) * t)
+            }
+        }
+        return Number(points[points.length - 1].altitude)
+    }
+    function _profilePointIndexAtDistance(points, distance, altitude = NaN) {
+        if (!points || points.length === 0) {
+            return -1
+        }
+
+        const numericDistance = Number(distance)
+        const targetDistance = isNaN(numericDistance) ? 0 : Math.max(0, numericDistance)
+        let bestIndex = -1
+        let bestDistanceDelta = Infinity
+        let bestAltitudeDelta = Infinity
+
+        for (let i = 0; i < points.length; i++) {
+            if (points[i].profileHiddenMarker === true) {
+                continue
+            }
+            const pointDistanceDelta = Math.abs(Number(points[i].distance) - targetDistance)
+            const pointAltitudeDelta = isNaN(altitude) ? 0 : Math.abs(Number(points[i].altitude) - Number(altitude))
+            if (pointDistanceDelta < (bestDistanceDelta - 0.001)) {
+                bestIndex = i
+                bestDistanceDelta = pointDistanceDelta
+                bestAltitudeDelta = pointAltitudeDelta
+            } else if (Math.abs(pointDistanceDelta - bestDistanceDelta) <= 0.001 && pointAltitudeDelta < bestAltitudeDelta) {
+                bestIndex = i
+                bestAltitudeDelta = pointAltitudeDelta
+            }
+        }
+
+        return bestIndex
+    }
+    function _resolvedProfilePointIndex(points, preferredIndex, distance, altitude = NaN) {
+        if (!points || points.length === 0) {
+            return -1
+        }
+
+        const numericPreferredIndex = Number(preferredIndex)
+        if (!isNaN(numericPreferredIndex)
+                && numericPreferredIndex >= 0
+                && numericPreferredIndex < points.length
+                && points[numericPreferredIndex].profileHiddenMarker !== true) {
+            return numericPreferredIndex
+        }
+
+        return _profilePointIndexAtDistance(points, distance, altitude)
+    }
+    function _verticalSegmentLivePosition(points, fromIndex, toIndex, liveAltitude, vehicleCoord, coordThreshold = 50) {
+        //console.log("=== _verticalSegmentLivePosition ===")
+       // console.log("fromIndex:", fromIndex, "toIndex:", toIndex, "liveAltitude:", liveAltitude)
+
+        if (!points || fromIndex < 0 || toIndex >= points.length || isNaN(liveAltitude)) {
+            //console.log("Invalid input parameters")
+            return { "valid": false }
+        }
+
+        const fromPoint = points[fromIndex]
+        const toPoint = points[toIndex]
+        if (!fromPoint || !toPoint || !_coordinatesClose(fromPoint.coordinate, toPoint.coordinate, 1.5)) {
+            //console.log("Invalid points or coordinates not close")
+            return { "valid": false }
+        }
+
+       // console.log("fromPoint.altitude:", fromPoint.altitude, "toPoint.altitude:", toPoint.altitude)
+       // console.log("fromPoint.distance:", fromPoint.distance, "toPoint.distance:", toPoint.distance)
+
+        // 放宽位置检查到 50 米
+        if (vehicleCoord && vehicleCoord.isValid) {
+            const coordClose = _coordinatesClose(vehicleCoord, toPoint.coordinate, coordThreshold)
+            if (!coordClose) {
+                return { "valid": false }
+            }
+        }
+
+        const fromAltitude = Number(fromPoint.altitude)
+        const toAltitude = Number(toPoint.altitude)
+        const minAltitude = Math.min(fromAltitude, toAltitude)
+        const maxAltitude = Math.max(fromAltitude, toAltitude)
+       // console.log("Altitude range: [", minAltitude - 1.0, ",", maxAltitude + 1.0, "]")
+
+        if (liveAltitude < (minAltitude - 1.0) || liveAltitude > (maxAltitude + 1.0)) {
+           // console.log("Live altitude out of range")
+            return { "valid": false }
+        }
+
+        // 使用高度插值计算距离，使飞机图标在垂直段平滑移动
+        const altitudeSpan = toAltitude - fromAltitude
+        const ratio = Math.abs(altitudeSpan) > 0.5
+            ? Math.max(0, Math.min(1, (Number(liveAltitude) - fromAltitude) / altitudeSpan))
+            : 0.5
+        const segmentDistance = Number(fromPoint.distance) + ((Number(toPoint.distance) - Number(fromPoint.distance)) * ratio)
+        const pointIndex = toPoint.profileHiddenMarker === true ? fromIndex : toIndex
+
+      //  console.log("Valid! ratio:", ratio, "segmentDistance:", segmentDistance)
+        return {
+            "valid": true,
+            "distance": segmentDistance,
+            "altitude": Number(liveAltitude),
+            "pointIndex": pointIndex
+        }
+    }
+    function _altitudeInterpolatedSegmentPosition(points, fromIndex, toIndex, liveAltitude, vehicleCoord, anchorAtFromPoint) {
+        //console.log("=== _altitudeInterpolatedSegmentPosition ===")
+       // console.log("fromIndex:", fromIndex, "toIndex:", toIndex, "liveAltitude:", liveAltitude, "anchorAtFromPoint:", anchorAtFromPoint)
+
+        if (!points || fromIndex < 0 || toIndex >= points.length || isNaN(liveAltitude)) {
+          //  console.log("Invalid input parameters")
+            return { "valid": false }
+        }
+
+        const fromPoint = points[fromIndex]
+        const toPoint = points[toIndex]
+        if (!fromPoint || !toPoint || !fromPoint.coordinate || !toPoint.coordinate || !fromPoint.coordinate.isValid || !toPoint.coordinate.isValid) {
+           // console.log("Invalid points or coordinates")
+            return { "valid": false }
+        }
+
+        const fromAltitude = Number(fromPoint.altitude)
+        const toAltitude = Number(toPoint.altitude)
+        const altitudeSpan = toAltitude - fromAltitude
+       // console.log("fromAltitude:", fromAltitude, "toAltitude:", toAltitude, "altitudeSpan:", altitudeSpan)
+
+        if (Math.abs(altitudeSpan) < 0.5) {
+           // console.log("Altitude span too small")
+            return { "valid": false }
+        }
+
+        // 放宽位置检查：只要高度在范围内，就认为可能在这个垂直段
+        const minAltitude = Math.min(fromAltitude, toAltitude) - 1.0
+        const maxAltitude = Math.max(fromAltitude, toAltitude) + 1.0
+       // console.log("Altitude range: [", minAltitude, ",", maxAltitude, "]")
+
+        if (liveAltitude < minAltitude || liveAltitude > maxAltitude) {
+           // console.log("Live altitude out of range")
+            return { "valid": false }
+        }
+
+        // 如果有位置信息，检查是否在合理范围内（放宽到 50 米）
+        if (vehicleCoord && vehicleCoord.isValid) {
+            const anchorCoordinate = anchorAtFromPoint ? fromPoint.coordinate : toPoint.coordinate
+            const anchorThreshold = 50  // 统一使用 50 米阈值
+            const coordClose = _coordinatesClose(vehicleCoord, anchorCoordinate, anchorThreshold)
+           // console.log("Vehicle coord close to anchor (50m):", coordClose)
+
+            if (!coordClose) {
+                // 位置不匹配，但如果高度匹配得很好，仍然可以使用
+                const altitudeMatch = Math.abs(liveAltitude - fromAltitude) < 2.0 || Math.abs(liveAltitude - toAltitude) < 2.0
+               // console.log("Position not close, altitude match:", altitudeMatch)
+                if (!altitudeMatch) {
+                    return { "valid": false }
+                }
+            }
+        }
+
+        // 使用高度比例计算距离
+        // 对于起飞段（anchorAtFromPoint=true），允许负值范围以处理飞机在起点下方的情况
+        // 对于其他垂直段，严格限制在 [0, 1] 范围内
+        const ratio = (Number(liveAltitude) - fromAltitude) / altitudeSpan
+        const clampedRatio = anchorAtFromPoint
+            ? Math.max(-0.5, Math.min(1.5, ratio))  // 起飞段：允许 [-0.5, 1.5] 范围
+            : Math.max(0, Math.min(1, ratio))       // 其他段：严格 [0, 1] 范围
+
+        // 根据高度比例计算距离（用于进度跟踪）
+        const segmentDistance = Number(fromPoint.distance) + ((Number(toPoint.distance) - Number(fromPoint.distance)) * clampedRatio)
+        const pointIndex = toIndex
+
+        return {
+            "valid": true,
+            "distance": segmentDistance,
+            "altitude": Number(liveAltitude),
+            "ratio": clampedRatio,
+            "pointIndex": pointIndex
+        }
+    }
+    function _takeoffProfileSegment(points) {
+        if (!points || points.length < 2) {
+            return { "valid": false }
+        }
+
+        let fromIndex = -1
+        for (let i = 0; i < points.length; i++) {
+            if (points[i].profileGroundOrigin === true) {
+                fromIndex = i
+                break
+            }
+        }
+        if (fromIndex < 0) {
+            fromIndex = 0
+        }
+
+        const fromPoint = points[fromIndex]
+        const fromAltitude = fromPoint ? Number(fromPoint.altitude) : NaN
+        if (!fromPoint || isNaN(fromAltitude)) {
+            return { "valid": false }
+        }
+
+        for (let i = fromIndex + 1; i < points.length; i++) {
+            const candidate = points[i]
+            if (!candidate || isNaN(Number(candidate.altitude))) {
+                continue
+            }
+            if (Number(candidate.altitude) <= fromAltitude + 0.5) {
+                continue
+            }
+            return {
+                "valid": true,
+                "fromIndex": fromIndex,
+                "toIndex": i
+            }
+        }
+
+        return { "valid": false }
+    }
+    function _takeoffLivePosition(points, liveAltitude, vehicleCoord) {
+        if (!points || points.length < 2 || isNaN(liveAltitude)) {
+            return { "valid": false }
+        }
+
+        const takeoffSegment = _takeoffProfileSegment(points)
+        if (!takeoffSegment.valid) {
+            return { "valid": false }
+        }
+
+        // 打印起飞段的高度信息
+        const fromPoint = points[takeoffSegment.fromIndex]
+        const toPoint = points[takeoffSegment.toIndex]
+        const useVerticalSegment = !!(fromPoint
+            && toPoint
+            && fromPoint.coordinate
+            && toPoint.coordinate
+            && fromPoint.coordinate.isValid
+            && toPoint.coordinate.isValid
+            && _coordinatesClose(fromPoint.coordinate, toPoint.coordinate, 1.5))
+        const result = useVerticalSegment
+            ? _verticalSegmentLivePosition(points, takeoffSegment.fromIndex, takeoffSegment.toIndex, liveAltitude, vehicleCoord, 80)
+            : _altitudeInterpolatedSegmentPosition(points, takeoffSegment.fromIndex, takeoffSegment.toIndex, liveAltitude, vehicleCoord, true)
+        if (result.valid) {
+            const minAltitude = Number(points[takeoffSegment.fromIndex].altitude)
+            const maxAltitude = Number(points[takeoffSegment.toIndex].altitude)
+            result.altitude = Math.max(minAltitude, Math.min(maxAltitude, Number(liveAltitude)))
+        }
+        return result
+    }
+    function _currentVehicleProfilePosition(points, progress, liveAltitude = NaN, liveClimbRate = NaN) {
+        if (!points || points.length === 0) {
+            return { "distance": 0, "altitude": liveAltitude, "pointIndex": -1 }
+        }
+
+        const totalDistance = Math.max(Number(points[points.length - 1].distance), 1)
+        const clampedProgress = Math.max(0, Math.min(1, Number(progress)))
+        const shouldUseVehicleTrack = !!(_activeVehicle && (_vehicleIsFlying || _activeVehicle.armed))
+        let currentDistance = totalDistance * clampedProgress
+
+        const vehicleCoord = _activeVehicle ? _activeVehicle.coordinate : null
+
+        if (!isNaN(liveAltitude) && points.length >= 2) {
+            const takeoffPosition = _takeoffLivePosition(points, liveAltitude, vehicleCoord)
+            const landingPosition = _verticalSegmentLivePosition(points, points.length - 2, points.length - 1, liveAltitude, vehicleCoord, 80)
+
+            // 检查返航爬升段
+            const returnClimbPosition = points.length >= 4
+                ? _verticalSegmentLivePosition(points, points.length - 4, points.length - 3, liveAltitude, vehicleCoord, 80)
+                : { "valid": false }
+
+            const returnModeActive = _isVehicleInReturnMode()
+            const landingModeActive = _isVehicleInLandingMode()
+            const descendingToHome = !isNaN(liveClimbRate) && liveClimbRate < -0.15
+            const previousSegment = root._profileLiveSegment || ""
+
+            // 只有在真正的返航/降落模式下才认为是返航序列
+            const returnSequenceActive = returnModeActive || landingModeActive
+            const includeReturnSegment = _shouldTrackReturnProfileSegment(landingPosition.valid, liveClimbRate)
+            const computedProgress = shouldUseVehicleTrack ? _computeVehicleProgressAlongMission(includeReturnSegment) : -1
+            const projectedDistance = computedProgress >= 0 ? (totalDistance * computedProgress) : NaN
+            if (computedProgress >= 0) {
+                currentDistance = projectedDistance
+            }
+            const takeoffSegment = _takeoffProfileSegment(points)
+            const takeoffAnchorPoint = takeoffSegment.valid ? points[takeoffSegment.fromIndex] : null
+            const takeoffTargetPoint = takeoffSegment.valid ? points[takeoffSegment.toIndex] : null
+            const takeoffAnchorDistance = takeoffAnchorPoint ? Number(takeoffAnchorPoint.distance) : NaN
+            const takeoffTargetAltitude = takeoffTargetPoint ? Number(takeoffTargetPoint.altitude) : NaN
+            const nearTakeoffAnchor = (!vehicleCoord || !vehicleCoord.isValid)
+                || !!(takeoffAnchorPoint
+                    && takeoffAnchorPoint.coordinate
+                    && takeoffAnchorPoint.coordinate.isValid
+                    && _coordinatesClose(vehicleCoord, takeoffAnchorPoint.coordinate, 80))
+            const takeoffStillClimbing = isNaN(takeoffTargetAltitude)
+                || Number(liveAltitude) < (takeoffTargetAltitude - 0.5)
+            const takeoffMovedAlongPath = !isNaN(projectedDistance)
+                && !isNaN(takeoffAnchorDistance)
+                && projectedDistance > (takeoffAnchorDistance + 3)
+            const takeoffShouldUse = takeoffPosition.valid
+                && !returnSequenceActive
+                && !descendingToHome
+                && !takeoffMovedAlongPath
+                && (nearTakeoffAnchor || (previousSegment === "takeoff" && takeoffStillClimbing))
+                && (isNaN(takeoffTargetAltitude) || Number(liveAltitude) <= (takeoffTargetAltitude + 1.0))
+                && previousSegment !== "landing"
+                && root._allowTakeoffSegment  // 只有允许时才能进入起飞段
+
+            // 调试：检查为什么不能进入起飞段
+            if (takeoffPosition.valid && nearTakeoffAnchor && !takeoffShouldUse) {
+                /*console.log(">>> 起飞段被阻止: allowTakeoff=" + root._allowTakeoffSegment
+                    + " prevSeg=" + previousSegment
+                    + " returnSeq=" + returnSequenceActive
+                    + " descending=" + descendingToHome
+                    + " moved=" + takeoffMovedAlongPath)*/
+            }
+
+            const returnClimbAnchorPoint = points.length >= 4 ? points[points.length - 4] : null
+            const returnClimbTargetPoint = points.length >= 3 ? points[points.length - 3] : null
+            const returnClimbAnchorAltitude = returnClimbAnchorPoint ? Number(returnClimbAnchorPoint.altitude) : NaN
+            const returnClimbTargetAltitude = returnClimbTargetPoint ? Number(returnClimbTargetPoint.altitude) : NaN
+            const returnClimbAnchorDistance = returnClimbAnchorPoint ? Number(returnClimbAnchorPoint.distance) : NaN
+            const nearReturnClimbAnchor = (!vehicleCoord || !vehicleCoord.isValid)
+                || !!(returnClimbAnchorPoint
+                    && returnClimbAnchorPoint.coordinate
+                    && returnClimbAnchorPoint.coordinate.isValid
+                    && _coordinatesClose(vehicleCoord, returnClimbAnchorPoint.coordinate, 80))
+            const returnClimbStillAscending = isNaN(returnClimbTargetAltitude)
+                || Number(liveAltitude) < (returnClimbTargetAltitude - 0.5)
+            const returnClimbMovedAlongPath = !isNaN(projectedDistance)
+                && !isNaN(returnClimbAnchorDistance)
+                && projectedDistance > (returnClimbAnchorDistance + 3)
+            const returnClimbShouldUse = returnClimbPosition.valid
+                && !descendingToHome
+                && (returnModeActive || previousSegment === "return-climb")
+                && !returnClimbMovedAlongPath
+                && (nearReturnClimbAnchor || (previousSegment === "return-climb" && returnClimbStillAscending))
+                && (previousSegment !== "landing")
+                && (!returnModeActive
+                    ? (!isNaN(returnClimbAnchorAltitude)
+                        && Number(liveAltitude) >= (returnClimbAnchorAltitude - 0.5))
+                    : true)
+                && (isNaN(returnClimbTargetAltitude) || Number(liveAltitude) <= (returnClimbTargetAltitude + 1.0))
+
+            // 优先级：起飞 > 返航爬升 > 降落
+            if (takeoffShouldUse) {
+                //console.log(">>> 使用起飞段 (allowTakeoff=" + root._allowTakeoffSegment + ")")
+                takeoffPosition.segment = "takeoff"
+                return takeoffPosition
+            }
+
+            // 处理返航爬升段
+            if (returnClimbShouldUse) {
+                returnClimbPosition.segment = "return-climb"
+                //console.log("✓ USING RETURN-CLIMB SEGMENT")
+                //console.log("=== _currentVehicleProfilePosition END ===\n")
+                return returnClimbPosition
+            }
+
+            if (landingPosition.valid
+                    && (landingModeActive
+                        || (returnSequenceActive && (previousSegment === "landing" || previousSegment === "return-climb" || previousSegment !== "path")))) {
+                landingPosition.segment = "landing"
+                return landingPosition
+            }
+
+            // 如果在返航模式但landingPosition无效，仍然使用landing segment
+            if ((landingModeActive || returnSequenceActive) && !isNaN(liveAltitude)) {
+                const lastPoint = points[points.length - 1]
+                if (lastPoint && lastPoint.coordinate && lastPoint.coordinate.isValid) {
+                    return {
+                        "valid": true,
+                        "distance": Number(lastPoint.distance),
+                        "altitude": Math.max(0, Number(liveAltitude)),
+                        "pointIndex": points.length - 1,
+                        "segment": "landing"
+                    }
+                }
+            }
+        }
+
+        const currentAltitude = !isNaN(liveAltitude)
+            ? Number(liveAltitude)
+            : _profileAltitudeAtDistance(points, currentDistance)
+
+        return {
+            "distance": currentDistance,
+            "altitude": currentAltitude,
+            "pointIndex": _profilePointIndexAtDistance(points, currentDistance, currentAltitude),
+            "segment": "path"
+        }
+    }
+    // 用于减少日志输出的变量
+    property real _lastLoggedAltitude: NaN
+    property string _lastLoggedSegment: ""
+
+    function _updateProfileLiveState() {
+        const points = _profileMissionPoints
+        if (!points || points.length === 0) {
+            root._profileLiveDistance = 0
+            root._profileLiveAltitude = NaN
+            root._profileLivePointIndex = -1
+            root._profileLiveSegment = ""
+            return
+        }
+
+        root._refreshVehicleTelemetry()
+        const liveAltitude = root._vehicleActualAltitude
+        const liveClimbRate = root._vehicleClimbRate
+        const livePosition = _currentVehicleProfilePosition(points, _profileProgress, liveAltitude, liveClimbRate)
+
+        // 只在高度变化超过0.5米或段类型变化时打印日志
+        const altitudeChanged = isNaN(_lastLoggedAltitude) || Math.abs(liveAltitude - _lastLoggedAltitude) > 0.5
+        const segmentChanged = _lastLoggedSegment !== livePosition.segment
+        if (altitudeChanged || segmentChanged) {
+            const actualAlt = !isNaN(liveAltitude) ? liveAltitude.toFixed(2) : "NaN"
+            const liveAlt = !isNaN(root._profileLiveAltitude) ? root._profileLiveAltitude.toFixed(2) : "NaN"
+            const dist = !isNaN(livePosition.distance) ? livePosition.distance.toFixed(2) : "NaN"
+            const flying = _vehicleIsFlying ? "flying" : "not-flying"
+            const armed = _activeVehicle && _activeVehicle.armed ? "armed" : "not-armed"
+            //console.log(">>> PROFILE: ActualAlt:", actualAlt, "LiveAlt:", liveAlt, "Seg:", livePosition.segment, "Dist:", dist, "[", flying, armed, "]")
+            _lastLoggedAltitude = liveAltitude
+            _lastLoggedSegment = livePosition.segment
+        }
+
+        let liveDistance = Number(livePosition.distance)
+        if (root._profileLiveSegment === "takeoff"
+                && livePosition.segment === "path"
+                && !isNaN(Number(root._profileLiveDistance))
+                && !isNaN(liveDistance)
+                && liveDistance < Number(root._profileLiveDistance)) {
+            // Avoid a visible "jump back" right after takeoff interpolation hands over to path tracking.
+            liveDistance = Number(root._profileLiveDistance)
+        }
+
+        root._profileReturnSegmentActive = livePosition.segment === "landing"
+
+        root._profileLiveDistance = liveDistance
+        // 始终使用实时高度，直接从 vehicle 读取最新值以避免延迟
+        root._profileLiveAltitude = !isNaN(liveAltitude) ? liveAltitude : Number(livePosition.altitude)
+        root._profileLivePointIndex = (livePosition.pointIndex !== undefined && livePosition.pointIndex !== null)
+            ? Number(livePosition.pointIndex)
+            : -1
+
+        // 更新段类型并控制起飞段标志
+        const previousSegment = root._profileLiveSegment
+        const newSegment = livePosition.segment || ""
+
+        // 如果从起飞段离开，禁止再次进入起飞段
+        if (previousSegment === "takeoff" && newSegment !== "takeoff") {
+            root._allowTakeoffSegment = false
+            console.log(">>> 离开起飞段: " + previousSegment + " -> " + newSegment + ", 禁止再次进入起飞段")
+        }
+
+        // 如果降落完成（降落段且高度很低），允许再次进入起飞段
+        if (newSegment === "landing" && !isNaN(liveAltitude) && liveAltitude < 2.0) {
+            if (!root._allowTakeoffSegment) {
+                root._allowTakeoffSegment = true
+                console.log(">>> 降落完成 (高度=" + liveAltitude.toFixed(2) + "m), 允许再次进入起飞段")
+            }
+        }
+
+        root._profileLiveSegment = newSegment
+    }
+    function _logProfileDebugState() {
+        if (!_profileDebugLogging || !_activeVehicle) {
+            return
+        }
+
+        const points = _profileMissionPoints
+        const vehicleCoord = _activeVehicle.coordinate
+        const liveAltitude = _vehicleActualAltitude
+        const liveClimbRate = _vehicleClimbRate
+        const landingPosition = points.length >= 2 ? _verticalSegmentLivePosition(points, points.length - 2, points.length - 1, liveAltitude, vehicleCoord) : { "valid": false }
+        const computedProgress = _computeVehicleProgressAlongMission(_shouldTrackReturnProfileSegment(landingPosition.valid, liveClimbRate))
+        const livePosition = _currentVehicleProfilePosition(points, _profileProgress, liveAltitude, liveClimbRate)
+        const takeoffPosition = livePosition.segment === "takeoff" && points.length >= 2
+            ? _takeoffLivePosition(points, liveAltitude, vehicleCoord)
+            : { "valid": false }
+        const firstPoint = points.length > 0 ? points[0] : null
+        const secondPoint = points.length > 1 ? points[1] : null
+        const lastPoint = points.length > 0 ? points[points.length - 1] : null
+        const prevLastPoint = points.length > 1 ? points[points.length - 2] : null
+        let returnSourcePoint = null
+        let returnSourceIndex = -1
+        for (let i = points.length - 1; i >= 0; i--) {
+            if (points[i].profileGenerated !== true) {
+                returnSourcePoint = points[i]
+                returnSourceIndex = i
+                break
+            }
+        }
+        const homeCoord = _missionHomeCoordinate()
+        const returnDistance = (returnSourcePoint && returnSourcePoint.coordinate && returnSourcePoint.coordinate.isValid && homeCoord && homeCoord.isValid)
+            ? Number(returnSourcePoint.coordinate.distanceTo(homeCoord))
+            : NaN
+        const returnThreshold = (_activeVehicle && _activeVehicle.px4Firmware) ? _px4RtlReturnDistanceThresholdMeters() : NaN
+
+
+    }
     function _profilePointIndexAtProgress(points, progress) {
         if (!points || points.length === 0) { return -1 }
         const totalDistance = Math.max(Number(_profileStats(points).totalDistance), 1)
@@ -763,18 +1988,23 @@ Item {
             return groups
         }
 
-        const requestedSiteCount = points.length > 1 ? 2 : 1
-        const siteCount = Math.min(requestedSiteCount, points.length)
-        const chunkSize = Math.ceil(points.length / siteCount)
+        const visiblePoints = points.filter(point => point.profileHiddenMarker !== true)
+        if (visiblePoints.length === 0) {
+            return groups
+        }
+
+        const requestedSiteCount = visiblePoints.length > 1 ? 2 : 1
+        const siteCount = Math.min(requestedSiteCount, visiblePoints.length)
+        const chunkSize = Math.ceil(visiblePoints.length / siteCount)
 
         for (let i = 0; i < siteCount; i++) {
             const startIndex = i * chunkSize
-            if (startIndex >= points.length) {
+            if (startIndex >= visiblePoints.length) {
                 break
             }
-            const endIndex = Math.min(points.length - 1, ((i + 1) * chunkSize) - 1)
-            const startPoint = points[startIndex]
-            const endPoint = points[endIndex]
+            const endIndex = Math.min(visiblePoints.length - 1, ((i + 1) * chunkSize) - 1)
+            const startPoint = visiblePoints[startIndex]
+            const endPoint = visiblePoints[endIndex]
             groups.push({
                 "label": qsTr("S2D Site %1").arg(i + 1),
                 "startIndex": startIndex,
@@ -787,6 +2017,42 @@ Item {
         }
 
         return groups
+    }
+    function _computeVehicleProgressAlongMission(includeReturnSegment = false) {
+        const vCoord = _activeVehicle ? _activeVehicle.coordinate : null
+        if (!vCoord || !vCoord.isValid) return -1
+        const pts = root._profileMissionPoints
+        if (!pts || pts.length < 2) return -1
+        const totalDist = Math.max(Number(_profileStats(pts).totalDistance), 1)
+        let bestDist = -1
+        let minPerpDistSq = Infinity
+        if (includeReturnSegment && _coordinatesClose(vCoord, pts[0].coordinate, 2) && root._vehicleClimbRate < -0.5) {
+            if(_coordinatesClose(vCoord, pts[0].coordinate, 1))return 1
+            //console.log("near home")
+            return root.last_x
+        }
+
+        for (let i = 1; i < pts.length; i++) {
+            const A = pts[i - 1]
+            const B = pts[i]
+            if (!A.coordinate || !A.coordinate.isValid || !B.coordinate || !B.coordinate.isValid) continue
+            if (!includeReturnSegment && (A.profileGenerated || B.profileGenerated)) {
+                //console.log("_computeVehicleProgressAlongMission",A.profileGenerated,B.profileGenerated,)
+                continue}
+            const segLen = A.coordinate.distanceTo(B.coordinate)
+            if (segLen < 0.1) continue
+            const vA = A.coordinate.distanceTo(vCoord)
+            const vB = B.coordinate.distanceTo(vCoord)
+            const t = Math.max(0, Math.min(1, (segLen * segLen + vA * vA - vB * vB) / (2 * segLen * segLen)))
+            const projDist = t * segLen
+            const perpDistSq = Math.max(0, vA * vA - projDist * projDist)
+            if (perpDistSq < minPerpDistSq) {
+                minPerpDistSq = perpDistSq
+                bestDist = Number(A.distance) + projDist
+            }
+        }
+        root.last_x = bestDist >= 0 ? Math.max(0, Math.min(1, bestDist / totalDist)) : -1
+        return root.last_x
     }
     function _triggerMapStripAction(command) {
         if (command !== "startMission" && root._startMissionSliderVisible) {
@@ -1610,6 +2876,9 @@ Item {
     }
     function _openClusterWorkspaceWindow() {
         if (root._clusterWorkspaceWindow) {
+            if (typeof mainWindow !== "undefined" && mainWindow && typeof mainWindow._clusterWorkspaceOpen !== "undefined") {
+                mainWindow._clusterWorkspaceOpen = true
+            }
             root._clusterWorkspaceWindow.show()
             root._clusterWorkspaceWindow.raise()
             root._clusterWorkspaceWindow.requestActivate()
@@ -1622,7 +2891,8 @@ Item {
 
         root._clusterWorkspaceWindow = clusterWorkspaceWindowComponent.createObject(null, {
             transientParent: mainWindow,
-            visible: false
+            visible: false,
+            initialVehicleId: root._activeVehicle ? Number(root._activeVehicle.id) : -1
         })
 
         if (!root._clusterWorkspaceWindow) {
@@ -1642,8 +2912,15 @@ Item {
 
         root._clusterWorkspaceWindow.closing.connect(function() {
             root._clusterWorkspaceWindow = null
+            if (typeof mainWindow !== "undefined" && mainWindow && typeof mainWindow._clusterWorkspaceOpen !== "undefined") {
+                mainWindow._clusterWorkspaceOpen = false
+                mainWindow._syncStartPageVisibility()
+            }
         })
 
+        if (typeof mainWindow._clusterWorkspaceOpen !== "undefined") {
+            mainWindow._clusterWorkspaceOpen = true
+        }
         root._clusterWorkspaceWindow.visible = true
         root._clusterWorkspaceWindow.raise()
         root._clusterWorkspaceWindow.requestActivate()
@@ -1821,7 +3098,7 @@ Item {
         id: profilePlaybackTimer
         interval: 250
         repeat: true
-        running: root._profilePlaybackActive && root._profilePanelExpanded
+        running: root._profilePlaybackActive && root._profilePanelExpanded && !root._vehicleIsFlying
         onTriggered: {
             root._profileProgress = Math.min(1, root._profileProgress + (0.006 * root._profilePlaybackSpeed))
             if (root._profileProgress >= 1) {
@@ -1831,19 +3108,107 @@ Item {
     }
 
     Timer {
+        id: vehicleMissionTrackTimer
+        interval: 100
+        repeat: true
+        running: root._profilePanelExpanded && root._activeVehicle && (root._vehicleIsFlying || root._activeVehicle.armed)
+        onTriggered: {
+            root._refreshVehicleTelemetry()
+            const points = root._profileMissionPoints
+            const vehicleCoord = root._activeVehicle ? root._activeVehicle.coordinate : null
+            const liveAltitude = root._vehicleActualAltitude
+            const liveClimbRate = root._vehicleClimbRate
+            const landingPosition = points && points.length >= 2
+                ? root._verticalSegmentLivePosition(points, points.length - 2, points.length - 1, liveAltitude, vehicleCoord)
+                : { "valid": false }
+            const includeReturnSegment = root._shouldTrackReturnProfileSegment(landingPosition.valid, liveClimbRate)
+            const progress = root._computeVehicleProgressAlongMission(includeReturnSegment)
+            if (progress >= 0) {
+                root._profileProgress = progress
+               // console.log("now progress: ",points,liveAltitude,liveClimbRate,progress,includeReturnSegment)
+            }
+            root._updateProfileLiveState()
+        }
+    }
+
+    Timer {
+        id: profileDebugTimer
+        interval: 1000
+        repeat: true
+        running: root._profileDebugLogging && root._profilePanelExpanded && root._activeVehicle && (root._vehicleIsFlying || root._activeVehicle.armed)
+        onTriggered: root._logProfileDebugState()
+    }
+
+    Timer {
         id: profileRefreshTimer
         interval: 1200
         repeat: true
         running: true
-        onTriggered: root._profileMissionPoints = root._buildMissionProfilePoints()
+        onTriggered: {
+            root._profileMissionPoints = root._buildMissionProfilePoints()
+            root._updateProfileLiveState()
+        }
     }
 
     Connections {
         target: planControllerInternal.missionController
         ignoreUnknownSignals: true
-        function onVisualItemsChanged() { root._profileMissionPoints = root._buildMissionProfilePoints() }
-        function onNewItemsFromVehicle() { root._profileMissionPoints = root._buildMissionProfilePoints() }
-        function onCurrentMissionIndexChanged() { root._profileMissionPoints = root._buildMissionProfilePoints() }
+        function onVisualItemsChanged() { root._profileReturnAltitudeSnapshot = NaN; root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState() }
+        function onNewItemsFromVehicle() { root._profileReturnAltitudeSnapshot = NaN; root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState() }
+        function onCurrentMissionIndexChanged() { root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState() }
+        function onPlannedHomePositionChanged() { root._profileReturnAltitudeSnapshot = NaN; root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState() }
+    }
+
+    Connections {
+        target: root._activeVehicle
+        ignoreUnknownSignals: true
+        function onCoordinateChanged() { root._updateProfileLiveState() }
+        function onArmedChanged() {
+            // 解锁时重置起飞段标志，允许进入起飞段
+            if (root._activeVehicle && root._activeVehicle.armed) {
+                root._allowTakeoffSegment = true
+                console.log(">>> 飞机解锁，允许进入起飞段")
+            }
+            root._refreshVehicleTelemetry()
+            root._updateProfileLiveState()
+        }
+        function onFlyingChanged() { root._refreshVehicleTelemetry(); root._updateProfileLiveState() }
+        function onFlightModeChanged() { root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState(); root._syncPendingFlightMode() }
+        function onHomePositionChanged() { root._profileReturnAltitudeSnapshot = NaN; root._profileMissionPoints = root._buildMissionProfilePoints(); root._updateProfileLiveState() }
+    }
+
+    Connections {
+        target: root._activeVehicle ? root._activeVehicle.parameterManager : null
+        ignoreUnknownSignals: true
+        function onParametersReadyChanged(parametersReady) {
+            if (!parametersReady) {
+                return
+            }
+            root._profileReturnAltitudeSnapshot = NaN
+            root._profileMissionPoints = root._buildMissionProfilePoints()
+            root._updateProfileLiveState()
+        }
+    }
+
+    Connections {
+        target: root._activeVehicle ? root._activeVehicle.altitudeRelative : null
+        ignoreUnknownSignals: true
+        function onRawValueChanged() { root._refreshVehicleTelemetry(); root._updateProfileLiveState() }
+    }
+
+    Connections {
+        target: root._activeVehicle ? root._activeVehicle.climbRate : null
+        ignoreUnknownSignals: true
+        function onRawValueChanged() { root._refreshVehicleTelemetry(); root._updateProfileLiveState() }
+    }
+
+    Connections {
+        target: QGroundControl.multiVehicleManager
+        ignoreUnknownSignals: true
+
+        function onVehicleRemoved(vehicle) {
+            root._clearClusterVehicleState(vehicle)
+        }
     }
 
     QGCMenu {
@@ -1905,7 +3270,7 @@ Item {
         id: flightModeMenu
         Instantiator {
             model: root._activeVehicle && root._activeVehicle.flightModeSetAvailable ? root._activeVehicle.flightModes : []
-            delegate: QGCMenuItem { required property var modelData; text: modelData; onTriggered: root._activeVehicle.flightMode = modelData }
+            delegate: QGCMenuItem { required property var modelData; text: modelData; onTriggered: root._setPendingFlightMode(modelData) }
             onObjectAdded: (index, object) => flightModeMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => flightModeMenu.removeItem(object)
         }
@@ -2122,9 +3487,14 @@ Item {
                                 Item { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 0.12 }
 
                                 Repeater {
-                                    model: vehicleObject && vehicleObject.flying ? ["/InstrumentValueIcons/arrow-thin-up.svg", "/InstrumentValueIcons/pause-outline.svg"] : ["/InstrumentValueIcons/lock-closed.svg", "/InstrumentValueIcons/play-outline.svg"]
+                                    model: vehicleObject && vehicleObject.flying ?
+                                           ["/InstrumentValueIcons/arrow-thin-up.svg", "/InstrumentValueIcons/pause-outline.svg"] :
+                                           (vehicleObject && vehicleObject.armed ?
+                                            ["/InstrumentValueIcons/lock-open.svg", "/InstrumentValueIcons/play-outline.svg"] :
+                                            ["/InstrumentValueIcons/lock-closed.svg", "/InstrumentValueIcons/play-outline.svg"])
                                     delegate: Rectangle {
-                                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.34
+                                        required property var modelData
+                                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.34
                                         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.02
                                         color: qgcPal.windowShadeDark
                                         radius: ScreenTools.defaultFontPixelHeight * 0.14
@@ -2763,6 +4133,208 @@ Item {
                                         }
 
                                         Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 4.55
+                                            visible: root._flightModeConfirmationVisible
+                                            color: vehicleStatusCard._blockColor
+                                            radius: vehicleStatusCard._controlRadius
+                                            border.width: vehicleStatusCard._controlBorderWidth
+                                            border.color: vehicleStatusCard._highlightColor
+
+                                            ColumnLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.38
+                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                                anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.22
+                                                anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.22
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.2
+
+                                                QGCLabel {
+                                                    Layout.fillWidth: true
+                                                    color: vehicleStatusCard._textPrimaryColor
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
+                                                    text: qsTr("Pending: %1").arg(root._pendingFlightMode)
+                                                    elide: Text.ElideRight
+                                                    maximumLineCount: 1
+                                                }
+
+                                                Rectangle {
+                                                    id: flightModeConfirmSlider
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 12, parent.width - (ScreenTools.defaultFontPixelWidth * 0.9))
+                                                    Layout.maximumWidth: parent.width - (ScreenTools.defaultFontPixelWidth * 0.2)
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.34
+                                                    radius: vehicleStatusCard._controlRadius
+                                                    color: root._flightModeConfirmationVisible
+                                                        ? Qt.rgba(vehicleStatusCard._highlightColor.r, vehicleStatusCard._highlightColor.g, vehicleStatusCard._highlightColor.b, 0.22)
+                                                        : vehicleStatusCard._buttonSecondaryColor
+                                                    border.width: vehicleStatusCard._controlBorderWidth
+                                                    border.color: root._flightModeConfirmationVisible
+                                                        ? vehicleStatusCard._highlightColor
+                                                        : vehicleStatusCard._controlBorderColor
+                                                    clip: true
+
+                                                    readonly property real _knobMargin: ScreenTools.defaultFontPixelWidth * 0.16
+                                                    readonly property real _confirmThreshold: 0.94
+                                                    readonly property real _travelWidth: Math.max(0, width - sliderKnob.width - (_knobMargin * 2))
+                                                    property real _dragProgress: 0
+
+                                                    function _resetHandle() {
+                                                        _dragProgress = 0
+                                                    }
+
+                                                    function _completeIfNeeded() {
+                                                        if (!root._flightModeConfirmationVisible) {
+                                                            _resetHandle()
+                                                            return
+                                                        }
+
+                                                        if (_dragProgress >= _confirmThreshold) {
+                                                            _dragProgress = 1
+                                                            root._confirmPendingFlightMode()
+                                                        }
+
+                                                        if (root._flightModeConfirmationVisible) {
+                                                            _resetHandle()
+                                                        }
+                                                    }
+
+                                                    onVisibleChanged: {
+                                                        if (!visible) {
+                                                            _resetHandle()
+                                                        }
+                                                    }
+
+                                                    Connections {
+                                                        target: root
+
+                                                        function on_PendingFlightModeChanged() {
+                                                            flightModeConfirmSlider._resetHandle()
+                                                        }
+                                                    }
+
+                                                    Behavior on color {
+                                                        ColorAnimation { duration: vehicleStatusCard._transitionDuration }
+                                                    }
+
+                                                    Behavior on border.color {
+                                                        ColorAnimation { duration: vehicleStatusCard._transitionDuration }
+                                                    }
+
+                                                    QGCLabel {
+                                                        anchors.centerIn: parent
+                                                        color: vehicleStatusCard._textPrimaryColor
+                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                        text: qsTr("Slide to Confirm")
+                                                        opacity: sliderMouseArea.pressed ? 0.55 : 0.9
+                                                    }
+
+                                                    Rectangle {
+                                                        id: sliderFill
+                                                        x: flightModeConfirmSlider._knobMargin
+                                                        y: flightModeConfirmSlider._knobMargin
+                                                        width: sliderKnob.x + sliderKnob.width - flightModeConfirmSlider._knobMargin
+                                                        height: flightModeConfirmSlider.height - (flightModeConfirmSlider._knobMargin * 2)
+                                                        radius: Math.max(0, flightModeConfirmSlider.radius - flightModeConfirmSlider._knobMargin)
+                                                        color: Qt.rgba(vehicleStatusCard._highlightColor.r, vehicleStatusCard._highlightColor.g, vehicleStatusCard._highlightColor.b, 0.34)
+                                                    }
+
+                                                    Rectangle {
+                                                        id: sliderKnob
+                                                        x: flightModeConfirmSlider._knobMargin + (flightModeConfirmSlider._travelWidth * flightModeConfirmSlider._dragProgress)
+                                                        y: flightModeConfirmSlider._knobMargin
+                                                        width: Math.max(ScreenTools.defaultFontPixelHeight * 1.12, flightModeConfirmSlider.height - (flightModeConfirmSlider._knobMargin * 2))
+                                                        height: flightModeConfirmSlider.height - (flightModeConfirmSlider._knobMargin * 2)
+                                                        radius: Math.min(vehicleStatusCard._controlRadius, height / 2)
+                                                        color: root._flightModeConfirmationVisible
+                                                            ? vehicleStatusCard._highlightColor
+                                                            : vehicleStatusCard._buttonSecondaryColor
+                                                        border.width: vehicleStatusCard._controlBorderWidth
+                                                        border.color: root._flightModeConfirmationVisible
+                                                            ? vehicleStatusCard._highlightColor
+                                                            : vehicleStatusCard._controlBorderColor
+
+                                                        Behavior on x {
+                                                            enabled: !sliderMouseArea.pressed
+                                                            NumberAnimation { duration: vehicleStatusCard._transitionDuration }
+                                                        }
+
+                                                        QGCColoredImage {
+                                                            anchors.centerIn: parent
+                                                            width: ScreenTools.defaultFontPixelHeight * 0.6
+                                                            height: width
+                                                            color: vehicleStatusCard._textPrimaryColor
+                                                            fillMode: Image.PreserveAspectFit
+                                                            source: "/InstrumentValueIcons/cheveron-right.svg"
+                                                        }
+                                                    }
+
+                                                    MouseArea {
+                                                        id: sliderMouseArea
+                                                        anchors.fill: parent
+                                                        enabled: root._flightModeConfirmationVisible
+                                                        hoverEnabled: !ScreenTools.isMobile
+                                                        cursorShape: enabled ? Qt.OpenHandCursor : Qt.ArrowCursor
+
+                                                        function _updateDrag(mouseX) {
+                                                            const limitedX = Math.max(flightModeConfirmSlider._knobMargin, Math.min(mouseX - (sliderKnob.width / 2), flightModeConfirmSlider._knobMargin + flightModeConfirmSlider._travelWidth))
+                                                            flightModeConfirmSlider._dragProgress = flightModeConfirmSlider._travelWidth > 0
+                                                                ? (limitedX - flightModeConfirmSlider._knobMargin) / flightModeConfirmSlider._travelWidth
+                                                                : 0
+                                                        }
+
+                                                        onPressed: (mouse) => {
+                                                            _updateDrag(mouse.x)
+                                                            cursorShape = Qt.ClosedHandCursor
+                                                        }
+
+                                                        onPositionChanged: (mouse) => {
+                                                            if (pressed) {
+                                                                _updateDrag(mouse.x)
+                                                            }
+                                                        }
+
+                                                        onReleased: {
+                                                            cursorShape = Qt.OpenHandCursor
+                                                            flightModeConfirmSlider._completeIfNeeded()
+                                                        }
+
+                                                        onCanceled: {
+                                                            cursorShape = Qt.OpenHandCursor
+                                                            flightModeConfirmSlider._resetHandle()
+                                                        }
+                                                    }
+                                                }
+
+                                                Item {
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.34
+
+                                                    QGCButton {
+                                                        anchors.right: parent.right
+                                                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.36
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: Math.max(implicitWidth, ScreenTools.defaultFontPixelWidth * 7.8)
+                                                        height: ScreenTools.defaultFontPixelHeight * 1.5
+                                                        text: qsTr("Cancel")
+                                                        pointSize: ScreenTools.smallFontPointSize
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        backgroundColor: vehicleStatusCard._buttonSecondaryColor
+                                                        borderColor: vehicleStatusCard._controlBorderColor
+                                                        textColor: vehicleStatusCard._textPrimaryColor
+                                                        overlayColor: vehicleStatusCard._buttonSecondaryHoverColor
+                                                        hoverOverlayOpacity: 0.20
+                                                        pressedOverlayOpacity: 0.34
+                                                        backRadius: vehicleStatusCard._controlRadius
+                                                        showBorder: true
+                                                        onClicked: root._clearPendingFlightMode()
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
                                             id: preFlightChecklistButton
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.82
@@ -2849,6 +4421,123 @@ Item {
                                             }
                                         }
 
+                                        // Arm/Disarm Slider
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.82
+                                            color: vehicleStatusCard._blockColor
+                                            radius: 4
+                                            visible: true
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.38
+                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                                spacing: ScreenTools.defaultFontPixelWidth * 0.24
+
+                                                QGCLabel {
+                                                    color: root._activeVehicle ? "#FFFFFF" : "#888888"
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                                    text: root._activeVehicle ?
+                                                          (root._activeVehicle.armed ? qsTr("Slide to Disarm") : qsTr("Slide to Arm")) :
+                                                          qsTr("No Vehicle Connected")
+                                                }
+
+                                                Item {
+                                                    Layout.fillWidth: true
+                                                }
+
+                                                QGCSlider {
+                                                    id: armDisarmSlider
+                                                    Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10
+                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                                                    from: 0
+                                                    to: 100
+                                                    value: 0
+                                                    enabled: root._activeVehicle
+
+                                                    property bool _dragInProgress: false
+                                                    property color _sliderColor: root._activeVehicle ?
+                                                                                (root._activeVehicle.armed ? "#C85C6A" : "#4CAF50") :
+                                                                                "#888888"
+
+                                                    onValueChanged: {
+                                                        if (_dragInProgress && value >= 95) {
+                                                            console.log("Slider triggered at value:", value)
+                                                            console.log("Vehicle armed:", root._activeVehicle ? root._activeVehicle.armed : "no vehicle")
+
+                                                            if (root._activeVehicle && root._activeVehicle.armed) {
+                                                                // Disarm the vehicle
+                                                                console.log("Disarming vehicle")
+                                                                root._activeVehicle.armed = false
+                                                            } else if (root._activeVehicle) {
+                                                                // Arm the vehicle
+                                                                console.log("Arming vehicle")
+                                                                root._activeVehicle.armed = true
+                                                            }
+                                                            _dragInProgress = false
+                                                            value = 0
+                                                        }
+                                                    }
+
+                                                    onPressedChanged: {
+                                                        if (pressed) {
+                                                            _dragInProgress = true
+                                                        } else {
+                                                            // 延迟重置，让onValueChanged有机会处理
+                                                            if (value < 95) {
+                                                                _dragInProgress = false
+                                                                value = 0
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Custom background with progress indication
+                                                    background: Rectangle {
+                                                        x: armDisarmSlider.leftPadding
+                                                        y: armDisarmSlider.topPadding + armDisarmSlider.availableHeight / 2 - height / 2
+                                                        implicitWidth: ScreenTools.defaultFontPixelWidth * 10
+                                                        implicitHeight: ScreenTools.defaultFontPixelHeight * 0.6
+                                                        width: armDisarmSlider.availableWidth
+                                                        height: implicitHeight
+                                                        radius: height / 2
+                                                        color: "#333333"
+                                                        border.width: 1
+                                                        border.color: armDisarmSlider._sliderColor
+
+                                                        Rectangle {
+                                                            width: armDisarmSlider.visualPosition * parent.width
+                                                            height: parent.height
+                                                            color: armDisarmSlider._sliderColor
+                                                            radius: height / 2
+                                                            opacity: 0.3
+                                                        }
+                                                    }
+
+                                                    // Custom handle with icon
+                                                    handle: Rectangle {
+                                                        x: armDisarmSlider.leftPadding + armDisarmSlider.visualPosition * (armDisarmSlider.availableWidth - width)
+                                                        y: armDisarmSlider.topPadding + armDisarmSlider.availableHeight / 2 - height / 2
+                                                        implicitWidth: ScreenTools.defaultFontPixelHeight * 1.5
+                                                        implicitHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                                                        color: "#FFFFFF"
+                                                        border.color: armDisarmSlider._sliderColor
+                                                        border.width: 2
+                                                        radius: width / 2
+
+                                                        QGCColoredImage {
+                                                            anchors.centerIn: parent
+                                                            width: parent.width * 0.6
+                                                            height: width
+                                                            source: root._activeVehicle && root._activeVehicle.armed ? "/res/LockClosed.svg" : "/res/LockOpen.svg"
+                                                            color: armDisarmSlider._sliderColor
+                                                            fillMode: Image.PreserveAspectFit
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
                                         Repeater {
                                             model: [
                                                 {
@@ -2875,7 +4564,8 @@ Item {
                                             ]
 
                                             delegate: Rectangle {
-                
+                                                required property var modelData
+                                                readonly property bool _actionAvailable: root._isGuidedPanelActionAvailable(modelData.action)
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.86
                                                 color: actionButtonMouseArea.pressed
@@ -2883,11 +4573,10 @@ Item {
                                                     : (actionButtonMouseArea.containsMouse
                                                         ? (modelData.background === vehicleStatusCard._highlightColor ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryHoverColor)
                                                         : modelData.background)
-                                                opacity: root._activeVehicle ? 1 : 0.45
+                                                opacity: _actionAvailable ? 1 : 0.45
                                                 radius: vehicleStatusCard._controlRadius
                                                 border.width: vehicleStatusCard._controlBorderWidth
                                                 border.color: vehicleStatusCard._controlBorderColor
-
                                                 Behavior on color {
                                                     ColorAnimation { duration: vehicleStatusCard._transitionDuration }
                                                 }
@@ -2923,7 +4612,7 @@ Item {
                                                     hoverEnabled: true
                                                     enabled: root._activeVehicle
 
-                                                    onClicked: guidedActionsController.confirmAction(modelData.action)
+                                                    onClicked: root._triggerGuidedPanelAction(modelData.action)
                                                 }
                                             }
                                         }
@@ -6136,9 +7825,11 @@ Item {
                                             model: root._profileSiteGroups
 
                                             delegate: Rectangle {
-                                                                required property int index
+                                                required property var modelData
+                                                required property int index
 
-                                                readonly property bool _current: profileChart.currentPointIndex >= modelData.startIndex && profileChart.currentPointIndex <= modelData.endIndex
+                                                readonly property bool _current: profileChart.currentDistance >= Number(modelData.startDistance)
+                                                    && profileChart.currentDistance <= Number(modelData.endDistance)
 
                                                 width: parent.width
                                                 height: (root._profileVehicleTreeExpanded && root._profileMissionTreeExpanded)
@@ -6212,17 +7903,99 @@ Item {
                                 clip: true
 
                                 property var points: root._profileMissionPoints
-                                readonly property var stats: root._profileStats(points)
-                                readonly property real currentDistance: Math.max(Number(stats.totalDistance), 1) * root._profileProgress
-                                readonly property int currentPointIndex: root._profilePointIndexAtProgress(points, root._profileProgress)
-                                readonly property var currentPoint: root._profilePointAtProgress(points, root._profileProgress)
-                                readonly property real elapsedSeconds: root._profileElapsedSeconds(points, root._profileProgress)
+                                readonly property bool hasLiveTelemetry: !!(root._activeVehicle
+                                    && (!isNaN(Number(root._vehicleActualAltitude))
+                                        || !isNaN(Number(root._profileLiveAltitude))
+                                        || !isNaN(Number(root._vehicleClimbRate))
+                                        || (root._activeVehicle.coordinate && root._activeVehicle.coordinate.isValid)))
+                                readonly property bool useLiveState: hasLiveTelemetry
+                                    || !!(root._activeVehicle && (root._vehicleIsFlying || root._activeVehicle.armed))
+                                readonly property real liveAltitude: Number(root._profileLiveAltitude)
+                                readonly property real liveClimbRate: Number(root._vehicleClimbRate)
+                                readonly property var stats: root._profileStats(points, useLiveState ? liveAltitude : NaN)
+                                readonly property real currentDistance: useLiveState
+                                    ? Number(root._profileLiveDistance)
+                                    : (Math.max(Number(stats.totalDistance), 1) * root._profileProgress)
+                                readonly property real currentAltitude: {
+                                    if (!useLiveState) {
+                                        return root._profileAltitudeAtDistance(points, currentDistance)
+                                    }
+                                    if (!isNaN(Number(liveAltitude))) {
+                                        return Number(liveAltitude)
+                                    }
+                                    if (!isNaN(Number(root._vehicleActualAltitude))) {
+                                        return Number(root._vehicleActualAltitude)
+                                    }
+                                    return root._profileAltitudeAtDistance(points, currentDistance)
+                                }
+                                readonly property real elapsedSeconds: root._profileElapsedSeconds(points,
+                                    Math.max(0, Math.min(1, currentDistance / Math.max(Number(stats.totalDistance), 1))))
+
+                                // 强制日志：每次 currentAltitude 变化都打印
+                                property real _lastLoggedCurrentAlt: NaN
+                                onCurrentAltitudeChanged: {
+                                    if (useLiveState && (isNaN(_lastLoggedCurrentAlt) || Math.abs(currentAltitude - _lastLoggedCurrentAlt) > 0.5)) {
+                                        //console.log("@@@ currentAltitude:", currentAltitude.toFixed(2), "_profileLiveAltitude:", root._profileLiveAltitude.toFixed(2), "useLiveState:", useLiveState)
+                                        _lastLoggedCurrentAlt = currentAltitude
+                                    }
+                                }
+                                readonly property int currentPointIndex: useLiveState
+                                    ? root._resolvedProfilePointIndex(points, root._profileLivePointIndex, currentDistance, currentAltitude)
+                                    : root._resolvedProfilePointIndex(points, -1, currentDistance, currentAltitude)
+                                readonly property var currentPoint: currentPointIndex >= 0 && currentPointIndex < points.length ? points[currentPointIndex] : null
                                 readonly property real plotLeft: ScreenTools.defaultFontPixelWidth * 2.8
                                 readonly property real plotRight: ScreenTools.defaultFontPixelWidth * 1.2
                                 readonly property real plotTop: ScreenTools.defaultFontPixelHeight * 1.65
                                 readonly property real plotBottom: ScreenTools.defaultFontPixelHeight * 1.55
                                 readonly property real plotWidth: Math.max(width - plotLeft - plotRight, 1)
                                 readonly property real plotHeight: Math.max(height - plotTop - plotBottom, 1)
+                                readonly property real iconX: {
+                                    const segment = root._profileLiveSegment
+                                    const lastPoint = points && points.length > 0 ? points[points.length - 1] : null
+                                    const lastDist = lastPoint ? lastPoint.distance : 0
+
+                                    if (useLiveState) {
+                                        if (segment === "takeoff") {
+                                            return xForDistance(0)
+                                        } else if (segment === "return-climb" || segment === "landing") {
+                                            return lastPoint ? xForDistance(lastPoint.distance) : xForDistance(currentDistance)
+                                        }
+                                    }
+                                    return xForDistance(currentDistance)
+                                }
+
+                                // 获取图标的X坐标，垂直段时固定在起点或终点
+                                readonly property real _segmentLockedIconX: {
+                                //readonly property real iconX: {
+                                    const segment = root._profileLiveSegment
+                                    if (useLiveState && (segment === "takeoff" || segment === "return-climb" || segment === "landing")) {
+                                        // 垂直段：固定X坐标
+                                        if (segment === "takeoff") {
+                                            // 起飞段：固定在起点（距离0）
+                                            const takeoffSegment = root._takeoffProfileSegment(points)
+                                            const takeoffPoint = takeoffSegment.valid ? points[takeoffSegment.fromIndex] : null
+                                            return takeoffPoint ? xForDistance(takeoffPoint.distance) : xForDistance(currentDistance)
+                                        } else if (segment === "landing") {
+                                            // 降落段：固定在终点（最后一个点的距离）
+                                            const lastPoint = points && points.length > 0 ? points[points.length - 1] : null
+                                            return lastPoint ? xForDistance(lastPoint.distance) : xForDistance(currentDistance)
+                                        } else if (segment === "return-climb") {
+                                            // 返航爬升段：固定在倒数第4个点的距离
+                                            const returnPoint = points && points.length >= 4 ? points[points.length - 4] : null
+                                            return returnPoint ? xForDistance(returnPoint.distance) : xForDistance(currentDistance)
+                                        }
+                                    }
+                                    // 非垂直段：使用当前距离
+                                    return xForDistance(currentDistance)
+                                }
+                                readonly property real iconY: yForAltitude(currentAltitude) - (aircraftIcon.height * 0.5)
+
+                                // 调试：监控 iconX 的变化
+                                onIconXChanged: {
+                                    if (useLiveState) {
+                                        //console.log("$$$ iconX changed:", iconX.toFixed(2), "segment:", root._profileLiveSegment)
+                                    }
+                                }
 
                                 function xForDistance(distance) {
                                     return plotLeft + (Math.max(0, Number(distance)) / Math.max(Number(stats.totalDistance), 1)) * plotWidth
@@ -6233,21 +8006,13 @@ Item {
                                     const ratio = (Math.max(minAlt, Math.min(maxAlt, Number(altitude))) - minAlt) / Math.max(maxAlt - minAlt, 1)
                                     return plotTop + (1 - ratio) * plotHeight
                                 }
+
                                 function altitudeAtProgress(progress) {
                                     if (!points || points.length === 0) {
                                         return Number(stats.minAlt)
                                     }
                                     const targetDistance = Math.max(Number(stats.totalDistance), 1) * Math.max(0, Math.min(1, progress))
-                                    for (let i = 1; i < points.length; i++) {
-                                        const prevPoint = points[i - 1]
-                                        const nextPoint = points[i]
-                                        if (targetDistance <= nextPoint.distance) {
-                                            const span = Math.max(Number(nextPoint.distance) - Number(prevPoint.distance), 1)
-                                            const t = (targetDistance - Number(prevPoint.distance)) / span
-                                            return Number(prevPoint.altitude) + ((Number(nextPoint.altitude) - Number(prevPoint.altitude)) * t)
-                                        }
-                                    }
-                                    return Number(points[points.length - 1].altitude)
+                                    return root._profileAltitudeAtDistance(points, targetDistance)
                                 }
 
                                 Canvas {
@@ -6345,7 +8110,7 @@ Item {
                                 Rectangle {
                                     width: 1
                                     height: profileChart.plotHeight + (ScreenTools.defaultFontPixelHeight * 0.55)
-                                    x: profileChart.xForDistance(profileChart.currentDistance)
+                                    x: profileChart.iconX
                                     y: profileChart.plotTop - (ScreenTools.defaultFontPixelHeight * 0.52)
                                     color: "#3D9BFF"
                                     opacity: 0.8
@@ -6355,13 +8120,13 @@ Item {
                                     width: ScreenTools.defaultFontPixelHeight * 0.52
                                     height: width
                                     radius: width / 2
-                                    x: profileChart.xForDistance(profileChart.currentDistance) - (width * 0.5)
+                                    x: profileChart.iconX - (width * 0.5)
                                     y: profileChart.plotTop - (height * 0.8)
                                     color: "#56A7FF"
                                 }
 
                                 QGCLabel {
-                                    x: Math.max(profileChart.plotLeft, Math.min(profileChart.width - width - profileChart.plotRight, profileChart.xForDistance(profileChart.currentDistance) - (width * 0.5)))
+                                    x: Math.max(profileChart.plotLeft, Math.min(profileChart.width - width - profileChart.plotRight, profileChart.iconX - (width * 0.5)))
                                     y: ScreenTools.defaultFontPixelHeight * 0.12
                                     color: "#71757B"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -6396,9 +8161,11 @@ Item {
                                 Repeater {
                                     model: profileChart.points
                                     delegate: Item {
-                                                required property int index
+                                        required property var modelData
+                                        required property int index
 
                                         readonly property bool _current: profileChart.currentPointIndex === index
+                                        visible: modelData.profileHiddenMarker !== true
 
                                         width: ScreenTools.defaultFontPixelHeight * 1.22
                                         height: width
@@ -6446,13 +8213,16 @@ Item {
                                 }
 
                                 QGCColoredImage {
+                                    id: aircraftIcon
                                     width: ScreenTools.defaultFontPixelHeight * 1.55
                                     height: width
                                     color: "#55C2F8"
                                     fillMode: Image.PreserveAspectFit
                                     source: "/InstrumentValueIcons/drone.svg"
-                                    x: profileChart.xForDistance(Number(profileChart.stats.totalDistance) * root._profileProgress) - (width * 0.5)
-                                    y: profileChart.yForAltitude(profileChart.altitudeAtProgress(root._profileProgress)) - (height * 0.5)
+                                    z: 100
+
+                                    x: profileChart.iconX - (width * 0.5)
+                                    y: profileChart.iconY
                                 }
 
                                 MouseArea {

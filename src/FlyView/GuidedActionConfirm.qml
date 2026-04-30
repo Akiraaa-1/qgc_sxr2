@@ -48,7 +48,9 @@ Item {
         visible = false
         hideTrigger = false
         visibleTimer.stop()
-        messageDisplay.opacity = 1.0
+        if (messageDisplay) {
+            messageDisplay.opacity = 1.0
+        }
         messageFadeTimer.stop()
         messageOpacityAnimation.stop()
         if (mapIndicator) {
@@ -59,7 +61,10 @@ Item {
 
     function _reallyShow() {
         visible = true
-        messageDisplay.opacity = 1.0
+        if (messageDisplay) {
+            messageDisplay.opacity = 1.0
+        }
+        messageOpacityAnimation.stop()
         messageFadeTimer.start()
     }
 
@@ -71,6 +76,21 @@ Item {
     }
 
     QGCPalette { id: qgcPal }
+
+    PropertyAnimation {
+        id:         messageOpacityAnimation
+        target:     messageDisplay
+        property:   "opacity"
+        from:       1
+        to:         0
+        duration:   500
+    }
+
+    Timer {
+        id:             messageFadeTimer
+        interval:       4000
+        onTriggered:    if (messageDisplay) { messageOpacityAnimation.start() }
+    }
 
     RowLayout {
         id:         mainLayout

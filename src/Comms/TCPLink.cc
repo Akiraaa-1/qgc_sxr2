@@ -66,6 +66,7 @@ void TCPConfiguration::copyFrom(const LinkConfiguration *source)
 void TCPConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     setHost(settings.value(QStringLiteral("host"), host()).toString());
     setPort(static_cast<quint16>(settings.value(QStringLiteral("port"), port()).toUInt()));
@@ -76,6 +77,7 @@ void TCPConfiguration::loadSettings(QSettings &settings, const QString &root)
 void TCPConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue(QStringLiteral("host"), host());
     settings.setValue(QStringLiteral("port"), port());

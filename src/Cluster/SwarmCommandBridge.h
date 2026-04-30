@@ -40,6 +40,7 @@ public:
 private:
     Vehicle *_vehicleForId(int vehicleId) const;
     QList<int> _vehicleIdsForGroup(int groupId) const;
+    QVariantMap _clearExistingGroupLeader(int groupId, int excludedVehicleId) const;
     QVariantMap _executeGroupAction(const QString &action, int groupId, int assignedVehicleCount) const;
     QVariantMap _setVehicleParameter(int vehicleId, const QString &paramName, const QVariant &value, const QString &action, int groupId = -1) const;
     QVariantMap _buildResult(ResultCode code, const QString &action, int groupId, const QString &message) const;

@@ -34,23 +34,19 @@ void SwarmUiAssignmentController::set_main_airplane(int sysid, int grpId, double
         return;
     }
 
-    bool targetVehicleFound = false;
-    for (const int vehicleId : vehicles) {
-        const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(vehicleId);
-        const bool leader = (vehicleId == sysid);
-        targetVehicleFound = targetVehicleFound || leader;
-        const QVariantMap result = _bridge.setVehicleLeader(vehicleId, leader);
-        if (result.value(QStringLiteral("success")).toBool()) {
-            SwarmUiSharedState::instance().setVehicleLeader(vehicleId, leader);
-        }
-        _emitOperationResult(vehicleId, SwarmOperationAckHandler::OperationLeaderChange, oldLeader ? 1 : 0, leader ? 1 : 0, result);
-    }
-
-    if (!targetVehicleFound) {
+    if (!vehicles.contains(sysid)) {
         QVariantMap result;
         result[QStringLiteral("success")] = false;
         result[QStringLiteral("message")] = tr("Vehicle %1 is not part of Group %2 in the current swarm state.").arg(sysid).arg(grpId);
         _emitOperationResult(sysid, SwarmOperationAckHandler::OperationLeaderChange, 0, 0, result);
+        return;
+    }
+
+    for (const int vehicleId : vehicles) {
+        const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(vehicleId);
+        const bool leader = (vehicleId == sysid);
+        const QVariantMap result = _bridge.setVehicleLeader(vehicleId, leader);
+        _emitOperationResult(vehicleId, SwarmOperationAckHandler::OperationLeaderChange, oldLeader ? 1 : 0, leader ? 1 : 0, result);
     }
 }
 
@@ -61,20 +57,14 @@ void SwarmUiAssignmentController::store_airplane_group(int sysid, int groupId, b
     const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(sysid);
 
     if (!flag) {
+        // Keep local UI group membership available for group commands without
+        // forcing a parameter write. Firmware that exposes SWARM_GROUP_ID will
+        // still override this value through refreshFromVehicle.
         SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
-        if (setAsFollower) {
-            SwarmUiSharedState::instance().setVehicleLeader(sysid, false);
-        }
         return;
     }
 
     const QVariantMap result = _bridge.setVehicleGroup(sysid, groupId, setAsFollower);
-    if (result.value(QStringLiteral("success")).toBool()) {
-        SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
-        if (setAsFollower) {
-            SwarmUiSharedState::instance().setVehicleLeader(sysid, false);
-        }
-    }
     _emitOperationResult(sysid, SwarmOperationAckHandler::OperationGroupChange, oldGroupId, groupId, result);
 
     if (setAsFollower && oldLeader) {

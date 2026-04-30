@@ -27,6 +27,7 @@ LinkConfiguration::LinkConfiguration(const LinkConfiguration *copy, QObject *par
     , _dynamic(copy->isDynamic())
     , _autoConnect(copy->isAutoConnect())
     , _highLatency(copy->isHighLatency())
+    , _mavlinkVersion(copy->mavlinkVersion())
 {
     qCDebug(LinkConfigurationLog) << this;
 
@@ -47,6 +48,7 @@ void LinkConfiguration::copyFrom(const LinkConfiguration *source)
     setDynamic(source->isDynamic());
     setAutoConnect(source->isAutoConnect());
     setHighLatency(source->isHighLatency());
+    setMavlinkVersion(source->mavlinkVersion());
 }
 
 LinkConfiguration *LinkConfiguration::createSettings(int type, const QString &name)
@@ -161,4 +163,23 @@ void LinkConfiguration::setHighLatency(bool hl)
         _highLatency = hl;
         emit highLatencyChanged();
     }
+}
+
+void LinkConfiguration::setMavlinkVersion(int version)
+{
+    const int normalizedVersion = version <= 1 ? 1 : 2;
+    if (normalizedVersion != _mavlinkVersion) {
+        _mavlinkVersion = normalizedVersion;
+        emit mavlinkVersionChanged();
+    }
+}
+
+void LinkConfiguration::loadCommonSettings(QSettings &settings)
+{
+    setMavlinkVersion(settings.value(QStringLiteral("mavlinkVersion"), _mavlinkVersion).toInt());
+}
+
+void LinkConfiguration::saveCommonSettings(QSettings &settings) const
+{
+    settings.setValue(QStringLiteral("mavlinkVersion"), _mavlinkVersion);
 }

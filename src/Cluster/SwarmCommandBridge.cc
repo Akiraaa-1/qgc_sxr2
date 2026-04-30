@@ -1,11 +1,14 @@
 #include "SwarmCommandBridge.h"
 
+#include "HealthAndArmingCheckReport.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "QGCLoggingCategory.h"
 #include "SwarmUiSharedState.h"
 #include "Vehicle.h"
 #include "VehicleSupports.h"
+
+#include "../MissionManager/MissionManager.h"
 
 QGC_LOGGING_CATEGORY(SwarmCommandBridgeLog, "Cluster.SwarmCommandBridge")
 
@@ -66,19 +69,31 @@ QVariantMap SwarmCommandBridge::setVehicleGroup(int vehicleId, int groupId, bool
         }
     }
 
-    return _buildResult(ResultSuccess, QStringLiteral("set-group"), groupId, tr("Vehicle %1 was synced to Group %2 through the current parameter pipeline.").arg(vehicleId).arg(groupId));
+    return _buildResult(ResultSuccess, QStringLiteral("set-group"), groupId, tr("Vehicle %1 accepted a Group %2 sync request through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(groupId));
 }
 
 QVariantMap SwarmCommandBridge::setVehicleLeader(int vehicleId, bool leader) const
 {
+    if (leader) {
+        const int groupId = SwarmUiSharedState::instance().vehicleGroup(vehicleId);
+        if (groupId < 1) {
+            return _buildResult(ResultNoGroupAssigned, QStringLiteral("set-leader"), -1, tr("Assign Vehicle %1 to a group before setting it as leader.").arg(vehicleId));
+        }
+
+        const QVariantMap clearResult = _clearExistingGroupLeader(groupId, vehicleId);
+        if (!clearResult.isEmpty()) {
+            return clearResult;
+        }
+    }
+
     const QVariantMap result = _setVehicleParameter(vehicleId, QStringLiteral("SWARM_SET_LEADER"), leader ? 1 : 0, leader ? QStringLiteral("set-leader") : QStringLiteral("unset-leader"));
     if (!result.value(QStringLiteral("success")).toBool()) {
         return result;
     }
 
     return _buildResult(ResultSuccess, leader ? QStringLiteral("set-leader") : QStringLiteral("unset-leader"), -1, leader
-        ? tr("Vehicle %1 was marked as swarm leader through the current parameter pipeline.").arg(vehicleId)
-        : tr("Vehicle %1 was marked as swarm follower through the current parameter pipeline.").arg(vehicleId));
+        ? tr("Vehicle %1 accepted a swarm leader sync request through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId)
+        : tr("Vehicle %1 accepted a swarm follower sync request through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId));
 }
 
 QVariantMap SwarmCommandBridge::setVehicleOffsets(int vehicleId, double xOffset, double yOffset, double zOffset) const
@@ -98,7 +113,7 @@ QVariantMap SwarmCommandBridge::setVehicleOffsets(int vehicleId, double xOffset,
         return zResult;
     }
 
-    return _buildResult(ResultSuccess, QStringLiteral("set-offsets"), -1, tr("Vehicle %1 swarm offsets were sent through the current parameter pipeline.").arg(vehicleId));
+    return _buildResult(ResultSuccess, QStringLiteral("set-offsets"), -1, tr("Vehicle %1 accepted swarm offset sync requests through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId));
 }
 
 QVariantMap SwarmCommandBridge::setVehicleAbsoluteAltitude(int vehicleId, double altitude) const
@@ -108,7 +123,7 @@ QVariantMap SwarmCommandBridge::setVehicleAbsoluteAltitude(int vehicleId, double
         return result;
     }
 
-    return _buildResult(ResultSuccess, QStringLiteral("set-absolute-altitude"), -1, tr("Vehicle %1 absolute swarm altitude was sent through the current parameter pipeline.").arg(vehicleId));
+    return _buildResult(ResultSuccess, QStringLiteral("set-absolute-altitude"), -1, tr("Vehicle %1 accepted an absolute swarm altitude sync request through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId));
 }
 
 QVariantMap SwarmCommandBridge::clearVehicleAssignment(int vehicleId) const
@@ -145,7 +160,7 @@ QVariantMap SwarmCommandBridge::clearVehicleAssignment(int vehicleId) const
         return _buildResult(ResultError, QStringLiteral("clear-assignment"), -1, tr("Vehicle %1 does not expose swarm assignment parameters in the current firmware.").arg(vehicleId));
     }
 
-    return _buildResult(ResultSuccess, QStringLiteral("clear-assignment"), -1, tr("Vehicle %1 swarm assignment was cleared through the current parameter pipeline.").arg(vehicleId));
+    return _buildResult(ResultSuccess, QStringLiteral("clear-assignment"), -1, tr("Vehicle %1 accepted a swarm assignment clear request through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId));
 }
 
 Vehicle *SwarmCommandBridge::_vehicleForId(int vehicleId) const
@@ -157,6 +172,27 @@ Vehicle *SwarmCommandBridge::_vehicleForId(int vehicleId) const
 QList<int> SwarmCommandBridge::_vehicleIdsForGroup(int groupId) const
 {
     return SwarmUiSharedState::instance().vehiclesInGroup(groupId);
+}
+
+QVariantMap SwarmCommandBridge::_clearExistingGroupLeader(int groupId, int excludedVehicleId) const
+{
+    const QList<int> vehicleIds = _vehicleIdsForGroup(groupId);
+    for (const int vehicleId : vehicleIds) {
+        if (vehicleId == excludedVehicleId) {
+            continue;
+        }
+
+        if (!SwarmUiSharedState::instance().vehicleLeader(vehicleId)) {
+            continue;
+        }
+
+        const QVariantMap result = _setVehicleParameter(vehicleId, QStringLiteral("SWARM_SET_LEADER"), 0, QStringLiteral("clear-peer-leader"), groupId);
+        if (!result.value(QStringLiteral("success")).toBool()) {
+            return result;
+        }
+    }
+
+    return QVariantMap();
 }
 
 QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int groupId, int assignedVehicleCount) const
@@ -180,24 +216,73 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
         }
 
         VehicleSupports *const supports = vehicle->supports();
+        HealthAndArmingCheckReport *const report = vehicle->healthAndArmingCheckReport();
+
+        const bool healthChecksBlockArm = report && report->supported() && !report->canArm();
+        const bool healthChecksBlockTakeoff = report && report->supported() && !report->canTakeoff();
+        const bool healthChecksBlockMission = report && report->supported() && !report->canStartMission();
 
         if (action == QStringLiteral("arm")) {
+            if (vehicle->armed()) {
+                successCount++;
+                continue;
+            }
+
+            if (healthChecksBlockArm) {
+                failures.append(tr("Vehicle %1 cannot arm because health and arming checks are blocking arming.").arg(vehicleId));
+                continue;
+            }
+
             vehicle->setArmed(true, true);
             successCount++;
         } else if (action == QStringLiteral("disarm")) {
+            if (!vehicle->armed()) {
+                successCount++;
+                continue;
+            }
+
+            if (vehicle->flying()) {
+                failures.append(tr("Vehicle %1 cannot disarm while it is still flying.").arg(vehicleId));
+                continue;
+            }
+
             vehicle->setArmed(false, true);
             successCount++;
         } else if (action == QStringLiteral("takeoff")) {
-            if (!supports || !supports->guidedMode()) {
+            if (!supports || (!supports->guidedTakeoffWithAltitude() && !supports->guidedTakeoffWithoutAltitude())) {
                 failures.append(tr("Vehicle %1 does not support guided takeoff.").arg(vehicleId));
                 continue;
             }
 
-            vehicle->guidedModeTakeoff(qMax(5.0, vehicle->minimumTakeoffAltitudeMeters()));
+            if (vehicle->flying()) {
+                failures.append(tr("Vehicle %1 is already airborne.").arg(vehicleId));
+                continue;
+            }
+
+            if (!vehicle->armed()) {
+                failures.append(tr("Vehicle %1 must be armed before group takeoff.").arg(vehicleId));
+                continue;
+            }
+
+            if (healthChecksBlockTakeoff) {
+                failures.append(tr("Vehicle %1 cannot take off because health and arming checks are blocking takeoff.").arg(vehicleId));
+                continue;
+            }
+
+            if (supports->guidedTakeoffWithAltitude()) {
+                vehicle->guidedModeTakeoff(qMax(5.0, vehicle->minimumTakeoffAltitudeMeters()));
+            } else {
+                vehicle->startTakeoff();
+            }
             successCount++;
         } else if (action == QStringLiteral("land")) {
             if (!supports || !supports->guidedMode()) {
                 failures.append(tr("Vehicle %1 does not support guided landing.").arg(vehicleId));
+                continue;
+            }
+
+            if (!vehicle->armed() || !vehicle->flying()) {
+                failures.append(tr("Vehicle %1 is not in a landing-capable flight state.").arg(vehicleId));
                 continue;
             }
 
@@ -209,9 +294,30 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
                 continue;
             }
 
+            if (!vehicle->armed() || !vehicle->flying()) {
+                failures.append(tr("Vehicle %1 is not in a pausable flight state.").arg(vehicleId));
+                continue;
+            }
+
             vehicle->pauseVehicle();
             successCount++;
         } else if (action == QStringLiteral("resume")) {
+            MissionManager *const missionManager = vehicle->missionManager();
+            if (!missionManager || missionManager->missionItems().isEmpty()) {
+                failures.append(tr("Vehicle %1 has no mission available to resume.").arg(vehicleId));
+                continue;
+            }
+
+            if (!vehicle->armed() || !vehicle->flying()) {
+                failures.append(tr("Vehicle %1 is not in a resumable mission state.").arg(vehicleId));
+                continue;
+            }
+
+            if (healthChecksBlockMission) {
+                failures.append(tr("Vehicle %1 cannot resume mission because health and arming checks are blocking mission start.").arg(vehicleId));
+                continue;
+            }
+
             vehicle->startMission();
             successCount++;
         } else {
@@ -224,14 +330,14 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
     }
 
     if (!failures.isEmpty()) {
-        return _buildResult(ResultError, action, groupId, tr("Group %1 partially executed %2 on %3 vehicles. %4")
+        return _buildResult(ResultError, action, groupId, tr("Group %1 accepted %2 on %3 vehicles, but some vehicles were blocked before dispatch. %4")
             .arg(groupId)
             .arg(action)
             .arg(successCount)
             .arg(failures.join(QLatin1Char('\n'))));
     }
 
-    return _buildResult(ResultSuccess, action, groupId, tr("Group %1 executed %2 through the current vehicle command pipeline on %3 vehicles.")
+    return _buildResult(ResultSuccess, action, groupId, tr("Group %1 accepted %2 for dispatch through the current vehicle command pipeline on %3 vehicles. Vehicle-side completion is still pending.")
         .arg(groupId)
         .arg(action)
         .arg(successCount));
@@ -260,7 +366,7 @@ QVariantMap SwarmCommandBridge::_setVehicleParameter(int vehicleId, const QStrin
 
     fact->setRawValue(value);
     qCInfo(SwarmCommandBridgeLog) << "Swarm parameter write routed through existing parameter pipeline" << "vehicle" << vehicleId << "param" << paramName << "value" << value;
-    return _buildResult(ResultSuccess, action, groupId, tr("Vehicle %1 parameter %2 was sent through the current parameter pipeline.").arg(vehicleId).arg(paramName));
+    return _buildResult(ResultSuccess, action, groupId, tr("Vehicle %1 parameter %2 was queued through the current parameter pipeline. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(paramName));
 }
 
 QVariantMap SwarmCommandBridge::_buildResult(ResultCode code, const QString &action, int groupId, const QString &message) const

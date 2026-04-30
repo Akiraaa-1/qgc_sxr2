@@ -73,6 +73,7 @@ ApplicationWindow {
     property bool               _startPageEntryGranted:     false
     property bool               _offlineWorkspaceMode:      false
     property bool               _configureReadOnlyMode:     false
+    property bool               _clusterWorkspaceOpen:      false
     property int                _lastVisitedWorkspaceTab:   _planTabIndex
 
     //-------------------------------------------------------------------------
@@ -287,6 +288,7 @@ ApplicationWindow {
     }
 
     function showClusterView() {
+        _clusterWorkspaceOpen = true
         showTool(qsTr("Cluster Workspace"), "qrc:/qml/QGroundControl/VehicleSetup/ClusterView.qml", "/InstrumentValueIcons/menu.svg", true)
     }
 
@@ -370,6 +372,11 @@ ApplicationWindow {
         const hasConnectedVehicle = _hasAnyConnectedVehicle()
 
         if (!hasConnectedVehicle) {
+            if (_clusterWorkspaceOpen && _startPageEntryGranted) {
+                _showStartPage = false
+                _updateEmbeddedPageState()
+                return false
+            }
             if (_offlineWorkspaceMode) {
                 _showStartPage = false
                 toolDrawer.visible = false
@@ -3130,7 +3137,16 @@ ApplicationWindow {
                                     fillMode: Image.PreserveAspectFit
                                     source: "/InstrumentValueIcons/drone.svg"
                                     x: fallbackProfileChart.xForDistance(Number(fallbackProfileChart.stats.totalDistance) * fallbackProfileHost._progress) - (width * 0.5)
-                                    y: fallbackProfileChart.yForAltitude(fallbackProfileChart.altitudeAtProgress(fallbackProfileHost._progress)) - (height * 0.5)
+
+                                    y: fallbackProfileChart.yForAltitude(
+                                           flyPageContent
+                                               && flyPageContent._activeVehicle
+                                               && flyPageContent._hasFactValue
+                                               && flyPageContent._hasFactValue(flyPageContent._activeVehicle.altitudeRelative)
+                                               ? Number(flyPageContent._activeVehicle.altitudeRelative.rawValue)
+                                               : fallbackProfileChart.altitudeAtProgress(fallbackProfileHost._progress)
+                                       ) - (height * 0.5)
+
                                 }
 
                                 MouseArea {
@@ -3192,18 +3208,11 @@ ApplicationWindow {
                     readonly property real _fontControlScale: 0.90
                     readonly property real _leftFieldLabelWidth: 28.0
                     readonly property real _fontRightTitle: 1.24
-                    readonly property real _fontRightStatus: 0.80
-                    readonly property real _fontRightMeta: 0.76
                     readonly property real _fontRightLogTime: 0.74
                     readonly property real _fontRightLogMessage: 0.82
                     readonly property real _fontRightButtonScale: 0.82
                     readonly property var _linkManager: QGroundControl.linkManager
-                    readonly property var _settingsManager: QGroundControl.settingsManager
-                    readonly property var _mavlinkSettings: _settingsManager ? _settingsManager.mavlinkSettings : null
-                    readonly property var _gcsSystemIdFact: _mavlinkSettings ? _mavlinkSettings.gcsMavlinkSystemID : null
-                    readonly property var _heartbeatTimeoutFact: _mavlinkSettings ? _mavlinkSettings.vehicleHeartbeatTimeout : null
                     readonly property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-                    readonly property int _gcsComponentId: 190
                     readonly property string _startPageAutoConnectConfigName: "Start Page Auto Connect"
                     property bool _serialPortAvailable: false
                     readonly property bool _canConnect: _isConnected
@@ -3224,12 +3233,16 @@ ApplicationWindow {
                     property int _selectedDataBits: 8
                     property int _selectedStopBits: 1
                     property int _selectedParity: 0
+                    property int _selectedMavlinkVersion: 2
                     property bool _autoConnectOnBoot: false
                     property int _connectedVehicleCount: 0
                     property bool _isConnected: false
                     property string _statusText: qsTr("Select a link and connect the vehicle")
                     property string _recentConnectionText: qsTr("Recent connection: No successful connection yet")
-                    readonly property int _heartbeatTimeoutSeconds: (_heartbeatTimeoutFact && !isNaN(Number(_heartbeatTimeoutFact.rawValue))) ? Math.round(Number(_heartbeatTimeoutFact.rawValue)) : 4
+
+                    function _setSelectedMavlinkVersionIndex(index) {
+                        _selectedMavlinkVersion = index === 0 ? 1 : 2
+                    }
 
                     function _openWorkspaceTab(tabIndex) {
                         if (_hasAnyConnectedVehicle()) {
@@ -3266,7 +3279,47 @@ ApplicationWindow {
                         _availableLinkConfigs = configs
                         _availableLinkNames = names
                         _selectedLinkIndex = configs.length > 0 ? Math.max(0, Math.min(_selectedLinkIndex, configs.length - 1)) : -1
+                        _syncSelectedLinkSettings()
                         _refreshSerialSelection()
+                    }
+
+                    function _syncSelectedLinkSettings() {
+                        if (_selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
+                            _selectedBaudRate = 57600
+                            _selectedFlowControlEnabled = false
+                            _selectedDataBits = 8
+                            _selectedStopBits = 1
+                            _selectedParity = 0
+                            _selectedMavlinkVersion = 2
+                            return
+                        }
+
+                        const cfg = _availableLinkConfigs[_selectedLinkIndex]
+                        if (cfg && cfg.linkType === LinkConfiguration.TypeSerial) {
+                            const baud = Number(cfg.baud)
+                            const dataBits = Number(cfg.dataBits)
+                            const stopBits = Number(cfg.stopBits)
+                            const parity = Number(cfg.parity)
+                            const flowControl = Number(cfg.flowControl)
+
+                            _selectedBaudRate = isNaN(baud) || baud <= 0 ? 57600 : baud
+                            _selectedFlowControlEnabled = !isNaN(flowControl) && flowControl !== 0
+                            _selectedDataBits = isNaN(dataBits) || dataBits < 5 || dataBits > 8 ? 8 : dataBits
+                            _selectedStopBits = isNaN(stopBits) || stopBits < 1 || stopBits > 2 ? 1 : stopBits
+                            _selectedParity = isNaN(parity) ? 0 : parity
+                        } else {
+                            _selectedBaudRate = 57600
+                            _selectedFlowControlEnabled = false
+                            _selectedDataBits = 8
+                            _selectedStopBits = 1
+                            _selectedParity = 0
+                        }
+
+                        if (cfg && cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
+                            _selectedMavlinkVersion = Number(cfg.mavlinkVersion) <= 1 ? 1 : 2
+                        } else {
+                            _selectedMavlinkVersion = 2
+                        }
                     }
 
                     function _selectLinkConfigByName(name) {
@@ -3278,6 +3331,7 @@ ApplicationWindow {
                             const cfg = _availableLinkConfigs[i]
                             if (cfg && cfg.name === name) {
                                 _selectedLinkIndex = i
+                                _syncSelectedLinkSettings()
                                 return
                             }
                         }
@@ -3380,6 +3434,9 @@ ApplicationWindow {
                             config.name = _startPageAutoConnectConfigName
                             config.dynamic = false
                             config.autoConnect = true
+                            config.mavlinkVersion = connectionConfig.mavlinkVersion !== undefined && connectionConfig.mavlinkVersion !== null
+                                ? connectionConfig.mavlinkVersion
+                                : _selectedMavlinkVersion
                             _linkManager.endCreateConfiguration(config)
                             _refreshLinks()
                             return true
@@ -3402,6 +3459,7 @@ ApplicationWindow {
                         config.dataBits = _selectedDataBits
                         config.stopBits = _selectedStopBits
                         config.parity = _selectedParity
+                        config.mavlinkVersion = _selectedMavlinkVersion
                         config.autoConnect = true
                         _linkManager.endCreateConfiguration(config)
                         _refreshLinks()
@@ -3451,6 +3509,7 @@ ApplicationWindow {
                         config.dataBits = _selectedDataBits
                         config.stopBits = _selectedStopBits
                         config.parity = _selectedParity
+                        config.mavlinkVersion = _selectedMavlinkVersion
                         config.autoConnect = _autoConnectOnBoot
 
                         return config
@@ -3578,6 +3637,9 @@ ApplicationWindow {
                             return
                         }
 
+                        if (cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
+                            cfg.mavlinkVersion = _selectedMavlinkVersion
+                        }
                         _applyStartPagePersistentSettings(cfg)
                         _appendEvent((enterWorkspace ? qsTr("Connecting using %1 ...") : qsTr("Testing %1 ...")).arg(cfg.name))
                         _linkManager.createConnectedLink(cfg)
@@ -4022,7 +4084,10 @@ ApplicationWindow {
                                                 showFocusBorder: true
                                                 borderRadius: startPageOverlay._uiRadius
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onActivated: startPageOverlay._selectedLinkIndex = index
+                                                onActivated: {
+                                                    startPageOverlay._selectedLinkIndex = index
+                                                    startPageOverlay._syncSelectedLinkSettings()
+                                                }
                                             }
                                             QGCButton {
                                                 Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6.0
@@ -4116,7 +4181,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
                                             spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCLabel { text: qsTr("Baud Rate & Flow Control"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCLabel { text: qsTr("Baud Rate"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                             QGCComboBox {
                                                 id: baudRateCombo
                                                 Layout.fillWidth: true
@@ -4156,21 +4221,6 @@ ApplicationWindow {
                                                     }
                                                 }
                                             }
-                                            QGCComboBox {
-                                                Layout.fillWidth: true
-                                                sizeToContents: true
-                                                model: [qsTr("None"), qsTr("Hardware")]
-                                                currentIndex: startPageOverlay._selectedFlowControlEnabled ? 1 : 0
-                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                backgroundColor: startPageOverlay._inputBg
-                                                borderColor: startPageOverlay._borderColor
-                                                focusBorderColor: startPageOverlay._focusColor
-                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                showFocusBorder: true
-                                                borderRadius: startPageOverlay._uiRadius
-                                                stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onActivated: (index) => startPageOverlay._selectedFlowControlEnabled = index === 1
-                                            }
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -4180,53 +4230,31 @@ ApplicationWindow {
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10; sizeToContents: true; model: ["Data 5", "Data 6", "Data 7", "Data 8"]; currentIndex: Math.max(0, Math.min(3, startPageOverlay._selectedDataBits - 5)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedDataBits = index + 5 }
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; sizeToContents: true; model: ["Stop 1", "Stop 2"]; currentIndex: Math.max(0, Math.min(1, startPageOverlay._selectedStopBits - 1)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedStopBits = index + 1 }
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 11; sizeToContents: true; model: [qsTr("No parity"), qsTr("Odd"), qsTr("Even")]; currentIndex: startPageOverlay._selectedParity === 3 ? 1 : (startPageOverlay._selectedParity === 2 ? 2 : 0); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => startPageOverlay._selectedParity = index === 1 ? 3 : (index === 2 ? 2 : 0) }
-                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12; sizeToContents: true; model: ["MAVLink 1", "MAVLink 2"]; currentIndex: 1; enabled: false; font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
-                                            spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCTextField {
+                                            QGCComboBox {
                                                 Layout.fillWidth: true
-                                                text: startPageOverlay._gcsSystemIdFact ? ("" + startPageOverlay._gcsSystemIdFact.rawValue) : "255"
-                                                numericValuesOnly: true
-                                                validator: IntValidator {
-                                                    bottom: 1
-                                                    top: 255
-                                                }
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12
+                                                sizeToContents: true
+                                                model: ["MAVLink 1", "MAVLink 2"]
+                                                currentIndex: startPageOverlay._selectedMavlinkVersion <= 1 ? 0 : 1
                                                 font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 backgroundColor: startPageOverlay._inputBg
                                                 borderColor: startPageOverlay._borderColor
                                                 focusBorderColor: startPageOverlay._focusColor
-                                                showFocusGlow: true
-                                                borderRadius: startPageOverlay._uiRadius
-                                                borderWidth: 1
-                                                focusBorderWidth: 1
                                                 textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                onEditingFinished: {
-                                                    const systemId = parseInt(text)
-                                                    if (!isNaN(systemId) && systemId >= 1 && systemId <= 255 && startPageOverlay._gcsSystemIdFact) {
-                                                        startPageOverlay._gcsSystemIdFact.rawValue = systemId
-                                                        startPageOverlay._appendEvent(qsTr("GCS MAVLink system ID set to %1").arg(systemId))
+                                                showFocusBorder: true
+                                                borderRadius: startPageOverlay._uiRadius
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onActivated: function(index) {
+                                                    startPageOverlay._setSelectedMavlinkVersionIndex(index)
+                                                }
+                                                onCurrentIndexChanged: {
+                                                    if (activeFocus && currentIndex >= 0) {
+                                                        startPageOverlay._setSelectedMavlinkVersionIndex(currentIndex)
                                                     }
                                                 }
                                             }
-                                            QGCTextField {
-                                                Layout.fillWidth: true
-                                                text: "" + startPageOverlay._gcsComponentId
-                                                readOnly: true
-                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                backgroundColor: startPageOverlay._inputBg
-                                                borderColor: startPageOverlay._borderColor
-                                                focusBorderColor: startPageOverlay._focusColor
-                                                showFocusGlow: true
-                                                borderRadius: startPageOverlay._uiRadius
-                                                borderWidth: 1
-                                                focusBorderWidth: 1
-                                                textColor: startPageOverlay._primaryText
-                                            }
                                         }
-                                        Item { Layout.fillHeight: true; Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 1.8 }
+                                        Item { Layout.fillHeight: true; Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 3.6 }
                                         QGCLabel { Layout.fillWidth: true; text: startPageOverlay._recentConnectionText; color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -4257,18 +4285,6 @@ ApplicationWindow {
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
                                                 onClicked: startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
                                             }
-                                            QGCButton {
-                                                Layout.fillWidth: true
-                                                text: qsTr("Test Port")
-                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                showBorder: true
-                                                backRadius: startPageOverlay._uiRadius
-                                                borderColor: startPageOverlay._borderColor
-                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
-                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onClicked: startPageOverlay._connectSelected(false)
-                                            }
                                         }
                                     }
                                 }
@@ -4286,48 +4302,6 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
                                         spacing: ScreenTools.defaultFontPixelHeight * 0.62
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 4.8
-                                            radius: startPageOverlay._uiRadius
-                                            color: startPageOverlay._inputBg
-                                            border.color: startPageOverlay._borderColor
-                                            border.width: 1
-                                            ColumnLayout {
-                                                anchors.fill: parent
-                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.6
-                                                RowLayout {
-                                                    Layout.fillWidth: true
-                                                    Rectangle { Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.85; Layout.preferredHeight: Layout.preferredWidth; radius: width/2; color: startPageOverlay._isConnected ? "#5CE0A4" : "#FF6B6B" }
-                                                    QGCLabel { text: startPageOverlay._isConnected ? qsTr("Connected") : qsTr("Disconnected"); color: startPageOverlay._primaryText; font.weight: Font.DemiBold; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightStatus }
-                                                    QGCLabel { Layout.fillWidth: true; horizontalAlignment: Text.AlignRight; text: startPageOverlay._statusText; color: startPageOverlay._secondaryText; elide: Text.ElideRight; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightMeta }
-                                                }
-                                                RowLayout {
-                                                    Layout.fillWidth: true
-                                                    QGCLabel { text: qsTr("Heartbeat timeout: %1s").arg(Math.round(startPageOverlay._heartbeatTimeoutSeconds)); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightMeta }
-                                                    QGCSlider {
-                                                        Layout.fillWidth: true
-                                                        from: 2
-                                                        to: 15
-                                                        stepSize: 1
-                                                        value: startPageOverlay._heartbeatTimeoutSeconds
-                                                        trackColor: startPageOverlay._inputBg
-                                                        trackBorderColor: startPageOverlay._borderColor
-                                                        handleColor: startPageOverlay._primaryBtn
-                                                        handleBorderColor: startPageOverlay._focusColor
-                                                        labelColor: startPageOverlay._secondaryText
-                                                        onValueChanged: {
-                                                            const heartbeatTimeout = Math.round(value)
-                                                            if (startPageOverlay._heartbeatTimeoutFact && Number(startPageOverlay._heartbeatTimeoutFact.rawValue) !== heartbeatTimeout) {
-                                                                startPageOverlay._heartbeatTimeoutFact.rawValue = heartbeatTimeout
-                                                                startPageOverlay._appendEvent(qsTr("Heartbeat timeout set to %1s").arg(heartbeatTimeout))
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
 
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -4478,11 +4452,17 @@ ApplicationWindow {
         property bool compactHeader: false
         readonly property bool _isSettingsTool: toolDrawer.toolSource
                                                && toolDrawer.toolSource.toString().indexOf("AppSettings.qml") !== -1
+        readonly property bool _isClusterTool: toolDrawer.toolSource
+                                              && toolDrawer.toolSource.toString().indexOf("ClusterView.qml") !== -1
         readonly property bool _showUnderMainNavigation: !mainWindow._showStartPage
                                                          && (toolDrawer.toolSource === "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml")
 
         onVisibleChanged: {
             if (!toolDrawer.visible) {
+                if (toolDrawer._isClusterTool) {
+                    mainWindow._clusterWorkspaceOpen = false
+                    mainWindow._syncStartPageVisibility()
+                }
                 toolDrawerLoader.source = ""
                 toolDrawer.compactHeader = false
             }
@@ -4576,7 +4556,7 @@ ApplicationWindow {
         modal:              false
         focus:              true
 
-        property alias  criticalVehicleMessage:             criticalVehicleMessageText.text
+        property string criticalVehicleMessage:             ""
         property bool   additionalCriticalMessagesReceived: false
 
         background: Rectangle {
@@ -4640,6 +4620,7 @@ ApplicationWindow {
             wrapMode:           Text.WordWrap
             color:              qgcPal.alertText
             textFormat:         TextEdit.RichText
+            text:               criticalVehicleMessagePopup.criticalVehicleMessage
         }
 
         MouseArea {
@@ -4653,7 +4634,10 @@ ApplicationWindow {
                         flyPage.dropMainStatusIndicatorTool()
                     }
                 } else {
-                    QGroundControl.multiVehicleManager.activeVehicle.resetErrorLevelMessages();
+                    const activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
+                    if (activeVehicle) {
+                        activeVehicle.resetErrorLevelMessages();
+                    }
                 }
             }
         }

@@ -17,6 +17,7 @@ Rectangle {
     property var _visualItems: missionController.visualItems
     property bool _noMissionItemsAdded: _visualItems ? _visualItems.count <= 1 : true
     property var _settingsItem: _visualItems && _visualItems.count > 0 ? _visualItems.get(0) : null
+    property bool _showVehicleSpeeds: false
     property bool _showCruiseSpeed: _controllerVehicle ? !_controllerVehicle.multiRotor : false
     property bool _showHoverSpeed: _controllerVehicle ? (_controllerVehicle.multiRotor || _controllerVehicle.vtol) : false
     property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16
@@ -111,7 +112,7 @@ Rectangle {
             id: vehicleSpeedsSectionHeader
             Layout.fillWidth: true
             text: qsTr("Vehicle Speeds")
-            visible: _root._showCruiseSpeed || _root._showHoverSpeed
+            visible: _root._showVehicleSpeeds && (_root._showCruiseSpeed || _root._showHoverSpeed)
             checked: false
         }
 

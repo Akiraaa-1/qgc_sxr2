@@ -322,6 +322,7 @@ void BluetoothConfiguration::copyFrom(const LinkConfiguration *source)
 void BluetoothConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     _mode = static_cast<BluetoothMode>(settings.value("mode", static_cast<int>(BluetoothMode::ModeClassic)).toInt());
 
@@ -342,6 +343,7 @@ void BluetoothConfiguration::loadSettings(QSettings &settings, const QString &ro
 void BluetoothConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue("mode", static_cast<int>(_mode));
     settings.setValue("deviceName", _device.name());

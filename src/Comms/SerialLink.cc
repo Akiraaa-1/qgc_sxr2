@@ -69,6 +69,7 @@ void SerialConfiguration::copyFrom(const LinkConfiguration *source)
 void SerialConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     setBaud(settings.value("baud", _baud).toInt());
     setDataBits(static_cast<QSerialPort::DataBits>(settings.value("dataBits", _dataBits).toInt()));
@@ -85,6 +86,7 @@ void SerialConfiguration::loadSettings(QSettings &settings, const QString &root)
 void SerialConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue("baud", _baud);
     settings.setValue("dataBits", _dataBits);

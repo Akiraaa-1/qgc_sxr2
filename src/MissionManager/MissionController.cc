@@ -1042,9 +1042,9 @@ void MissionController::_recalcFlightPathSegments(void)
     bool                firstCoordinateNotFound =   true;
     VisualMissionItem*  lastFlyThroughVI =          qobject_cast<VisualMissionItem*>(_visualItems->get(0));
     bool                linkEndToHome =             false;
-    bool                linkStartToHome =           _controllerVehicle->rover() ? true : false;
-    bool                foundRTL =                  false;
     bool                homePositionValid =         _settingsItem->coordinate().isValid();
+    bool                linkStartToHome =           (!_flyView && homePositionValid) || _controllerVehicle->rover();
+    bool                foundRTL =                  false;
     bool                roiActive =                 false;
     bool                previousItemIsIncomplete =  false;
     bool                signalSplitSegmentChanged = false;

@@ -9,10 +9,37 @@
 #include "Vehicle.h"
 
 #include <QString>
+#include <QVariant>
 
 #include "px4_custom_mode.h"
 
 QGC_LOGGING_CATEGORY(PX4FirmwarePluginLog, "FirmwarePlugin.PX4FirmwarePlugin")
+
+static QString _bestArmingFailureReason(const Vehicle* vehicle)
+{
+    if (!vehicle) {
+        return {};
+    }
+
+    QObject* report = const_cast<Vehicle*>(vehicle)->healthAndArmingCheckReport();
+    if (report) {
+        QObject* problems = report->property("problemsForCurrentMode").value<QObject*>();
+        if (problems) {
+            const int count = problems->property("count").toInt();
+            if (count > 0) {
+                QObject* problem = nullptr;
+                if (QMetaObject::invokeMethod(problems, "get", Q_RETURN_ARG(QObject*, problem), Q_ARG(int, 0)) && problem) {
+                    const QString message = problem->property("message").toString().trimmed();
+                    if (!message.isEmpty()) {
+                        return message;
+                    }
+                }
+            }
+        }
+    }
+
+    return vehicle->prearmError().trimmed();
+}
 
 PX4FirmwarePluginInstanceData::PX4FirmwarePluginInstanceData(QObject* parent)
     : FirmwarePluginInstanceData(parent)
@@ -563,11 +590,17 @@ void PX4FirmwarePlugin::startTakeoff(Vehicle* vehicle) const
 {
     if (_setFlightModeAndValidate(vehicle, takeOffFlightMode())) {
         if (!_armVehicleAndValidate(vehicle)) {
-            qgcApp()->showAppMessage(tr("Unable to start takeoff: Vehicle rejected arming."));
+            const QString reason = _bestArmingFailureReason(vehicle);
+            qgcApp()->showAppMessage(reason.isEmpty()
+                ? tr("Unable to start takeoff: Vehicle rejected arming.")
+                : tr("Unable to start takeoff: %1").arg(reason));
             return;
         }
     } else {
-        qgcApp()->showAppMessage(tr("Unable to start takeoff: Vehicle not changing to %1 flight mode.").arg(takeOffFlightMode()));
+        const QString reason = _bestArmingFailureReason(vehicle);
+        qgcApp()->showAppMessage(reason.isEmpty()
+            ? tr("Unable to start takeoff: Vehicle not changing to %1 flight mode.").arg(takeOffFlightMode())
+            : tr("Unable to start takeoff: %1").arg(reason));
     }
 }
 
@@ -575,11 +608,17 @@ void PX4FirmwarePlugin::startMission(Vehicle* vehicle) const
 {
     if (_setFlightModeAndValidate(vehicle, missionFlightMode())) {
         if (!_armVehicleAndValidate(vehicle)) {
-            qgcApp()->showAppMessage(tr("Unable to start mission: Vehicle rejected arming."));
+            const QString reason = _bestArmingFailureReason(vehicle);
+            qgcApp()->showAppMessage(reason.isEmpty()
+                ? tr("Unable to start mission: Vehicle rejected arming.")
+                : tr("Unable to start mission: %1").arg(reason));
             return;
         }
     } else {
-        qgcApp()->showAppMessage(tr("Unable to start mission: Vehicle not changing to %1 flight mode.").arg(missionFlightMode()));
+        const QString reason = _bestArmingFailureReason(vehicle);
+        qgcApp()->showAppMessage(reason.isEmpty()
+            ? tr("Unable to start mission: Vehicle not changing to %1 flight mode.").arg(missionFlightMode())
+            : tr("Unable to start mission: %1").arg(reason));
     }
 }
 

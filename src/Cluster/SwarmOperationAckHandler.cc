@@ -17,17 +17,17 @@ QVariantMap SwarmOperationAckHandler::buildAckResult(int vehicleId, int operatio
     if (success) {
         switch (operationType) {
         case OperationGroupChange:
-            message = tr("Vehicle %1 changed cluster group from %2 to %3.").arg(vehicleId).arg(oldValue).arg(newValue);
+            message = tr("Vehicle %1 accepted a cluster group sync request from %2 to %3. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(oldValue).arg(newValue);
             break;
         case OperationLeaderChange:
-            message = tr("Vehicle %1 changed cluster role from %2 to %3.").arg(vehicleId).arg(oldValue == 1 ? tr("Leader") : tr("Follower")).arg(newValue == 1 ? tr("Leader") : tr("Follower"));
+            message = tr("Vehicle %1 accepted a cluster role sync request from %2 to %3. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(oldValue == 1 ? tr("Leader") : tr("Follower")).arg(newValue == 1 ? tr("Leader") : tr("Follower"));
             break;
         default:
-            message = tr("Vehicle %1 acknowledged cluster action %2.").arg(vehicleId).arg(operationText(operationType));
+            message = tr("Vehicle %1 accepted cluster action %2 for dispatch. Vehicle-side completion is still pending.").arg(vehicleId).arg(operationText(operationType));
             break;
         }
     } else {
-        message = tr("Vehicle %1 rejected cluster action %2.").arg(vehicleId).arg(operationText(operationType));
+        message = tr("Vehicle %1 could not accept cluster action %2.").arg(vehicleId).arg(operationText(operationType));
     }
 
     QVariantMap ack;

@@ -93,6 +93,7 @@ void UDPConfiguration::copyFrom(const LinkConfiguration *source)
 void UDPConfiguration::loadSettings(QSettings &settings, const QString &root)
 {
     settings.beginGroup(root);
+    loadCommonSettings(settings);
 
     setLocalPort(static_cast<quint16>(settings.value("port", SettingsManager::instance()->autoConnectSettings()->udpListenPort()->rawValue().toUInt()).toUInt()));
 
@@ -114,6 +115,7 @@ void UDPConfiguration::loadSettings(QSettings &settings, const QString &root)
 void UDPConfiguration::saveSettings(QSettings &settings, const QString &root) const
 {
     settings.beginGroup(root);
+    saveCommonSettings(settings);
 
     settings.setValue(QStringLiteral("hostCount"), _targetHosts.size());
     settings.setValue(QStringLiteral("port"), _localPort);

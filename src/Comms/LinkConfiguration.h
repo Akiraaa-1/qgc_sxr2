@@ -25,6 +25,7 @@ class LinkConfiguration : public QObject
     Q_PROPERTY(QString          settingsURL     READ settingsURL                            CONSTANT)
     Q_PROPERTY(QString          settingsTitle   READ settingsTitle                          CONSTANT)
     Q_PROPERTY(bool             highLatency     READ isHighLatency  WRITE setHighLatency    NOTIFY highLatencyChanged)
+    Q_PROPERTY(int              mavlinkVersion  READ mavlinkVersion WRITE setMavlinkVersion NOTIFY mavlinkVersionChanged)
 
 public:
     LinkConfiguration(const QString &name, QObject *parent = nullptr);
@@ -62,6 +63,9 @@ public:
 
     /// Set if this is this an High Latency configuration.
     void setHighLatency(bool hl = false);
+
+    int mavlinkVersion() const { return _mavlinkVersion; }
+    void setMavlinkVersion(int version);
 
     /// Copy instance data, When manipulating data, you create a copy of the configuration using the copy constructor,
     /// edit it and then transfer its content to the original using this method.
@@ -123,8 +127,11 @@ signals:
     void dynamicChanged();
     void autoConnectChanged();
     void highLatencyChanged();
+    void mavlinkVersionChanged();
 
 protected:
+    void loadCommonSettings(QSettings &settings);
+    void saveCommonSettings(QSettings &settings) const;
     std::weak_ptr<LinkInterface> _link; ///< Link currently using this configuration (if any)
 
 private:
@@ -133,6 +140,7 @@ private:
     bool _forwarding = false;  ///< Automatically added Mavlink forwarding connection
     bool _autoConnect = false; ///< This connection is started automatically at boot
     bool _highLatency = false;
+    int _mavlinkVersion = 2;
 };
 
 typedef std::shared_ptr<LinkConfiguration> SharedLinkConfigurationPtr;
