@@ -1,9 +1,10 @@
 #pragma once
 
 #include <QtCore/QObject>
+#include <QtCore/QVariantMap>
 #include <QtQmlIntegration/QtQmlIntegration>
 
-#include "SwarmCommandBridge.h"
+class Vehicle;
 
 class SwarmUiCommandController : public QObject
 {
@@ -20,6 +21,5 @@ signals:
 
 private:
     void _emitOperationResult(int operationType, const QVariantMap &result);
-
-    SwarmCommandBridge _bridge;
+    bool _sendSwarmStartFlag(Vehicle *vehicle, int startAuto, int groupId, int stop, int pause, int resume) const;
 };

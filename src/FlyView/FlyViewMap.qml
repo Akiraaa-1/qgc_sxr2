@@ -6,6 +6,7 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import QGroundControl
+import QGroundControl.Cluster
 import QGroundControl.Controls
 import QGroundControl.FlyView
 import QGroundControl.FlightMap
@@ -44,11 +45,23 @@ FlightMap {
     readonly property color _selectedMissionBandColor: Qt.rgba(0.56, 0.47, 0.92, 0.76)
     readonly property color _selectedMissionCoreColor: "#E8893D"
     readonly property color _selectedMissionWaypointColor: "#C87833"
+    readonly property color _swarmTargetColor: "#00E5FF"
     readonly property color _selectedMissionCurrentColor: "#2DB748"
 
     property bool   _disableVehicleTracking:    false
     property bool   _keepVehicleCentered:       pipMode ? true : false
     property bool   _saveZoomLevelSetting:      true
+
+    SwarmFormationOverlayController {
+        id: swarmFormationOverlay
+    }
+
+    Timer {
+        interval: 1000
+        running: _root.visible && !pipMode
+        repeat: true
+        onTriggered: swarmFormationOverlay.refreshTargets()
+    }
 
     function _adjustMapZoomForPipMode() {
         _saveZoomLevelSetting = false
@@ -324,6 +337,67 @@ FlightMap {
             z:              QGroundControl.zOrderVehicles
         }
     }
+
+    MapItemView {
+        model: pipMode ? 0 : swarmFormationOverlay.targets
+        delegate: MapPolyline {
+            property var target: typeof object === "undefined" ? modelData : object
+
+            line.width:      2
+            line.color:      Qt.rgba(0.0, 0.9, 1.0, 0.38)
+            path:            target && target.actualCoordinate && target.actualCoordinate.isValid && target.coordinate && target.coordinate.isValid
+                                 ? [ target.actualCoordinate, target.coordinate ]
+                                 : []
+            z:               QGroundControl.zOrderVehicles - 2
+        }
+    }
+
+    MapItemView {
+        model: pipMode ? 0 : swarmFormationOverlay.targets
+        delegate: MapQuickItem {
+            property var target: typeof object === "undefined" ? modelData : object
+
+            coordinate:      target && target.coordinate ? target.coordinate : QtPositioning.coordinate()
+            anchorPoint.x:   targetItem.width / 2
+            anchorPoint.y:   targetItem.height / 2
+            visible:         coordinate.isValid
+            z:               QGroundControl.zOrderVehicles - 1
+
+            sourceItem: Item {
+                id: targetItem
+                width: ScreenTools.defaultFontPixelHeight * 2.2
+                height: ScreenTools.defaultFontPixelHeight * 2.2
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.72
+                    height: width
+                    radius: width / 2
+                    color: Qt.rgba(0.0, 0.9, 1.0, target && target.isLeader ? 0.34 : 0.20)
+                    border.width: 2
+                    border.color: _swarmTargetColor
+                }
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.24
+                    height: width
+                    radius: width / 2
+                    color: _swarmTargetColor
+                }
+
+                QGCMapLabel {
+                    anchors.top: parent.bottom
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    map: _root
+                    text: target ? qsTr("S%1 G%2").arg(target.vehicleId).arg(target.groupId) : ""
+                    font.pointSize: ScreenTools.smallFontPointSize
+                    color: _swarmTargetColor
+                }
+            }
+        }
+    }
+
     // Add ADSB vehicles to the map
     MapItemView {
         model: QGroundControl.adsbVehicleManager.adsbVehicles

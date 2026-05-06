@@ -45,8 +45,8 @@ Rectangle {
         }
     }
 
-    width: 320
-    height: 80
+    width: Math.min(360, parent ? parent.width - 40 : 360)
+    height: Math.max(86, popupRow.implicitHeight + 24)
     radius: 8
     color: Qt.darker(operationAccent(opType, isSuccess), 2.1)
     border.color: operationAccent(opType, isSuccess)
@@ -60,6 +60,7 @@ Rectangle {
     anchors.topMargin: 100
 
     RowLayout {
+        id: popupRow
         anchors.fill: parent
         anchors.margins: 12
         spacing: 10
@@ -88,6 +89,8 @@ Rectangle {
                 font.pixelSize: 14
                 font.bold: true
                 color: "white"
+                Layout.fillWidth: true
+                elide: Text.ElideRight
             }
 
             Text {
@@ -96,6 +99,7 @@ Rectangle {
                 color: "#e0e0e0"
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
+                Layout.maximumWidth: 250
             }
         }
 

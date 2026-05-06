@@ -13,6 +13,8 @@ qt_add_qml_module(ClusterModule
         ClusterManager.h
         SwarmOperationAckHandler.cc
         SwarmOperationAckHandler.h
+        SwarmFormationOverlayController.cc
+        SwarmFormationOverlayController.h
         SwarmCommandBridge.cc
         SwarmCommandBridge.h
         SwarmUiAssignmentController.cc
@@ -35,6 +37,7 @@ target_include_directories(ClusterModule
         ${CMAKE_BINARY_DIR}/_deps/mavlink-build/include/mavlink
         ${CMAKE_BINARY_DIR}/_deps/mavlink-build/include/mavlink/${QGC_MAVLINK_DIALECT}
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../Comms
         ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem
         ${CMAKE_CURRENT_SOURCE_DIR}/../MAVLink
         ${CMAKE_CURRENT_SOURCE_DIR}/../MAVLink/LibEvents

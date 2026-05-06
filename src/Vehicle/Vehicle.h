@@ -440,6 +440,11 @@ public:
     /// guarantee that it makes it to the vehicle.
     void sendMessageMultiple(mavlink_message_t message);
 
+    /// Sends the specified message multiple times immediately on the vehicle's
+    /// current links. This is used for best-effort custom messages that should
+    /// not enter command/parameter retry state machines.
+    void sendMessageMultipleOnCurrentLinks(mavlink_message_t message, int count);
+
     /// Provides access to AutoPilotPlugin for this vehicle.
     AutoPilotPlugin* autopilotPlugin() { return _autopilotPlugin; }
 

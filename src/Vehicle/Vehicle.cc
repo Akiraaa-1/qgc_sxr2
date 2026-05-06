@@ -1775,6 +1775,21 @@ void Vehicle::sendMessageMultiple(mavlink_message_t message)
     _sendMessageMultipleList.append(info);
 }
 
+void Vehicle::sendMessageMultipleOnCurrentLinks(mavlink_message_t message, int count)
+{
+    if (count <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < count; i++) {
+        for (const VehicleLinkManager::LinkInfo_t &linkInfo : _vehicleLinkManager->_rgLinkInfo) {
+            if (linkInfo.link) {
+                (void) sendMessageOnLinkThreadSafe(linkInfo.link.get(), message);
+            }
+        }
+    }
+}
+
 void Vehicle::_missionManagerError(int errorCode, const QString& errorMsg)
 {
     Q_UNUSED(errorCode);

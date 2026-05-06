@@ -485,6 +485,35 @@ void ParameterManager::_factRawValueUpdated(const QVariant &rawValue)
     _mavlinkParamSet(fact->componentId(), fact->name(), fact->type(), rawValue);
 }
 
+void ParameterManager::sendSwarmParameter(int componentId, const QString &paramName, FactMetaData::ValueType_t valueType, const QVariant &rawValue)
+{
+    const int actualComponentId = componentId == defaultComponentId ? MAV_COMP_ID_AUTOPILOT1 : componentId;
+
+    mavlink_param_union_t paramUnion{};
+    if (!_fillMavlinkParamUnion(valueType, rawValue, paramUnion)) {
+        qCWarning(ParameterManagerLog) << "Swarm parameter direct write rejected unsupported value" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << rawValue;
+        return;
+    }
+
+    char paramId[MAVLINK_MSG_PARAM_SET_FIELD_PARAM_ID_LEN + 1] = {};
+    (void) strncpy(paramId, paramName.toLocal8Bit().constData(), MAVLINK_MSG_PARAM_SET_FIELD_PARAM_ID_LEN);
+
+    mavlink_message_t message{};
+    (void) mavlink_msg_param_set_pack(
+        MAVLinkProtocol::instance()->getSystemId(),
+        MAVLinkProtocol::getComponentId(),
+        &message,
+        static_cast<uint8_t>(_vehicle->id()),
+        static_cast<uint8_t>(actualComponentId),
+        paramId,
+        paramUnion.param_float,
+        static_cast<uint8_t>(factTypeToMavType(valueType))
+    );
+
+    qCInfo(ParameterManagerLog) << "Swarm parameter best-effort direct write" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << rawValue;
+    _vehicle->sendMessageMultipleOnCurrentLinks(message, 5);
+}
+
 void ParameterManager::_ftpDownloadComplete(const QString &fileName, const QString &errorMsg)
 {
     bool continueWithDefaultParameterdownload = true;

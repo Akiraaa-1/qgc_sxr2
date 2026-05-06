@@ -2,6 +2,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QVariant>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 class LinkInterface;
@@ -50,6 +51,8 @@ signals:
     void activeVehicleAvailableChanged(bool activeVehicleAvailable);
     void parameterReadyVehicleAvailableChanged(bool parameterReadyVehicleAvailable);
     void activeVehicleChanged(Vehicle *activeVehicle);
+    void mydatachanged(QVariant n, QVariant sysid);
+    void mydata_disconnected(QVariant sysid);
 
 private slots:
     void _deleteVehiclePhase1(Vehicle *vehicle); /// This slot is connected to the Vehicle::allLinksDestroyed signal such that the Vehicle is deleted and all other right things happen when the Vehicle goes away.
@@ -75,6 +78,7 @@ private:
     bool _activeVehicleAvailable = false;           ///< true: An active vehicle is available
     bool _parameterReadyVehicleAvailable = false;   ///< true: An active vehicle with ready parameters is available
     Vehicle *_activeVehicle = nullptr;              ///< Currently active vehicle from a ui perspective
+    Vehicle *_pendingActiveVehicle = nullptr;       ///< Last requested active vehicle while a deferred switch is pending
     QList<int> _ignoreVehicleIds;                   ///< List of vehicle id for which we ignore further communication
     bool _initialized = false;
 

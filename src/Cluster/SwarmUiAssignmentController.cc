@@ -13,6 +13,8 @@ void SwarmUiAssignmentController::caculate_pos(int sysid, double x, double y, do
 {
     Q_UNUSED(deferSync);
 
+    SwarmUiSharedState::instance().setVehicleOffset(sysid, x, y, z);
+
     const QVariantMap result = _bridge.setVehicleOffsets(sysid, x, y, z);
     if (!result.value(QStringLiteral("success")).toBool()) {
         _emitOperationResult(sysid, SwarmOperationAckHandler::OperationUnknown, 0, 0, result);
@@ -45,6 +47,7 @@ void SwarmUiAssignmentController::set_main_airplane(int sysid, int grpId, double
     for (const int vehicleId : vehicles) {
         const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(vehicleId);
         const bool leader = (vehicleId == sysid);
+        SwarmUiSharedState::instance().setVehicleLeader(vehicleId, leader);
         const QVariantMap result = _bridge.setVehicleLeader(vehicleId, leader);
         _emitOperationResult(vehicleId, SwarmOperationAckHandler::OperationLeaderChange, oldLeader ? 1 : 0, leader ? 1 : 0, result);
     }
@@ -64,12 +67,29 @@ void SwarmUiAssignmentController::store_airplane_group(int sysid, int groupId, b
         return;
     }
 
+    SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
+    if (setAsFollower) {
+        SwarmUiSharedState::instance().setVehicleLeader(sysid, false);
+    }
+
     const QVariantMap result = _bridge.setVehicleGroup(sysid, groupId, setAsFollower);
-    _emitOperationResult(sysid, SwarmOperationAckHandler::OperationGroupChange, oldGroupId, groupId, result);
+    if (result.value(QStringLiteral("success")).toBool()) {
+        _emitOperationResult(sysid, SwarmOperationAckHandler::OperationGroupChange, oldGroupId, groupId, result);
+    }
 
     if (setAsFollower && oldLeader) {
         _emitOperationResult(sysid, SwarmOperationAckHandler::OperationLeaderChange, 1, 0, result);
     }
+}
+
+int SwarmUiAssignmentController::stored_airplane_group(int sysid)
+{
+    return SwarmUiSharedState::instance().cachedVehicleGroup(sysid);
+}
+
+bool SwarmUiAssignmentController::stored_airplane_leader(int sysid)
+{
+    return SwarmUiSharedState::instance().cachedVehicleLeader(sysid);
 }
 
 void SwarmUiAssignmentController::set_absolute_altitude(int sysid, double altitude)

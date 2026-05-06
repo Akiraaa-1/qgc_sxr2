@@ -16,6 +16,8 @@ public:
     Q_INVOKABLE void caculate_pos(int sysid, double x, double y, double z, bool deferSync = false);
     Q_INVOKABLE void set_main_airplane(int sysid, int grpId, double x, double y, double z);
     Q_INVOKABLE void store_airplane_group(int sysid, int groupId, bool flag = false, bool setAsFollower = false);
+    Q_INVOKABLE int stored_airplane_group(int sysid);
+    Q_INVOKABLE bool stored_airplane_leader(int sysid);
     Q_INVOKABLE void set_absolute_altitude(int sysid, double altitude);
     Q_INVOKABLE void emitMainAltitudeChanged(int vehicleId, double altitude);
 

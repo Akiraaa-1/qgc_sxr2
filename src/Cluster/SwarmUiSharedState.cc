@@ -5,6 +5,9 @@
 #include "ParameterManager.h"
 #include "Vehicle.h"
 
+#include <QtCore/QVariantMap>
+#include <QtPositioning/QGeoCoordinate>
+
 SwarmUiSharedState &SwarmUiSharedState::instance()
 {
     static SwarmUiSharedState instance;
@@ -18,6 +21,11 @@ void SwarmUiSharedState::setVehicleGroup(int vehicleId, int groupId)
     } else {
         _groupByVehicle.remove(vehicleId);
     }
+}
+
+int SwarmUiSharedState::cachedVehicleGroup(int vehicleId) const
+{
+    return _groupByVehicle.value(vehicleId, -1);
 }
 
 int SwarmUiSharedState::vehicleGroup(int vehicleId)
@@ -59,16 +67,108 @@ void SwarmUiSharedState::setVehicleLeader(int vehicleId, bool leader)
     _leaderByVehicle.insert(vehicleId, leader);
 }
 
+bool SwarmUiSharedState::cachedVehicleLeader(int vehicleId) const
+{
+    return _leaderByVehicle.value(vehicleId, false);
+}
+
 bool SwarmUiSharedState::vehicleLeader(int vehicleId)
 {
     _refreshVehicleState(vehicleId);
     return _leaderByVehicle.value(vehicleId, false);
 }
 
+void SwarmUiSharedState::setVehicleOffset(int vehicleId, double xOffset, double yOffset, double zOffset)
+{
+    _offsetByVehicle.insert(vehicleId, VehicleOffset { xOffset, yOffset, zOffset });
+}
+
+QVariantList SwarmUiSharedState::formationTargets() const
+{
+    QVariantList targets;
+
+    MultiVehicleManager *const manager = MultiVehicleManager::instance();
+    if (!manager) {
+        return targets;
+    }
+
+    QHash<int, int> leaderByGroup;
+    for (auto it = _leaderByVehicle.cbegin(); it != _leaderByVehicle.cend(); ++it) {
+        if (!it.value()) {
+            continue;
+        }
+
+        const int groupId = _groupByVehicle.value(it.key(), -1);
+        if (groupId > 0) {
+            leaderByGroup.insert(groupId, it.key());
+        }
+    }
+
+    for (auto it = _offsetByVehicle.cbegin(); it != _offsetByVehicle.cend(); ++it) {
+        const int groupId = _groupByVehicle.value(it.key(), -1);
+        if ((groupId < 1) || leaderByGroup.contains(groupId)) {
+            continue;
+        }
+
+        const VehicleOffset offset = it.value();
+        if (qFuzzyIsNull(offset.x) && qFuzzyIsNull(offset.y) && qFuzzyIsNull(offset.z)) {
+            leaderByGroup.insert(groupId, it.key());
+        }
+    }
+
+    for (auto it = _groupByVehicle.cbegin(); it != _groupByVehicle.cend(); ++it) {
+        if ((it.value() > 0) && !leaderByGroup.contains(it.value())) {
+            leaderByGroup.insert(it.value(), it.key());
+        }
+    }
+
+    for (auto it = _offsetByVehicle.cbegin(); it != _offsetByVehicle.cend(); ++it) {
+        const int vehicleId = it.key();
+        const int groupId = _groupByVehicle.value(vehicleId, -1);
+        if (groupId < 1) {
+            continue;
+        }
+
+        const int leaderId = leaderByGroup.value(groupId, -1);
+        Vehicle *const leaderVehicle = leaderId > 0 ? manager->getVehicleById(leaderId) : nullptr;
+        Vehicle *const vehicle = manager->getVehicleById(vehicleId);
+        if (!leaderVehicle || !vehicle) {
+            continue;
+        }
+
+        const QGeoCoordinate leaderCoordinate = leaderVehicle->coordinate();
+        if (!leaderCoordinate.isValid()) {
+            continue;
+        }
+
+        const VehicleOffset offset = it.value();
+        QGeoCoordinate targetCoordinate = leaderCoordinate.atDistanceAndAzimuth(offset.x, 90.0);
+        targetCoordinate = targetCoordinate.atDistanceAndAzimuth(offset.y, 0.0);
+        if (leaderCoordinate.type() == QGeoCoordinate::Coordinate3D) {
+            targetCoordinate.setAltitude(leaderCoordinate.altitude() + offset.z);
+        }
+
+        QVariantMap target;
+        target[QStringLiteral("vehicleId")] = vehicleId;
+        target[QStringLiteral("groupId")] = groupId;
+        target[QStringLiteral("leaderId")] = leaderId;
+        target[QStringLiteral("isLeader")] = (vehicleId == leaderId);
+        target[QStringLiteral("coordinate")] = QVariant::fromValue(targetCoordinate);
+        target[QStringLiteral("actualCoordinate")] = QVariant::fromValue(vehicle->coordinate());
+        target[QStringLiteral("xOffset")] = offset.x;
+        target[QStringLiteral("yOffset")] = offset.y;
+        target[QStringLiteral("zOffset")] = offset.z;
+        targets.append(target);
+    }
+
+    return targets;
+}
+
 void SwarmUiSharedState::removeVehicle(int vehicleId)
 {
     _groupByVehicle.remove(vehicleId);
     _leaderByVehicle.remove(vehicleId);
+    _offsetByVehicle.remove(vehicleId);
 }
 
 void SwarmUiSharedState::refreshFromVehicle(int vehicleId)

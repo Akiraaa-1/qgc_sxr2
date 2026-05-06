@@ -129,6 +129,7 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
     SettingsManager::instance()->firmwareUpgradeSettings()->defaultFirmwareType()->setRawValue(vehicleFirmwareType);
 
     emit vehicleAdded(vehicle);
+    emit mydatachanged(_vehicles->count(), vehicleId);
 
     if (_vehicles->count() > 1) {
         qgcApp()->showAppMessage(tr("Connected to Vehicle %1").arg(vehicleId));
@@ -152,6 +153,7 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
 {
     qCDebug(MultiVehicleManagerLog) << Q_FUNC_INFO << vehicle;
 
+    const int vehicleId = vehicle->id();
     bool found = false;
     for (int i = 0; i < _vehicles->count(); i++) {
         if (_vehicles->get(i) == vehicle) {
@@ -171,6 +173,7 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
     _setActiveVehicleAvailable(false);
     _setParameterReadyVehicleAvailable(false);
     emit vehicleRemoved(vehicle);
+    emit mydata_disconnected(vehicleId);
 
 #if defined(Q_OS_ANDROID) || defined (Q_OS_IOS)
     if (_vehicles->count() == 0) {
@@ -223,6 +226,8 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
     qCDebug(MultiVehicleManagerLog) << Q_FUNC_INFO << vehicle;
 
     if (vehicle != _activeVehicle) {
+        _pendingActiveVehicle = vehicle;
+
         if (_activeVehicle) {
             // The sequence of signals is very important in order to not leave Qml elements connected
             // to a non-existent vehicle.
@@ -233,8 +238,10 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
             _setParameterReadyVehicleAvailable(false);
         }
 
-        QTimer::singleShot(20, this, [this, vehicle]() {
-            _setActiveVehiclePhase2(vehicle);
+        QTimer::singleShot(20, this, [this]() {
+            Vehicle *const pendingVehicle = _pendingActiveVehicle;
+            _pendingActiveVehicle = nullptr;
+            _setActiveVehiclePhase2(pendingVehicle);
         });
     }
 }

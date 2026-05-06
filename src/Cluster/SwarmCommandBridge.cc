@@ -10,6 +10,8 @@
 
 #include "../MissionManager/MissionManager.h"
 
+#include <QtCore/QMetaType>
+
 QGC_LOGGING_CATEGORY(SwarmCommandBridgeLog, "Cluster.SwarmCommandBridge")
 
 SwarmCommandBridge::SwarmCommandBridge(QObject *parent)
@@ -219,7 +221,6 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
         HealthAndArmingCheckReport *const report = vehicle->healthAndArmingCheckReport();
 
         const bool healthChecksBlockArm = report && report->supported() && !report->canArm();
-        const bool healthChecksBlockTakeoff = report && report->supported() && !report->canTakeoff();
         const bool healthChecksBlockMission = report && report->supported() && !report->canStartMission();
 
         if (action == QStringLiteral("arm")) {
@@ -256,16 +257,6 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
 
             if (vehicle->flying()) {
                 failures.append(tr("Vehicle %1 is already airborne.").arg(vehicleId));
-                continue;
-            }
-
-            if (!vehicle->armed()) {
-                failures.append(tr("Vehicle %1 must be armed before group takeoff.").arg(vehicleId));
-                continue;
-            }
-
-            if (healthChecksBlockTakeoff) {
-                failures.append(tr("Vehicle %1 cannot take off because health and arming checks are blocking takeoff.").arg(vehicleId));
                 continue;
             }
 
@@ -351,12 +342,18 @@ QVariantMap SwarmCommandBridge::_setVehicleParameter(int vehicleId, const QStrin
     }
 
     ParameterManager *const parameterManager = vehicle->parameterManager();
-    if (!parameterManager || !parameterManager->parametersReady()) {
-        return _buildResult(ResultError, action, groupId, tr("Vehicle %1 parameters are not ready yet.").arg(vehicleId));
+    if (!parameterManager) {
+        return _buildResult(ResultError, action, groupId, tr("Vehicle %1 parameter manager is not available.").arg(vehicleId));
     }
 
-    if (!parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
-        return _buildResult(ResultError, action, groupId, tr("Vehicle %1 does not expose swarm parameter %2 in the current firmware.").arg(vehicleId).arg(paramName));
+    const FactMetaData::ValueType_t valueType = value.typeId() == QMetaType::Double
+        ? FactMetaData::valueTypeFloat
+        : FactMetaData::valueTypeInt32;
+
+    if (!parameterManager->parametersReady() || !parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
+        parameterManager->sendSwarmParameter(ParameterManager::defaultComponentId, paramName, valueType, value);
+        qCInfo(SwarmCommandBridgeLog) << "Swarm parameter direct write routed without Fact cache" << "vehicle" << vehicleId << "param" << paramName << "value" << value;
+        return _buildResult(ResultSuccess, action, groupId, tr("Vehicle %1 swarm parameter %2 was sent directly because the normal parameter cache is not ready or does not expose it yet. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(paramName));
     }
 
     Fact *const fact = parameterManager->getParameter(ParameterManager::defaultComponentId, paramName);

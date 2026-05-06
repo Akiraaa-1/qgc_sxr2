@@ -84,6 +84,11 @@ public:
     ///     @param name: Parameter name
     Fact *getParameter(int componentId, const QString &paramName);
 
+    /// Sends swarm-specific parameters by name without requiring the parameter
+    /// to already be present in the Fact cache. This preserves the imported
+    /// swarm UI behavior for firmware parameters created outside QGC metadata.
+    void sendSwarmParameter(int componentId, const QString &paramName, FactMetaData::ValueType_t valueType, const QVariant &rawValue);
+
     /// Returns error messages from loading
     QString readParametersFromStream(QTextStream &stream);
 
