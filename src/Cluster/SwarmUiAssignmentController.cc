@@ -59,11 +59,12 @@ void SwarmUiAssignmentController::store_airplane_group(int sysid, int groupId, b
     const int oldGroupId = SwarmUiSharedState::instance().vehicleGroup(sysid);
     const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(sysid);
 
+    SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
+
     if (!flag) {
         // Keep local UI group membership available for group commands without
         // forcing a parameter write. Firmware that exposes SWARM_GROUP_ID will
         // still override this value through refreshFromVehicle.
-        SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
         return;
     }
 

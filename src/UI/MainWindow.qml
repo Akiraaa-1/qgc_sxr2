@@ -73,7 +73,6 @@ ApplicationWindow {
     property bool               _startPageEntryGranted:     false
     property bool               _offlineWorkspaceMode:      false
     property bool               _configureReadOnlyMode:     false
-    property bool               _clusterWorkspaceOpen:      false
     property int                _lastVisitedWorkspaceTab:   _planTabIndex
 
     //-------------------------------------------------------------------------
@@ -287,11 +286,6 @@ ApplicationWindow {
         }
     }
 
-    function showClusterView() {
-        _clusterWorkspaceOpen = true
-        showTool(qsTr("Cluster Workspace"), "qrc:/qml/QGroundControl/VehicleSetup/ClusterView.qml", "/InstrumentValueIcons/menu.svg", true)
-    }
-
     function showSettingsTool(settingsPage = "") {
         showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/InstrumentValueIcons/menu.svg", true)
         if (settingsPage !== "") {
@@ -372,11 +366,6 @@ ApplicationWindow {
         const hasConnectedVehicle = _hasAnyConnectedVehicle()
 
         if (!hasConnectedVehicle) {
-            if (_clusterWorkspaceOpen && _startPageEntryGranted) {
-                _showStartPage = false
-                _updateEmbeddedPageState()
-                return false
-            }
             if (_offlineWorkspaceMode) {
                 _showStartPage = false
                 toolDrawer.visible = false
@@ -4452,17 +4441,11 @@ ApplicationWindow {
         property bool compactHeader: false
         readonly property bool _isSettingsTool: toolDrawer.toolSource
                                                && toolDrawer.toolSource.toString().indexOf("AppSettings.qml") !== -1
-        readonly property bool _isClusterTool: toolDrawer.toolSource
-                                              && toolDrawer.toolSource.toString().indexOf("ClusterView.qml") !== -1
         readonly property bool _showUnderMainNavigation: !mainWindow._showStartPage
                                                          && (toolDrawer.toolSource === "qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigView.qml")
 
         onVisibleChanged: {
             if (!toolDrawer.visible) {
-                if (toolDrawer._isClusterTool) {
-                    mainWindow._clusterWorkspaceOpen = false
-                    mainWindow._syncStartPageVisibility()
-                }
                 toolDrawerLoader.source = ""
                 toolDrawer.compactHeader = false
             }

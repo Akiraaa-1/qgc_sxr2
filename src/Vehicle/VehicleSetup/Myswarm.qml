@@ -4,7 +4,6 @@
 import QtQuick.Window
 import QtQuick.Controls
 import QtPositioning
-
 import QGroundControl
 import QGroundControl.Cluster
 import QGroundControl.Controls
@@ -12,7 +11,9 @@ import QGroundControl.Viewer3D
 
 import QtCharts
 import QtQuick 2.15
+import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import QtQuick3D 6.8
 import QtQuick3D.Helpers
 
@@ -26,7 +27,6 @@ Window {
     minimumWidth: 1200
     minimumHeight: 850
     visible: false
-    property int initialVehicleId: -1
     color: "#0B1021"  // 深黑蓝色背景 (FUI风格)
 
     // 商业级 FUI 科幻风格配色方案 - 优化版
@@ -52,15 +52,6 @@ Window {
     property int group2Count: 0
     property int group3Count: 0
     property int group4Count: 0
-    property int qgcVehicleCount: 0
-    property int swarmActiveVehicleId: -1
-    property int swarmSyncedVehicleCount: 0
-    property string swarmSyncStatus: "WAIT"
-    property string _lastSwarmSyncMessage: ""
-    property var _localGroupByVehicle: ({})
-    property var _localLeaderByVehicle: ({})
-    property string _lastSwarmAckKey: ""
-    property double _lastSwarmAckTime: 0
 
     // 各组执行开关状态
     property bool group1Enabled: false
@@ -119,24 +110,6 @@ Window {
                 else if (plan_arr[i].group_id === 3) c3++;
                 else if (plan_arr[i].group_id === 4) c4++;
             }
-        }
-        group1Count = c1;
-        group2Count = c2;
-        group3Count = c3;
-        group4Count = c4;
-    }
-
-    function updateGroupCountsFromNodes(nodes) {
-        var c1 = 0, c2 = 0, c3 = 0, c4 = 0;
-        for (var i = 0; i < nodes.length; i++) {
-            var node = nodes[i];
-            if (!node) {
-                continue;
-            }
-            if (node.group_id === 1) c1++;
-            else if (node.group_id === 2) c2++;
-            else if (node.group_id === 3) c3++;
-            else if (node.group_id === 4) c4++;
         }
         group1Count = c1;
         group2Count = c2;
@@ -204,13 +177,6 @@ Window {
     }
 
     // 根据vehicleId获取组ID
-    Connections {
-        target: swarm_send
-        function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
-            _handleSwarmOperationAck(sysId, opType, result, oldValue, newValue, message)
-        }
-    }
-
     function getGroupIdByVehicleId(vehicleId) {
         for (var i = 0; i < plan_arr.length; i++) {
             if (plan_arr[i].objectName == vehicleId.toString() ||
@@ -224,576 +190,7 @@ Window {
         return -1;
     }
 
-    function _clusterFact(vehicle, factName) {
-        if (!vehicle || !vehicle.parameterManager || !vehicle.parameterManager.parametersReady) {
-            return null;
-        }
-
-        if (typeof vehicle.parameterManager.parameterExists !== "function" ||
-                typeof vehicle.parameterManager.getParameter !== "function") {
-            return null;
-        }
-
-        if (!vehicle.parameterManager.parameterExists(-1, factName)) {
-            return null;
-        }
-
-        return vehicle.parameterManager.getParameter(-1, factName);
-    }
-
-    function _clusterFactNumber(vehicle, factName, defaultValue) {
-        var fact = _clusterFact(vehicle, factName);
-        if (!fact) {
-            return defaultValue;
-        }
-
-        var value = Number(fact.rawValue);
-        return isNaN(value) ? defaultValue : value;
-    }
-
-    function _handleSwarmOperationAck(sysId, opType, result, oldValue, newValue, message) {
-        var now = Date.now();
-        var ackKey = [sysId, opType, result, oldValue, newValue, message].join("|");
-        if (ackKey === _lastSwarmAckKey && now - _lastSwarmAckTime < 1000) {
-            return;
-        }
-
-        _lastSwarmAckKey = ackKey;
-        _lastSwarmAckTime = now;
-
-        swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
-        addMessage(message, result === 0 ? "success" : "error");
-        if (root.visible) {
-            syncFromGroundStationTimer.restart();
-        }
-    }
-
-    function _storedGroupForVehicle(vehicle, defaultValue) {
-        if (!vehicle) {
-            return defaultValue;
-        }
-
-        var vehicleId = Number(vehicle.id);
-        var localGroup = _localGroupByVehicle[vehicleId.toString()];
-        if (localGroup !== undefined && Number(localGroup) > 0) {
-            return Number(localGroup);
-        }
-
-        if (!swarm_send || typeof swarm_send.stored_airplane_group !== "function") {
-            return defaultValue;
-        }
-
-        var storedGroup = swarm_send.stored_airplane_group(vehicleId);
-        return storedGroup > 0 ? storedGroup : defaultValue;
-    }
-
-    function _storedLeaderForVehicle(vehicle, defaultValue) {
-        if (!vehicle) {
-            return defaultValue;
-        }
-
-        var vehicleId = Number(vehicle.id);
-        var localLeader = _localLeaderByVehicle[vehicleId.toString()];
-        if (localLeader !== undefined) {
-            return !!localLeader;
-        }
-
-        if (!swarm_send || typeof swarm_send.stored_airplane_leader !== "function") {
-            return defaultValue;
-        }
-
-        return swarm_send.stored_airplane_leader(vehicleId);
-    }
-
-    function _rememberVehicleGroup(vehicleId, groupId) {
-        var nextGroups = {};
-        for (var key in _localGroupByVehicle) {
-            nextGroups[key] = _localGroupByVehicle[key];
-        }
-        nextGroups[Number(vehicleId).toString()] = Number(groupId);
-        _localGroupByVehicle = nextGroups;
-    }
-
-    function _rememberVehicleLeader(vehicleId, leader) {
-        var nextLeaders = {};
-        for (var key in _localLeaderByVehicle) {
-            nextLeaders[key] = _localLeaderByVehicle[key];
-        }
-        nextLeaders[Number(vehicleId).toString()] = !!leader;
-        _localLeaderByVehicle = nextLeaders;
-    }
-
-    function _vehicleIsAvailableForSwarm(vehicle) {
-        return !!vehicle;
-    }
-
-    function _setSwarmSyncStatus(status, message) {
-        swarmSyncStatus = status;
-        _lastSwarmSyncMessage = message ? message : "";
-    }
-
-    function _queueGroundStationSync(delayMs) {
-        if (delayMs !== undefined) {
-            syncFromGroundStationTimer.interval = delayMs;
-        } else {
-            syncFromGroundStationTimer.interval = 120;
-        }
-        syncFromGroundStationTimer.restart();
-    }
-
-    function _safeSyncVehiclesFromGroundStation() {
-        try {
-            _syncVehiclesFromGroundStation();
-        } catch (error) {
-            var errorText = error && error.message ? error.message : error.toString();
-            console.log("[Myswarm] QGC vehicle sync failed:", errorText);
-            try {
-                addMessage("Swarm sync fallback: " + errorText, "warning");
-            } catch (logError) {
-                console.log("[Myswarm] Failed to log sync fallback:", logError);
-            }
-            if (!_forceMapActiveVehicleToFirstNode(errorText)) {
-                swarmSyncedVehicleCount = 0;
-                _setSwarmSyncStatus("ERROR", errorText);
-                _queueGroundStationSync(500);
-            }
-        }
-    }
-
-    function _forceMapActiveVehicleToFirstNode(reason) {
-        var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle;
-        if (!activeVehicle) {
-            return false;
-        }
-
-        _registerFallbackPlanNodes();
-        if (plan_id.length === 0) {
-            return false;
-        }
-
-        if (plan_arr.length === 0) {
-            plan_arr.push(plan_id[0]);
-        }
-
-        var node = plan_arr[0] ? plan_arr[0] : plan_id[0];
-        if (!node) {
-            return false;
-        }
-
-        node.visible = true;
-        node.pickable = true;
-        node.objectName = Number(activeVehicle.id).toString();
-        node.is_connected = true;
-        node.group_id = _storedGroupForVehicle(activeVehicle, 1);
-        node.is_main = _storedLeaderForVehicle(activeVehicle, false);
-        node.set_main = node.is_main ? 1 : 0;
-
-        _sysid_list = [Number(activeVehicle.id)];
-        modelmp = {0: 0};
-        modelmp[Number(activeVehicle.id)] = node;
-        idpos_map = {};
-        idpos_map[Number(activeVehicle.id)] = [node.model_x || 0, node.model_y || 0, node.model_z || 0];
-
-        qgcVehicleCount = QGroundControl.multiVehicleManager.vehicles ? QGroundControl.multiVehicleManager.vehicles.count : 1;
-        swarmActiveVehicleId = Number(activeVehicle.id);
-        swarmSyncedVehicleCount = 1;
-        _setSwarmSyncStatus("SYNCED", "Fallback mapped active vehicle after sync error: " + reason);
-        updateGroupCountsFromNodes([node]);
-        return true;
-    }
-
-    function _vehicleForId(vehicleId) {
-        var numericVehicleId = Number(vehicleId);
-        if (isNaN(numericVehicleId)) {
-            return null;
-        }
-
-        var vehicles = QGroundControl.multiVehicleManager.vehicles;
-        if (vehicles) {
-            for (var i = 0; i < vehicles.count; i++) {
-                var vehicle = vehicles.get(i);
-                if (vehicle && Number(vehicle.id) === numericVehicleId) {
-                    return vehicle;
-                }
-            }
-        }
-
-        var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle;
-        return activeVehicle && Number(activeVehicle.id) === numericVehicleId ? activeVehicle : null;
-    }
-
-    function _vehicleHasClusterFact(vehicleId, factName) {
-        return _clusterFact(_vehicleForId(vehicleId), factName) !== null;
-    }
-
-    function _findPlanNodeForVehicleId(vehicleId, usedNodes) {
-        var vehicleIdText = vehicleId.toString();
-        for (var i = 0; i < plan_arr.length; i++) {
-            var node = plan_arr[i];
-            if (node && node.objectName === vehicleIdText && usedNodes.indexOf(node) < 0) {
-                return node;
-            }
-        }
-        return null;
-    }
-
-    function _firstUnusedPlanNode(usedNodes) {
-        for (var i = 0; i < plan_arr.length; i++) {
-            var node = plan_arr[i];
-            if (node && usedNodes.indexOf(node) < 0) {
-                return node;
-            }
-        }
-        return null;
-    }
-
-    function _visiblePlanNodeCount() {
-        var visibleCount = 0;
-        for (var i = 0; i < plan_id.length; i++) {
-            if (plan_id[i] && plan_id[i].visible) {
-                visibleCount++;
-            }
-        }
-        return visibleCount;
-    }
-
-    function _appendPlanNodeIfMissing(node) {
-        if (node !== undefined && node && plan_id.indexOf(node) === -1) {
-            plan_id.push(node);
-        }
-    }
-
-    function _registerFallbackPlanNodes() {
-        if (typeof sphere_node === "undefined" || !sphere_node) {
-            return;
-        }
-
-        _appendPlanNodeIfMissing(sphere_node);
-    }
-
-    function _ensureVisiblePlanNodes(requiredCount) {
-        if (requiredCount <= 0) {
-            return true;
-        }
-
-        if (plan_id.length < requiredCount) {
-            _registerFallbackPlanNodes();
-        }
-
-        if (plan_id.length === 0) {
-            return false;
-        }
-
-        if (Number(input_plan.text) < requiredCount || plan_arr.length < requiredCount || _visiblePlanNodeCount() < requiredCount) {
-            input_plan.text = requiredCount.toString();
-            plan_to_visible();
-        }
-
-        if (plan_arr.length >= requiredCount) {
-            return true;
-        }
-
-        plan_arr.length = 0;
-        for (var i = 0; i < plan_id.length && plan_arr.length < requiredCount; i++) {
-            if (plan_id[i]) {
-                plan_id[i].visible = true;
-                plan_id[i].pickable = true;
-                plan_arr.push(plan_id[i]);
-            }
-        }
-
-        return plan_arr.length >= requiredCount;
-    }
-
-    function _syncConnectedVehicleGroup(vehicleId, groupId, setAsFollower) {
-        var numericVehicleId = Number(vehicleId);
-        var numericGroupId = Number(groupId);
-        if (isNaN(numericVehicleId) || isNaN(numericGroupId) || numericGroupId < 1 || numericGroupId > 4) {
-            return;
-        }
-
-        if (setAsFollower === undefined) {
-            swarm_send.store_airplane_group(numericVehicleId, numericGroupId, true);
-        } else {
-            swarm_send.store_airplane_group(numericVehicleId, numericGroupId, true, setAsFollower);
-        }
-        _rememberVehicleGroup(numericVehicleId, numericGroupId);
-        if (setAsFollower) {
-            _rememberVehicleLeader(numericVehicleId, false);
-        }
-        syncFromGroundStationTimer.restart();
-    }
-
-    function _syncConnectedGroupLeader(vehicleId, groupId) {
-        var numericVehicleId = Number(vehicleId);
-        var numericGroupId = Number(groupId);
-        if (isNaN(numericVehicleId) || isNaN(numericGroupId) || numericGroupId < 1 || numericGroupId > 4) {
-            return;
-        }
-
-        if (!_vehicleHasClusterFact(numericVehicleId, "SWARM_SET_LEADER")) {
-            var localNode = modelmp[numericVehicleId];
-            if (localNode) {
-                _setLocalGroupLeader(localNode);
-            }
-            _rememberVehicleLeader(numericVehicleId, true);
-            syncFromGroundStationTimer.restart();
-            return;
-        }
-
-        swarm_send.set_main_airplane(numericVehicleId, numericGroupId, 0, 0, 0);
-        _rememberVehicleLeader(numericVehicleId, true);
-        syncFromGroundStationTimer.restart();
-    }
-
-    function _setLocalGroupLeader(node) {
-        if (!node || !node.group_id) {
-            return;
-        }
-
-        main_node_name[node.group_id - 1] = node.objectName;
-        set_main_name(node);
-        set_main_color(node);
-        node.is_main = true;
-        _rememberVehicleLeader(node.objectName, true);
-    }
-
-    function _requestGroupLeader(node) {
-        if (!node || !node.group_id) {
-            return;
-        }
-
-        if (node.is_connected) {
-            _syncConnectedGroupLeader(node.objectName, node.group_id);
-            return;
-        }
-
-        _setLocalGroupLeader(node);
-    }
-
-    function _refreshGroupLayoutForExistingGroups() {
-        var groupIds = [];
-        for (var i = 0; i < plan_arr.length; i++) {
-            var groupId = Number(plan_arr[i].group_id);
-            if (groupId >= 1 && groupId <= 4 && groupIds.indexOf(groupId) === -1) {
-                groupIds.push(groupId);
-            }
-        }
-
-        groupIds.sort(function(a, b) { return a - b; });
-        group_num = groupIds.length;
-        grp_pos_mp = {};
-        for (var j = 0; j < groupIds.length; j++) {
-            grp_pos_mp[groupIds[j]] = j + 1;
-        }
-
-        canv.visible = group_num >= 2;
-        canv2.visible = group_num >= 2;
-        canv3.visible = group_num >= 3;
-        canv4.visible = group_num >= 3;
-        if (canv.visible) canv.requestPaint();
-        if (canv2.visible) canv2.requestPaint();
-        if (canv3.visible) canv3.requestPaint();
-        if (canv4.visible) canv4.requestPaint();
-    }
-
-    function _syncVehiclesFromGroundStation() {
-        var groundStationVehicles = [];
-        var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle;
-        swarmActiveVehicleId = activeVehicle ? Number(activeVehicle.id) : -1;
-        qgcVehicleCount = 0;
-        if (_vehicleIsAvailableForSwarm(activeVehicle)) {
-            groundStationVehicles.push(activeVehicle);
-        }
-
-        var vehicles = QGroundControl.multiVehicleManager.vehicles;
-        if (vehicles) {
-            qgcVehicleCount = vehicles.count;
-            for (var vehicleIndex = 0; vehicleIndex < vehicles.count && groundStationVehicles.length < 50; vehicleIndex++) {
-                var candidateVehicle = vehicles.get(vehicleIndex);
-                var alreadyAdded = false;
-                for (var addedIndex = 0; addedIndex < groundStationVehicles.length; addedIndex++) {
-                    if (groundStationVehicles[addedIndex] === candidateVehicle) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-                if (_vehicleIsAvailableForSwarm(candidateVehicle) && !alreadyAdded) {
-                    groundStationVehicles.push(candidateVehicle);
-                }
-            }
-        }
-
-        if (initialVehicleId > 0 && groundStationVehicles.length > 1) {
-            for (var initialIndex = 0; initialIndex < groundStationVehicles.length; initialIndex++) {
-                if (Number(groundStationVehicles[initialIndex].id) === initialVehicleId) {
-                    var initialVehicle = groundStationVehicles.splice(initialIndex, 1)[0];
-                    groundStationVehicles.unshift(initialVehicle);
-                    break;
-                }
-            }
-        }
-
-        var requiredCount = groundStationVehicles.length;
-        if (requiredCount === 0) {
-            swarmSyncedVehicleCount = 0;
-            _setSwarmSyncStatus("NO VEHICLE", "QGC has no active swarm vehicle");
-            updateGroupCounts();
-            return;
-        }
-
-        if (requiredCount > 0 && typeof control !== "undefined" && control && !control._initialized) {
-            control._initializePlanNodes();
-        }
-
-        if (!_ensureVisiblePlanNodes(requiredCount)) {
-            swarmSyncedVehicleCount = 0;
-            _setSwarmSyncStatus("WAIT NODES", "Plan nodes are not ready for QGC vehicle mapping");
-            _queueGroundStationSync(250);
-            return;
-        }
-
-        _sysid_list = [];
-        modelmp = {0: 0};
-        idpos_map = {};
-        var previousMainNodeName = main_node_name ? main_node_name.slice(0) : [0, 0, 0, 0];
-        main_node_name = [0, 0, 0, 0];
-        var syncedAbsoluteHeights = {};
-        var syncedMainHeights = {"1": 0, "2": 0, "3": 0, "4": 0};
-        clearAllMainStatus();
-
-        var usedNodes = [];
-        for (var nodeIndex = 0; nodeIndex < plan_arr.length; nodeIndex++) {
-            var node = plan_arr[nodeIndex];
-            node.is_connected = false;
-            node.is_main = false;
-            node.set_main = 0;
-            node.pickable = true;
-        }
-
-        for (var i = 0; i < groundStationVehicles.length; i++) {
-            var vehicle = groundStationVehicles[i];
-            if (!vehicle) {
-                continue;
-            }
-
-            var vehicleId = Number(vehicle.id);
-            var mappedNode = _findPlanNodeForVehicleId(vehicleId, usedNodes);
-            if (!mappedNode) {
-                mappedNode = _firstUnusedPlanNode(usedNodes);
-            }
-            if (!mappedNode) {
-                continue;
-            }
-
-            var groupId = _clusterFactNumber(vehicle, "SWARM_GROUP_ID", _storedGroupForVehicle(vehicle, 1));
-            var absoluteAltitude = _clusterFactNumber(vehicle, "SWARM_ABS_ALT", NaN);
-
-            if (groupId < 1 || groupId > 4) {
-                groupId = 1;
-            }
-
-            var leaderFact = _clusterFact(vehicle, "SWARM_SET_LEADER");
-            var isLeader = leaderFact
-                ? (Number(leaderFact.rawValue) !== 0)
-                : _storedLeaderForVehicle(vehicle, previousMainNodeName[groupId - 1] === vehicleId.toString());
-
-            mappedNode.objectName = vehicleId.toString();
-            mappedNode.is_connected = true;
-            mappedNode.group_id = groupId;
-            mappedNode.is_main = isLeader;
-            mappedNode.set_main = isLeader ? 1 : 0;
-            swarm_send.store_airplane_group(vehicleId, groupId, false);
-            _rememberVehicleGroup(vehicleId, groupId);
-            _rememberVehicleLeader(vehicleId, isLeader);
-
-            usedNodes.push(mappedNode);
-            _sysid_list.push(vehicleId);
-            modelmp[vehicleId] = mappedNode;
-            idpos_map[vehicleId] = [mappedNode.model_x, mappedNode.model_y, mappedNode.model_z];
-
-            if (isLeader) {
-                main_node_name[groupId - 1] = vehicleId.toString();
-                if (!isNaN(absoluteAltitude)) {
-                    syncedMainHeights[groupId.toString()] = absoluteAltitude;
-                }
-            }
-
-            if (!isNaN(absoluteAltitude)) {
-                syncedAbsoluteHeights[vehicleId.toString()] = absoluteAltitude;
-            }
-        }
-
-        swarmSyncedVehicleCount = usedNodes.length;
-        _setSwarmSyncStatus(swarmSyncedVehicleCount > 0 ? "SYNCED" : "NO MATCH",
-                            "QGC vehicles: " + qgcVehicleCount + ", active: " + swarmActiveVehicleId + ", synced: " + swarmSyncedVehicleCount);
-
-        for (var unusedNodeIndex = 0; unusedNodeIndex < plan_arr.length; unusedNodeIndex++) {
-            var unusedNode = plan_arr[unusedNodeIndex];
-            if (unusedNode && usedNodes.indexOf(unusedNode) < 0) {
-                unusedNode.objectName = (unusedNodeIndex + 1).toString();
-                unusedNode.group_id = 1;
-            }
-        }
-
-        droneAbsoluteHeight = syncedAbsoluteHeights;
-        groupMainHeight = syncedMainHeights;
-        updateGroupCountsFromNodes(usedNodes);
-
-        for (var groupIndex = 1; groupIndex <= 4; groupIndex++) {
-            updateGroupScale(groupIndex);
-        }
-
-        if (mouse_area.pickNode) {
-            updateRelativePosition(mouse_area.pickNode);
-        }
-    }
-
-    Component.onCompleted: syncFromGroundStationTimer.start()
-
-    onVisibleChanged: {
-        if (visible) {
-            _queueGroundStationSync()
-        } else {
-            syncFromGroundStationTimer.stop()
-        }
-    }
-
-    Connections {
-        target: QGroundControl.multiVehicleManager
-
-        function onActiveVehicleChanged(vehicle) {
-            _queueGroundStationSync()
-        }
-
-        function onVehicleAdded(vehicle) {
-            _queueGroundStationSync()
-        }
-
-        function onVehicleRemoved(vehicle) {
-            _queueGroundStationSync()
-        }
-    }
-
-    Timer {
-        id: syncFromGroundStationTimer
-        interval: 120
-        repeat: false
-        onTriggered: {
-            interval = 120
-            _safeSyncVehiclesFromGroundStation()
-        }
-    }
-
     // 集群操作确认弹窗
-    Timer {
-        id: liveStateRefreshTimer
-        interval: 1000
-        repeat: true
-        running: root.visible
-        onTriggered: _safeSyncVehiclesFromGroundStation()
-    }
-
     SwarmOperationPopup {
         id: swarmOpPopup
         anchors.right: parent.right
@@ -808,21 +205,25 @@ Window {
         target: test_mavlink
         function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
             console.log("[Myswarm] 收到操作确认: " + message);
-            _handleSwarmOperationAck(sysId, opType, result, oldValue, newValue, message)
-            return;
             swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
 
             // 同时添加到交互信息框
             var msgType = (result === 0) ? "success" : "error";
             addMessage(message, msgType);
-            if (root.visible) {
-                syncFromGroundStationTimer.restart()
-            }
         }
     }
 
     // 筹划参数设置弹窗 - 点击筹划时弹出，让用户设置间距和高度
     property var pendingPlanAction: null  // 存储待执行的筹划操作
+
+    Connections {
+        target: swarm_send
+        function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
+            console.log("[Myswarm] Swarmsend ack: " + message);
+            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
+            addMessage(message, result === 0 ? "success" : "error");
+        }
+    }
 
     Popup {
         id: planParamPopup
@@ -1004,9 +405,14 @@ Window {
                         text: "筹划";
                         color: root.primaryColor;
                         onClicked: {
-                            if (Number(input_plan.text) > 50) {
+                            var requestedPlanCount = Number(input_plan.text)
+                            if (requestedPlanCount <= 0 && _sysid_list.length > 0) {
+                                requestedPlanCount = _sysid_list.length
+                                input_plan.text = requestedPlanCount.toString()
+                            }
+                            if (requestedPlanCount > 50) {
                                 group_popu4.open()
-                            } else if (Number(input_plan.text) <= 0) {
+                            } else if (requestedPlanCount <= 0) {
                                 // 筹划数量为0时不弹窗
                                 return;
                             } else {
@@ -1032,15 +438,6 @@ Window {
                         font.family: "Monospace"
                         font.bold: true
                     }
-                }
-
-                Label {
-                    text: "[ QGC:" + qgcVehicleCount + " ACTIVE:" + swarmActiveVehicleId + " SYNC:" + swarmSyncedVehicleCount + " " + swarmSyncStatus + " ]"
-                    color: swarmSyncedVehicleCount > 0 ? secondaryColor : dangerColor
-                    font.pixelSize: 10
-                    font.family: "Monospace"
-                    font.bold: true
-                    Layout.alignment: Qt.AlignVCenter
                 }
 
                     Switch {
@@ -1354,122 +751,11 @@ Window {
                    backgroundMode: SceneEnvironment.Color
                 }
                 Component.onCompleted: {
-                        _initializePlanNodes();
                         console.log("View3D实际尺寸：宽=", width, "高=", height);
                     }
 
                 // 标记是否已完成初始化
                 property bool _initialized: false
-                function _initializePlanNodes() {
-                    if (_initialized || width <= 0 || height <= 0) {
-                        return;
-                    }
-
-                    mymove(1,1,sphere_node)
-                    get_pos(sphere_node);
-
-                    mymove(2,1,sphere_node2)
-                    get_pos(sphere_node2);
-                    mymove(3,1,sphere_node3)
-                    get_pos(sphere_node3);
-                    mymove(4,1,sphere_node4)
-                    get_pos(sphere_node4);
-                    mymove(5,1,sphere_node5)
-                    get_pos(sphere_node5);
-                    mymove(6,1,sphere_node6)
-                    get_pos(sphere_node6);
-                    mymove(7,1,sphere_node7)
-                    get_pos(sphere_node7);
-                    mymove(8,1,sphere_node8)
-                    get_pos(sphere_node8);
-                    mymove(9,1,sphere_node9)
-                    get_pos(sphere_node9);
-                    mymove(10,1,sphere_node10)
-                    get_pos(sphere_node10);
-                    mymove(11,1,sphere_node11)
-                    get_pos(sphere_node11);
-                    mymove(12,1,sphere_node12)
-                    get_pos(sphere_node12);
-                    mymove(13,1,sphere_node13)
-                    get_pos(sphere_node13);
-                    mymove(14,1,sphere_node14)
-                    get_pos(sphere_node14);
-                    mymove(15,1,sphere_node15)
-                    get_pos(sphere_node15);
-                    mymove(16,1,sphere_node16)
-                    get_pos(sphere_node16);
-                    mymove(17,1,sphere_node17)
-                    get_pos(sphere_node17);
-                    mymove(18,1,sphere_node18)
-                    get_pos(sphere_node18);
-                    mymove(19,1,sphere_node19)
-                    get_pos(sphere_node19);
-                    mymove(20,1,sphere_node20)
-                    get_pos(sphere_node20);
-                    mymove(21,1,sphere_node21)
-                    get_pos(sphere_node21);
-                    mymove(22,1,sphere_node22)
-                    get_pos(sphere_node22);
-                    mymove(23,1,sphere_node23)
-                    get_pos(sphere_node23);
-                    mymove(24,1,sphere_node24)
-                    get_pos(sphere_node24);
-                    mymove(25,1,sphere_node25)
-                    get_pos(sphere_node25);
-                    mymove(26,1,sphere_node26)
-                    get_pos(sphere_node26);
-                    mymove(27,1,sphere_node27)
-                    get_pos(sphere_node27);
-                    mymove(28,1,sphere_node28)
-                    get_pos(sphere_node28);
-                    mymove(1,2,sphere_node29)
-                    get_pos(sphere_node29);
-                    mymove(2,2,sphere_node30)
-                    get_pos(sphere_node30);
-                    mymove(3,2,sphere_node31)
-                    get_pos(sphere_node2);
-                    mymove(4,2,sphere_node32)
-                    get_pos(sphere_node32);
-                    mymove(5,2,sphere_node33)
-                    get_pos(sphere_node33);
-                    mymove(6,2,sphere_node34)
-                    get_pos(sphere_node34);
-                    mymove(7,2,sphere_node35)
-                    get_pos(sphere_node35);
-                    mymove(8,2,sphere_node36)
-                    get_pos(sphere_node36);
-                    mymove(9,2,sphere_node37)
-                    get_pos(sphere_node37);
-                    mymove(10,2,sphere_node38)
-                    get_pos(sphere_node38);
-                    mymove(11,2,sphere_node39)
-                    get_pos(sphere_node39);
-                    mymove(12,2,sphere_node40)
-                    get_pos(sphere_node40);
-                    mymove(13,2,sphere_node41)
-                    get_pos(sphere_node41);
-                    mymove(14,2,sphere_node42)
-                    get_pos(sphere_node42);
-                    mymove(15,2,sphere_node43)
-                    get_pos(sphere_node43);
-                    mymove(16,2,sphere_node44)
-                    get_pos(sphere_node44);
-                    mymove(17,2,sphere_node45)
-                    get_pos(sphere_node45);
-                    mymove(18,2,sphere_node46)
-                    get_pos(sphere_node46);
-                    mymove(19,2,sphere_node47)
-                    get_pos(sphere_node47);
-                    mymove(20,2,sphere_node48)
-                    get_pos(sphere_node48);
-                    mymove(21,2,sphere_node49)
-                    get_pos(sphere_node49);
-                    mymove(22,2,sphere_node50)
-                    get_pos(sphere_node50);
-
-                    _initialized = true;
-                    _queueGroundStationSync();
-                }
 
                 // 定时器：用于合并窗口大小变化时的重新定位调用
                 Timer {
@@ -1483,7 +769,6 @@ Window {
 
                 onWidthChanged: {
                             if (width > 0) {
-                                _initializePlanNodes();
                                 console.log("View3D宽度更新：", width);
 
                                 // 只在首次初始化时执行mymove
@@ -1591,7 +876,6 @@ Window {
                                     get_pos(sphere_node50);
 
                                     _initialized = true;
-                                    _queueGroundStationSync();
                                 } else {
                                     // 窗口大小变化时，使用定时器合并多次调用
                                     repositionTimer.restart();
@@ -5324,7 +4608,7 @@ Window {
                                             canv4.visible = false
                                             for (var i1 = 0; i1 <plan_arr.length; i1++) {
                                                 plan_arr[i1].group_id = 1
-                                                if(plan_arr[i1].is_connected)_syncConnectedVehicleGroup(plan_arr[i1].objectName, plan_arr[i1].group_id)
+                                                if(plan_arr[i1].is_connected)swarm_send.store_airplane_group(plan_arr[i1].objectName, plan_arr[i1].group_id, true)
                                             }
                                             main_node_name.length = 1
                                             // 找id最小的作为主机
@@ -5337,7 +4621,9 @@ Window {
                                                     minIdx1Grp = findMin1
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx1Grp])
+                                            main_node_name[0] = plan_arr[minIdx1Grp].objectName
+                                            set_main_name(plan_arr[minIdx1Grp])
+                                            if(plan_arr[minIdx1Grp].is_connected === true)set_main_color(plan_arr[minIdx1Grp].objectName)
                                             send_all_airplane_pos(1,0)
 
                                             // 将模型居中排列
@@ -5383,7 +4669,7 @@ Window {
                                                 } else {
                                                     plan_arr[i].group_id = 2
                                                 }
-                                                if(plan_arr[i].is_connected)_syncConnectedVehicleGroup(plan_arr[i].objectName, plan_arr[i].group_id) //
+                                                if(plan_arr[i].is_connected)swarm_send.store_airplane_group(plan_arr[i].objectName, plan_arr[i].group_id, true) //
                                             }
                                             main_node_name.length = 2
                                             // 找第1组中id最小的作为主机
@@ -5396,7 +4682,9 @@ Window {
                                                     minIdx1 = n0
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx1])
+                                            main_node_name[0] = plan_arr[minIdx1].objectName
+                                            set_main_name(plan_arr[minIdx1])
+                                            if(plan_arr[minIdx1].is_connected === true)set_main_color(plan_arr[minIdx1].objectName)
 
                                             // 找第2组中id最小的作为主机
                                             var minId2 = Number.MAX_VALUE
@@ -5408,15 +4696,22 @@ Window {
                                                     minIdx2 = n1
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx2])
+                                            main_node_name[1] = plan_arr[minIdx2].objectName
+                                            set_main_name(plan_arr[minIdx2])
+                                            if(plan_arr[minIdx2].is_connected === true)set_main_color(plan_arr[minIdx2].objectName)
 
                                             send_all_airplane_pos(2,0)
 
                                             group_num = 2
                                             hasset_map[2] = 0
-                                            grp_pos_mp = {}
-                                            grp_pos_mp[1] = 1
-                                            grp_pos_mp[2] = 2
+                                            for(i = 0; i < main_node_name.length;i++) {
+                                                for(j = 0;j < plan_arr.length;j++){
+                                                    if(plan_arr[j].objectName === main_node_name[i]) {
+
+                                                        grp_pos_mp[plan_arr[j].group_id] = i + 1 // 要的是grp  不是name
+                                                    }
+                                                }
+                                            }
                                             canv.visible = true
                                             canv2.visible = true
                                             canv3.visible = false
@@ -5451,7 +4746,7 @@ Window {
                                                 } else {
                                                     plan_arr[k].group_id = 3
                                                 }
-                                                if(plan_arr[k].is_connected)_syncConnectedVehicleGroup(plan_arr[k].objectName, plan_arr[k].group_id)
+                                                if(plan_arr[k].is_connected)swarm_send.store_airplane_group(plan_arr[k].objectName, plan_arr[k].group_id, true)
                                             }
                                             main_node_name.length = 3
 
@@ -5465,7 +4760,9 @@ Window {
                                                     minIdx3_1 = mn3_1
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx3_1])
+                                            main_node_name[0] = plan_arr[minIdx3_1].objectName
+                                            set_main_name(plan_arr[minIdx3_1])
+                                            if(plan_arr[minIdx3_1].is_connected === true)set_main_color(plan_arr[minIdx3_1].objectName)
 
                                             // 找第2组中id最小的作为主机
                                             var minId3_2 = Number.MAX_VALUE
@@ -5477,7 +4774,9 @@ Window {
                                                     minIdx3_2 = mn3_2
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx3_2])
+                                            main_node_name[1] = plan_arr[minIdx3_2].objectName
+                                            set_main_name(plan_arr[minIdx3_2])
+                                            if(plan_arr[minIdx3_2].is_connected === true)set_main_color(plan_arr[minIdx3_2].objectName)
 
                                             // 找第3组中id最小的作为主机
                                             var minId3_3 = Number.MAX_VALUE
@@ -5489,15 +4788,21 @@ Window {
                                                     minIdx3_3 = mn3_3
                                                 }
                                             }
-                                            _requestGroupLeader(plan_arr[minIdx3_3])
+                                            main_node_name[2] = plan_arr[minIdx3_3].objectName
+                                            set_main_name(plan_arr[minIdx3_3])
+                                            if(plan_arr[minIdx3_3].is_connected === true)set_main_color(plan_arr[minIdx3_3].objectName)
 
                                             send_all_airplane_pos(3,0)
 
                                             group_num = 3
-                                            grp_pos_mp = {}
-                                            grp_pos_mp[1] = 1
-                                            grp_pos_mp[2] = 2
-                                            grp_pos_mp[3] = 3
+                                            for(i = 0; i < main_node_name.length;i++) {
+                                                for(j = 0;j < plan_arr.length;j++){
+                                                    if(plan_arr[j].objectName === main_node_name[i]) {
+
+                                                        grp_pos_mp[plan_arr[j].group_id] = i + 1 // 要的是grp  不是name
+                                                    }
+                                                }
+                                            }
                                             move_model(1,3)
                                             move_model(2,3)
                                             move_model(3,3)
@@ -5529,7 +4834,7 @@ Window {
                                                 } else {
                                                     plan_arr[l].group_id = 4
                                                 }
-                                                if(plan_arr[l].is_connected)_syncConnectedVehicleGroup(plan_arr[l].objectName, plan_arr[l].group_id)
+                                                if(plan_arr[l].is_connected)swarm_send.store_airplane_group(plan_arr[l].objectName, plan_arr[l].group_id, true)
                                             }
                                             main_node_name.length = 4
                                             main_node_name[0] = ""
@@ -5549,7 +4854,9 @@ Window {
                                                 }
                                             }
                                             if (minIdx4_1 < plan_arr.length) {
-                                                _requestGroupLeader(plan_arr[minIdx4_1])
+                                                main_node_name[0] = plan_arr[minIdx4_1].objectName
+                                                set_main_name(plan_arr[minIdx4_1])
+                                                if(plan_arr[minIdx4_1].is_connected === true)set_main_color(plan_arr[minIdx4_1].objectName)
                                             }
 
                                             // 第2组
@@ -5563,7 +4870,9 @@ Window {
                                                 }
                                             }
                                             if (minIdx4_2 < plan_arr.length) {
-                                                _requestGroupLeader(plan_arr[minIdx4_2])
+                                                main_node_name[1] = plan_arr[minIdx4_2].objectName
+                                                set_main_name(plan_arr[minIdx4_2])
+                                                if(plan_arr[minIdx4_2].is_connected === true)set_main_color(plan_arr[minIdx4_2].objectName)
                                             }
 
                                             // 第3组
@@ -5577,7 +4886,9 @@ Window {
                                                 }
                                             }
                                             if (minIdx4_3 < plan_arr.length) {
-                                                _requestGroupLeader(plan_arr[minIdx4_3])
+                                                main_node_name[2] = plan_arr[minIdx4_3].objectName
+                                                set_main_name(plan_arr[minIdx4_3])
+                                                if(plan_arr[minIdx4_3].is_connected === true)set_main_color(plan_arr[minIdx4_3].objectName)
                                             }
 
                                             // 第4组
@@ -5591,7 +4902,9 @@ Window {
                                                 }
                                             }
                                             if (minIdx4_4 < plan_arr.length) {
-                                                _requestGroupLeader(plan_arr[minIdx4_4])
+                                                main_node_name[3] = plan_arr[minIdx4_4].objectName
+                                                set_main_name(plan_arr[minIdx4_4])
+                                                if(plan_arr[minIdx4_4].is_connected === true)set_main_color(plan_arr[minIdx4_4].objectName)
                                             }
 
                                             send_all_airplane_pos(4,0) // 四组全更新
@@ -5640,13 +4953,14 @@ Window {
                                         group_popup2.open()
                                         return
                                     }
-                                    var targetGroupId = Number(input_change.text)
-                                    if (targetGroupId >= 1 && targetGroupId <= 4 && mouse_area.pickNode.set_main !== true) {
-                                        mouse_area.pickNode.group_id = targetGroupId
-                                        _refreshGroupLayoutForExistingGroups()
+                                    if (group_num >= input_change.text && input_change.text > 0 &&
+                                            mouse_area.pickNode.set_main !== true) {
+                                        mouse_area.pickNode.group_id = Number(input_change.text)
                                         display_changed_pos(mouse_area.pickNode.group_id) //需要考虑更换后组内是否还有剩余，若无剩余  grp_pos_mp 消除
-                                        if (mouse_area.pickNode.is_connected) {
-                                            _syncConnectedVehicleGroup(Number(mouse_area.pickNode.objectName), targetGroupId)
+
+                                        if(hasset_map[mouse_area.pickNode.group_id]===1){
+                                            swarm_send.store_airplane_group(Number(mouse_area.pickNode.objectName), modelmp[Number(mouse_area.pickNode.objectName)].group_id, true)
+                                            send_all_airplane_pos(mouse_area.pickNode.group_id,0)
                                         }
                                         updateGroupCounts()  // 更新各组数量显示
                                         planArrChanged()  // 刷新高度调整框
@@ -5740,10 +5054,10 @@ Window {
                                         if(select_merge[i].is_connected === true) {
                                             // id最小的会成为主机，其他的设为从机
                                             if(i === minIdxIndep) {
-                                                _syncConnectedVehicleGroup(select_merge[i].objectName, select_merge[i].group_id, false);
+                                                swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id, true, false);
                                             } else {
                                                 // 非id最小的，设为从机
-                                                _syncConnectedVehicleGroup(select_merge[i].objectName, select_merge[i].group_id, true);
+                                                swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id, true, true);
                                             }
                                         }
                                     }
@@ -5754,7 +5068,15 @@ Window {
                                     }
 
                                     // 设置目标组的主机为id最小的
-                                    _requestGroupLeader(select_merge[minIdxIndep]);
+                                    main_node_name[targetGroupId - 1] = select_merge[minIdxIndep].objectName;
+                                    select_merge[minIdxIndep].set_main = 1;
+
+                                    if(select_merge[minIdxIndep].is_connected === true) {
+                                        swarm_send.set_main_airplane(main_node_name[targetGroupId - 1], select_merge[minIdxIndep].group_id,
+                                                          0, 0, 0);
+                                        select_merge[minIdxIndep].is_main = true;
+                                        set_main_color(select_merge[minIdxIndep]);
+                                    }
 
                                     // 更新组数为实际组数+1（新增的组）
                                     var newGroupNum = actualGroupCount + 1;
@@ -5956,7 +5278,7 @@ Window {
                                             model.set_main = 0;
                                             model.is_main = false;
                                             if(model.is_connected) {
-                                                _syncConnectedVehicleGroup(model.objectName, targetGroup, true);
+                                                swarm_send.store_airplane_group(model.objectName, targetGroup, true, true);
                                             }
 
                                             // 更新targetMaxX以便下一组合并时使用
@@ -6179,19 +5501,16 @@ Window {
                                 if (mouse_area.pickNode === null) {
                                     return
                                 }
-                                if (mouse_area.pickNode.is_connected) {
-                                    _requestGroupLeader(mouse_area.pickNode)
-                                    return
-                                }
-
                                 mouse_area.pickNode.set_main = 1   // 需对同组其他主机进行排他
+
                                 main_node_name[mouse_area.pickNode.group_id - 1] = mouse_area.pickNode.objectName
                                 set_main_name(mouse_area.pickNode)
                                 updateRelativePosition(mouse_area.pickNode)  // 更新相对坐标
-                                mouse_area.pickNode.is_main = true
+                                    if (!mouse_area.pickNode.is_connected) return
+                                    mouse_area.pickNode.is_main = true
 
-                                set_main_behavior(mouse_area.pickNode,1)  //要发位置
-                                planArrChanged()  // 刷新高度调整框
+                                    set_main_behavior(mouse_area.pickNode,1)  //要发位置
+                                    planArrChanged()  // 刷新高度调整框
                             }
                         }
                         }
@@ -7720,13 +7039,13 @@ Window {
                 if (select_merge[i].group_id === plan_arr[j].group_id && select_merge[i] !== plan_arr[j]){ // 主机改了后   后面的就无法识别了,类似引用
                    // console.log("mg",plan_arr[j].group_id,plan_arr[j].objectName)
                     plan_arr[j].group_id = select_merge[0].group_id  // 所选择主机的同组的从机
-                    if(plan_arr[j].is_connected)_syncConnectedVehicleGroup(plan_arr[j].objectName, plan_arr[j].group_id)
+                    if(plan_arr[j].is_connected)swarm_send.store_airplane_group(plan_arr[j].objectName, plan_arr[j].group_id,true)
                     arr_to_change_pos.push(plan_arr[j])
                 }
             }
             select_merge[i].group_id = select_merge[0].group_id
             arr_to_change_pos.push(select_merge[i])
-            if(select_merge[i].is_connected)_syncConnectedVehicleGroup(select_merge[i].objectName, select_merge[i].group_id)
+            if(select_merge[i].is_connected)swarm_send.store_airplane_group(select_merge[i].objectName, select_merge[i].group_id,true)
         }
     }
 
@@ -7735,12 +7054,12 @@ Window {
         my_delay()
         my_delay()
         for(var j = 0; j <  _sysid_list.length;j++)
-            _syncConnectedVehicleGroup(modelmp[_sysid_list[j]].objectName, modelmp[_sysid_list[j]].group_id)//把已经存在的从机记录组别
+            swarm_send.store_airplane_group(modelmp[_sysid_list[j]].objectName, modelmp[_sysid_list[j]].group_id, true)//把已经存在的从机记录组别
 
         for(var i = 1; i <= main_node_name.length; i++){
             if(hasset_map[i]===1 && main_node_name[i - 1] !== 0){ // 如果这个组的主机已经加载
                 my_delay()
-                _syncConnectedGroupLeader(main_node_name[i - 1], i)
+                swarm_send.set_main_airplane(main_node_name[i - 1], i, 0, 0, 0)
                 my_delay()
 
                 send_all_airplane_pos(i,1)// 最后一个   且
@@ -8120,7 +7439,10 @@ Window {
             my_delay()
             my_delay()
         }
-        _syncConnectedGroupLeader(main_node_name[node.group_id - 1], node.group_id)
+        swarm_send.set_main_airplane(main_node_name[node.group_id - 1], node.group_id,
+                                     0,
+                                     0,
+                                     0)
 
         set_main_color(node)
         hasset_map[node.group_id]=1
@@ -8174,16 +7496,6 @@ Window {
         var i = 0;
         for(;i<plan_arr.length;i++) {
             if(plan_arr[i].group_id === grp_id && plan_arr[i].set_main)break
-        }
-        if (i >= plan_arr.length) {
-            for (i = 0; i < plan_arr.length; i++) {
-                if (plan_arr[i].group_id === grp_id) {
-                    break
-                }
-            }
-        }
-        if (i >= plan_arr.length || !mouse_area.pickNode) {
-            return
         }
         var x_0 = plan_arr[i].is_connected? idpos_map[plan_arr[i].objectName][0]:plan_arr[i].model_x // 是主机
         var y_0 = plan_arr[i].is_connected? idpos_map[plan_arr[i].objectName][1]:plan_arr[i].model_y
@@ -8420,7 +7732,7 @@ Window {
         }
         plan_arr.length = 0
         my_delay()
-        for (i = 0; i < Number(input_plan.text) && i < plan_id.length; i++) {
+        for (i = 0; i < Number(input_plan.text); i++) {
             plan_id[i].visible = true
             plan_id[i].pickable = true
             plan_arr.push(plan_id[i])
@@ -8614,6 +7926,7 @@ Window {
             }
         }
     }
+
     function mymove(xx,yy,thisnode){
 
         performMove(xx, yy, thisnode);
