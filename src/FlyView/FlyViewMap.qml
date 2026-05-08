@@ -422,9 +422,10 @@ FlightMap {
             largeMapView:           !pipMode
             planMasterController:   masterController
             vehicle:                _vehicle
-            missionItemOpacity:     _vehicle === _activeVehicle ? 0 : 0.7
-            missionLineOpacity:     _vehicle === _activeVehicle ? 0 : 0.75
-            directionArrowOpacity:  _vehicle === _activeVehicle ? 0 : 0.9
+            visible:                _vehicle !== _activeVehicle
+            missionItemOpacity:     0.7
+            missionLineOpacity:     0.75
+            directionArrowOpacity:  0.9
             missionLineColor:       _inactiveMissionLineColor
             directionArrowColor:    _inactiveMissionArrowColor
 

@@ -2,7 +2,9 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QMap>
 #include <QtCore/QVariant>
+#include <QtCore/QVariantMap>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 class LinkInterface;
@@ -26,6 +28,7 @@ class MultiVehicleManager : public QObject
     Q_PROPERTY(QmlObjectListModel   *vehicles                       READ vehicles                                                           CONSTANT)
     Q_PROPERTY(QmlObjectListModel   *selectedVehicles               READ selectedVehicles                                                   CONSTANT)
     Q_PROPERTY(Vehicle              *offlineEditingVehicle          READ offlineEditingVehicle                                              CONSTANT)
+    Q_PROPERTY(QVariantMap           my_vehicles                    READ my_vehicles                                                       NOTIFY myVehiclesChanged)
 
 public:
     explicit MultiVehicleManager(QObject *parent = nullptr);
@@ -36,6 +39,7 @@ public:
 
     void init();
     Q_INVOKABLE Vehicle *getVehicleById(int vehicleId) const;
+    Q_INVOKABLE void replayVehicleState();
     Q_INVOKABLE void      selectVehicle(int vehicleId);
     Q_INVOKABLE void    deselectVehicle(int vehicleId);
     Q_INVOKABLE void    deselectAllVehicles();
@@ -44,6 +48,7 @@ public:
     Vehicle *offlineEditingVehicle() const { return _offlineEditingVehicle; }
     Vehicle *activeVehicle() const { return _activeVehicle; }
     void setActiveVehicle(Vehicle *vehicle);
+    QVariantMap my_vehicles() const;
 
 signals:
     void vehicleAdded(Vehicle *vehicle);
@@ -53,6 +58,7 @@ signals:
     void activeVehicleChanged(Vehicle *activeVehicle);
     void mydatachanged(QVariant n, QVariant sysid);
     void mydata_disconnected(QVariant sysid);
+    void myVehiclesChanged();
 
 private slots:
     void _deleteVehiclePhase1(Vehicle *vehicle); /// This slot is connected to the Vehicle::allLinksDestroyed signal such that the Vehicle is deleted and all other right things happen when the Vehicle goes away.
@@ -79,7 +85,9 @@ private:
     bool _parameterReadyVehicleAvailable = false;   ///< true: An active vehicle with ready parameters is available
     Vehicle *_activeVehicle = nullptr;              ///< Currently active vehicle from a ui perspective
     Vehicle *_pendingActiveVehicle = nullptr;       ///< Last requested active vehicle while a deferred switch is pending
+    quint64 _pendingActiveVehicleRequest = 0;        ///< Monotonic token used to ignore stale deferred switches
     QList<int> _ignoreVehicleIds;                   ///< List of vehicle id for which we ignore further communication
+    QMap<int, Vehicle*> _myvehicle;
     bool _initialized = false;
 
     static constexpr int kGCSHeartbeatRateMSecs = 1000;  ///< Heartbeat rate

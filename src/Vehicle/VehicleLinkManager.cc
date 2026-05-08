@@ -171,6 +171,8 @@ void VehicleLinkManager::_commLostCheck()
 
         AudioOutput::instance()->say(tr("%1Communication lost").arg(_vehicle->_vehicleIdSpeech()).toLower());
 
+        emit mylink_disconnected(_vehicle->id());
+
         _communicationLost = true;
         emit communicationLostChanged(_communicationLost);
     }

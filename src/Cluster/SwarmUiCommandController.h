@@ -21,10 +21,12 @@ public:
 
 signals:
     void swarmOperationAckReceived(int sysId, int opType, int result, int oldValue, int newValue, const QString &message);
+    void uavInfoReceived(const QVariantMap &info);
 
 private:
     void _handleActiveVehicleChanged(Vehicle *vehicle);
     void _receiveMessage(LinkInterface *link, const mavlink_message_t &message);
+    Vehicle *_vehicleForSwarmMessage(int vehicleId) const;
     QString _formatOperationAckMessage(int sysId, int operationType, int result, int oldValue, int newValue) const;
     void _emitOperationResult(int operationType, const QVariantMap &result);
     bool _sendSwarmStartFlag(Vehicle *vehicle, int startAuto, int groupId, int stop, int pause, int resume) const;

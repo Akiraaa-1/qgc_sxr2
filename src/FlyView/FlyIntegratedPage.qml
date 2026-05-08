@@ -62,6 +62,7 @@ Item {
     property var _vehicleStatusIconMap: ({})
     property string _pendingFlightMode: ""
     property int _pendingFlightModeVehicleId: -1
+    property var _clusterWorkspaceWindow: null
     readonly property var _vehicleStatusIconOptions: [
         { "source": "/InstrumentValueIcons/drone.svg",             "label": qsTr("Drone") },
         { "source": "/InstrumentValueIcons/airplane-outline.svg",  "label": qsTr("Airplane") }
@@ -221,6 +222,65 @@ Item {
         default:
             return qsTr("This action is currently unavailable.")
         }
+    }
+    function _openClusterWorkspaceWindow() {
+        if (typeof mainWindow !== "undefined"
+                && mainWindow
+                && typeof mainWindow._ensureMainInterfaceAccess === "function"
+                && !mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)) {
+            return
+        }
+
+        if (root._clusterWorkspaceWindow) {
+            root._clusterWorkspaceWindow.show()
+            root._clusterWorkspaceWindow.raise()
+            root._clusterWorkspaceWindow.requestActivate()
+            return
+        }
+
+        const swarmComponent = Qt.createComponent("qrc:/qml/QGroundControl/VehicleSetup/Myswarm.qml")
+        if (swarmComponent.status === Component.Error) {
+            console.warn("Failed to load swarm workspace component:", swarmComponent.errorString())
+            if (typeof mainWindow !== "undefined" && mainWindow && mainWindow.showMessageDialog) {
+                mainWindow.showMessageDialog(qsTr("Swarm"), qsTr("Failed to load the swarm workspace window."))
+            }
+            return
+        }
+
+        root._clusterWorkspaceWindow = swarmComponent.createObject(null, {
+            transientParent: (typeof mainWindow !== "undefined" && mainWindow) ? mainWindow : null,
+            visible: false,
+            initialVehicleId: root._activeVehicle ? Number(root._activeVehicle.id) : -1
+        })
+
+        if (!root._clusterWorkspaceWindow) {
+            console.warn("Failed to create swarm workspace window")
+            if (typeof mainWindow !== "undefined" && mainWindow && mainWindow.showMessageDialog) {
+                mainWindow.showMessageDialog(qsTr("Swarm"), qsTr("Failed to create the swarm workspace window."))
+            }
+            return
+        }
+
+        if (root._clusterWorkspaceWindow.width <= 0) {
+            root._clusterWorkspaceWindow.width = ScreenTools.defaultFontPixelWidth * 110
+        }
+        if (root._clusterWorkspaceWindow.height <= 0) {
+            root._clusterWorkspaceWindow.height = ScreenTools.defaultFontPixelHeight * 48
+        }
+
+        root._clusterWorkspaceWindow.closing.connect(function() {
+            root._clusterWorkspaceWindow = null
+        })
+
+        root._clusterWorkspaceWindow.visible = true
+        root._clusterWorkspaceWindow.raise()
+        root._clusterWorkspaceWindow.requestActivate()
+
+        if (QGroundControl.multiVehicleManager
+                && typeof QGroundControl.multiVehicleManager.replayVehicleState === "function") {
+            QGroundControl.multiVehicleManager.replayVehicleState()
+        }
+
     }
     function _triggerGuidedPanelAction(action) {
         if (!root._activeVehicle || !guidedActionsController) {
@@ -3012,6 +3072,39 @@ Item {
                                 color: qgcPal.windowShadeDark
                                 radius: ScreenTools.defaultFontPixelHeight * 0.12
                                 QGCColoredImage { anchors.centerIn: parent; width: parent.height * 0.42; height: width; color: "#FFFFFF"; fillMode: Image.PreserveAspectFit; source: modelData }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.42
+                            Layout.preferredWidth: swarmEntryLabel.implicitWidth + (ScreenTools.defaultFontPixelWidth * 1.4)
+                            color: swarmEntryMouseArea.pressed
+                                ? qgcPal.buttonHighlight
+                                : (swarmEntryMouseArea.containsMouse ? qgcPal.windowShade : qgcPal.windowShadeDark)
+                            radius: ScreenTools.defaultFontPixelHeight * 0.12
+
+                            MouseArea {
+                                id: swarmEntryMouseArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof root._openClusterWorkspaceWindow === "function") {
+                                        root._openClusterWorkspaceWindow()
+                                    } else if (typeof mainWindow !== "undefined"
+                                               && mainWindow
+                                               && typeof mainWindow.showSwarmView === "function") {
+                                        mainWindow.showSwarmView()
+                                    }
+                                }
+                            }
+
+                            QGCLabel {
+                                id: swarmEntryLabel
+                                anchors.centerIn: parent
+                                text: qsTr("Swarm")
+                                font.bold: true
+                                color: "#FFFFFF"
                             }
                         }
 

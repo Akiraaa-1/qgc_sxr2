@@ -286,6 +286,27 @@ ApplicationWindow {
         }
     }
 
+    function showSwarmView() {
+        if (!_ensureMainInterfaceAccess(_flyTabIndex, true)) {
+            return
+        }
+
+        const flyPage = _flyPageItem()
+        if (flyPage && typeof flyPage._openClusterWorkspaceWindow === "function") {
+            flyPage._openClusterWorkspaceWindow()
+            return
+        }
+
+        console.warn("Swarm workspace is unavailable because the Fly page instance is not ready.")
+        if (mainWindow.showMessageDialog) {
+            mainWindow.showMessageDialog(qsTr("Swarm"), qsTr("The swarm workspace is not ready yet. Open Fly view and try again."))
+        }
+    }
+
+    function showClusterView() {
+        showSwarmView()
+    }
+
     function showSettingsTool(settingsPage = "") {
         showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/InstrumentValueIcons/menu.svg", true)
         if (settingsPage !== "") {
@@ -4801,6 +4822,7 @@ ApplicationWindow {
             }
         }
     }
+
 }
 
 

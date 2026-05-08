@@ -191,7 +191,9 @@ void SwarmUiSharedState::refreshFromAllVehicles()
         }
 
         activeVehicleIds.append(vehicle->id());
-        _refreshVehicleState(vehicle->id());
+        if (!_groupByVehicle.contains(vehicle->id())) {
+            _refreshVehicleState(vehicle->id());
+        }
     }
 
     for (auto it = _groupByVehicle.begin(); it != _groupByVehicle.end();) {
@@ -221,7 +223,7 @@ void SwarmUiSharedState::_refreshVehicleState(int vehicleId)
         return;
     }
 
-    if (parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_GROUP_ID"))) {
+    if (!_groupByVehicle.contains(vehicleId) && parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_GROUP_ID"))) {
         Fact *const groupFact = parameterManager->getParameter(ParameterManager::defaultComponentId, QStringLiteral("SWARM_GROUP_ID"));
         if (groupFact) {
             const int groupId = groupFact->rawValue().toInt();
@@ -235,7 +237,7 @@ void SwarmUiSharedState::_refreshVehicleState(int vehicleId)
         _groupByVehicle.insert(vehicleId, 1);
     }
 
-    if (parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_SET_LEADER"))) {
+    if (!_leaderByVehicle.contains(vehicleId) && parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_SET_LEADER"))) {
         Fact *const leaderFact = parameterManager->getParameter(ParameterManager::defaultComponentId, QStringLiteral("SWARM_SET_LEADER"));
         if (leaderFact) {
             _leaderByVehicle.insert(vehicleId, leaderFact->rawValue().toInt() != 0);

@@ -3,6 +3,7 @@
 #include "MAVLinkProtocol.h"
 #include "MultiVehicleManager.h"
 #include "QGCLoggingCategory.h"
+#include "QmlObjectListModel.h"
 #include "SwarmOperationAckHandler.h"
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
@@ -30,7 +31,11 @@ SwarmUiCommandController::SwarmUiCommandController(QObject *parent)
 
 void SwarmUiCommandController::_sendcom(int test1, int test2, int test3, int pause, int conti)
 {
-    Vehicle *const vehicle = _vehicle ? _vehicle : (MultiVehicleManager::instance() ? MultiVehicleManager::instance()->activeVehicle() : nullptr);
+    MultiVehicleManager *const manager = MultiVehicleManager::instance();
+    Vehicle *vehicle = _vehicle ? _vehicle : (manager ? manager->activeVehicle() : nullptr);
+    if (!vehicle && manager && manager->vehicles() && manager->vehicles()->count() > 0) {
+        vehicle = qobject_cast<Vehicle*>(manager->vehicles()->get(0));
+    }
     const int groupId = test2;
     int operationType = SwarmOperationAckHandler::OperationUnknown;
 
@@ -62,6 +67,7 @@ void SwarmUiCommandController::_sendcom(int test1, int test2, int test3, int pau
     _emitOperationResult(operationType, result);
 }
 
+
 void SwarmUiCommandController::_handleActiveVehicleChanged(Vehicle *vehicle)
 {
     _vehicle = vehicle;
@@ -75,7 +81,23 @@ void SwarmUiCommandController::_receiveMessage(LinkInterface *link, const mavlin
     Q_UNUSED(link);
 
     if (message.msgid == MAVLINK_MSG_ID_UAV_INFO) {
-        Vehicle *const vehicle = _vehicle ? _vehicle : (MultiVehicleManager::instance() ? MultiVehicleManager::instance()->activeVehicle() : nullptr);
+        mavlink_uav_info_t uavInfo{};
+        mavlink_msg_uav_info_decode(&message, &uavInfo);
+        QVariantMap info;
+        info[QStringLiteral("mavid")] = static_cast<int>(uavInfo.mavid);
+        info[QStringLiteral("groupId")] = static_cast<int>(uavInfo.group_id);
+        info[QStringLiteral("isLeader")] = (uavInfo.is_leader != 0);
+        info[QStringLiteral("lat")] = uavInfo.lat;
+        info[QStringLiteral("lon")] = uavInfo.lon;
+        info[QStringLiteral("yaw")] = uavInfo.yaw;
+        info[QStringLiteral("yawSpeed")] = uavInfo.yaw_speed;
+        info[QStringLiteral("relAlt")] = uavInfo.rel_alt;
+        info[QStringLiteral("vx")] = uavInfo.vx;
+        info[QStringLiteral("vy")] = uavInfo.vy;
+        info[QStringLiteral("vz")] = uavInfo.vz;
+        info[QStringLiteral("land")] = static_cast<int>(uavInfo.land);
+        emit uavInfoReceived(info);
+        Vehicle *const vehicle = _vehicleForSwarmMessage(uavInfo.mavid ? uavInfo.mavid : message.sysid);
         (void) _echoUavInfo(vehicle, message);
         return;
     }
@@ -100,6 +122,35 @@ void SwarmUiCommandController::_receiveMessage(LinkInterface *link, const mavlin
                                    ack.old_value,
                                    ack.new_value,
                                    messageText);
+}
+
+Vehicle *SwarmUiCommandController::_vehicleForSwarmMessage(int vehicleId) const
+{
+    MultiVehicleManager *const manager = MultiVehicleManager::instance();
+    if (!manager) {
+        return nullptr;
+    }
+
+    if (vehicleId > 0) {
+        if (Vehicle *const vehicle = manager->getVehicleById(vehicleId)) {
+            return vehicle;
+        }
+    }
+
+    if (_vehicle) {
+        return _vehicle;
+    }
+
+    if (Vehicle *const vehicle = manager->activeVehicle()) {
+        return vehicle;
+    }
+
+    QmlObjectListModel *const vehicles = manager->vehicles();
+    if (vehicles && vehicles->count() > 0) {
+        return qobject_cast<Vehicle*>(vehicles->get(0));
+    }
+
+    return nullptr;
 }
 
 QString SwarmUiCommandController::_formatOperationAckMessage(int sysId, int operationType, int result, int oldValue, int newValue) const

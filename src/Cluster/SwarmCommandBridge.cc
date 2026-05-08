@@ -61,13 +61,9 @@ QVariantMap SwarmCommandBridge::setVehicleGroup(int vehicleId, int groupId, bool
     }
 
     if (setAsFollower) {
-        Vehicle *const vehicle = _vehicleForId(vehicleId);
-        ParameterManager *const parameterManager = vehicle ? vehicle->parameterManager() : nullptr;
-        if (parameterManager && parameterManager->parametersReady() && parameterManager->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SWARM_SET_LEADER"))) {
-            result = _setVehicleParameter(vehicleId, QStringLiteral("SWARM_SET_LEADER"), 0, QStringLiteral("set-follower"), groupId);
-            if (!result.value(QStringLiteral("success")).toBool()) {
-                return result;
-            }
+        result = _setVehicleParameter(vehicleId, QStringLiteral("SWARM_SET_LEADER"), 0, QStringLiteral("set-follower"), groupId);
+        if (!result.value(QStringLiteral("success")).toBool()) {
+            return result;
         }
     }
 

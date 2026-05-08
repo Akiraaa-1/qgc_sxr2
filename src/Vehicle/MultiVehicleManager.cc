@@ -47,6 +47,15 @@ MultiVehicleManager *MultiVehicleManager::instance()
     return _multiVehicleManagerInstance();
 }
 
+QVariantMap MultiVehicleManager::my_vehicles() const
+{
+    QVariantMap vehicles;
+    for (auto it = _myvehicle.constBegin(); it != _myvehicle.constEnd(); ++it) {
+        vehicles.insert(QString::number(it.key()), QVariant::fromValue(qobject_cast<QObject*>(it.value())));
+    }
+    return vehicles;
+}
+
 void MultiVehicleManager::init()
 {
     if (_initialized) {
@@ -63,6 +72,16 @@ void MultiVehicleManager::init()
     _gcsHeartbeatTimer->start();
 
     _initialized = true;
+}
+
+void MultiVehicleManager::replayVehicleState()
+{
+    for (int i = 0; i < _vehicles->count(); i++) {
+        const Vehicle *const vehicle = qobject_cast<const Vehicle*>(_vehicles->get(i));
+        if (vehicle) {
+            emit mydatachanged(i + 1, vehicle->id());
+        }
+    }
 }
 
 void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicleId, int componentId, int vehicleFirmwareType, int vehicleType)
@@ -122,6 +141,8 @@ void MultiVehicleManager::_vehicleHeartbeatInfo(LinkInterface* link, int vehicle
     (void) connect(vehicle->parameterManager(), &ParameterManager::parametersReadyChanged, this, &MultiVehicleManager::_vehicleParametersReadyChanged);
 
     _vehicles->append(vehicle);
+    _myvehicle[vehicleId] = vehicle;
+    emit myVehiclesChanged();
 
     // Send QGC heartbeat ASAP, this allows PX4 to start accepting commands
     _sendGCSHeartbeat();
@@ -169,6 +190,8 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
     }
 
     deselectVehicle(vehicle->id());
+    _myvehicle.remove(vehicleId);
+    emit myVehiclesChanged();
 
     _setActiveVehicleAvailable(false);
     _setParameterReadyVehicleAvailable(false);
@@ -227,6 +250,7 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
 
     if (vehicle != _activeVehicle) {
         _pendingActiveVehicle = vehicle;
+        const quint64 request = ++_pendingActiveVehicleRequest;
 
         if (_activeVehicle) {
             // The sequence of signals is very important in order to not leave Qml elements connected
@@ -238,7 +262,11 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
             _setParameterReadyVehicleAvailable(false);
         }
 
-        QTimer::singleShot(20, this, [this]() {
+        QTimer::singleShot(20, this, [this, request]() {
+            if (request != _pendingActiveVehicleRequest) {
+                return;
+            }
+
             Vehicle *const pendingVehicle = _pendingActiveVehicle;
             _pendingActiveVehicle = nullptr;
             _setActiveVehiclePhase2(pendingVehicle);

@@ -25,7 +25,8 @@ Rectangle {
 
     // 尺寸和位置
     width: 320
-    height: 80
+    implicitHeight: contentLayout.implicitHeight + 24
+    height: Math.max(80, implicitHeight)
     radius: 8
 
     // 根据opType和result确定颜色
@@ -46,14 +47,16 @@ Rectangle {
 
     // 内容布局
     RowLayout {
+        id: contentLayout
         anchors.fill: parent
         anchors.margins: 12
         spacing: 10
 
         // 图标
         Rectangle {
-            width: 40
-            height: 40
+            Layout.preferredWidth: 40
+            Layout.preferredHeight: 40
+            Layout.alignment: Qt.AlignTop
             radius: 20
             color: opType === 3 ? "#5e81ac" : (opType === 4 ? "#88c0d0" : (isSuccess ? "#4CAF50" : "#f44336"))
 
@@ -69,6 +72,7 @@ Rectangle {
         // 消息文本
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignTop
             spacing: 4
 
             Text {
@@ -84,13 +88,16 @@ Rectangle {
                 color: "#e0e0e0"
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
+                Layout.maximumWidth: 220
+                lineHeight: 1.1
             }
         }
 
         // 关闭按钮
         Rectangle {
-            width: 24
-            height: 24
+            Layout.preferredWidth: 24
+            Layout.preferredHeight: 24
+            Layout.alignment: Qt.AlignVCenter
             radius: 12
             color: mouseArea.containsMouse ? "#ffffff30" : "transparent"
 

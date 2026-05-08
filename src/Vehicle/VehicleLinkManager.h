@@ -56,6 +56,7 @@ signals:
     void linkNamesChanged();
     void linkStatusesChanged();
     void autoDisconnectChanged(bool autoDisconnect);
+    void mylink_disconnected(int vehicleId);
 
 private slots:
     void _commLostCheck();

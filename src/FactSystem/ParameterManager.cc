@@ -491,8 +491,36 @@ void ParameterManager::sendSwarmParameter(int componentId, const QString &paramN
 
     mavlink_param_union_t paramUnion{};
     if (!_fillMavlinkParamUnion(valueType, rawValue, paramUnion)) {
-        qCWarning(ParameterManagerLog) << "Swarm parameter direct write rejected unsupported value" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << rawValue;
+        qCWarning(ParameterManagerLog) << "Swarm parameter write rejected unsupported value" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << rawValue;
         return;
+    }
+
+    QVariant normalizedValue;
+    switch (valueType) {
+    case FactMetaData::valueTypeUint8:
+        normalizedValue = QVariant(static_cast<uint>(paramUnion.param_uint8));
+        break;
+    case FactMetaData::valueTypeInt8:
+        normalizedValue = QVariant(static_cast<int>(paramUnion.param_int8));
+        break;
+    case FactMetaData::valueTypeUint16:
+        normalizedValue = QVariant(static_cast<uint>(paramUnion.param_uint16));
+        break;
+    case FactMetaData::valueTypeInt16:
+        normalizedValue = QVariant(static_cast<int>(paramUnion.param_int16));
+        break;
+    case FactMetaData::valueTypeUint32:
+        normalizedValue = QVariant(paramUnion.param_uint32);
+        break;
+    case FactMetaData::valueTypeFloat:
+        normalizedValue = QVariant(paramUnion.param_float);
+        break;
+    case FactMetaData::valueTypeInt32:
+        normalizedValue = QVariant(paramUnion.param_int32);
+        break;
+    default:
+        normalizedValue = rawValue;
+        break;
     }
 
     char paramId[MAVLINK_MSG_PARAM_SET_FIELD_PARAM_ID_LEN + 1] = {};
@@ -510,7 +538,7 @@ void ParameterManager::sendSwarmParameter(int componentId, const QString &paramN
         static_cast<uint8_t>(factTypeToMavType(valueType))
     );
 
-    qCInfo(ParameterManagerLog) << "Swarm parameter best-effort direct write" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << rawValue;
+    qCInfo(ParameterManagerLog) << "Swarm parameter best-effort direct write" << _logVehiclePrefix(actualComponentId) << "param" << paramName << "value" << normalizedValue;
     _vehicle->sendMessageMultipleOnCurrentLinks(message, 5);
 }
 

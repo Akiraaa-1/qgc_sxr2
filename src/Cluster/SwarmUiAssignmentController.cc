@@ -55,9 +55,8 @@ void SwarmUiAssignmentController::set_main_airplane(int sysid, int grpId, double
 
 void SwarmUiAssignmentController::store_airplane_group(int sysid, int groupId, bool flag, bool setAsFollower)
 {
-    SwarmUiSharedState::instance().refreshFromVehicle(sysid);
-    const int oldGroupId = SwarmUiSharedState::instance().vehicleGroup(sysid);
-    const bool oldLeader = SwarmUiSharedState::instance().vehicleLeader(sysid);
+    const int oldGroupId = SwarmUiSharedState::instance().cachedVehicleGroup(sysid);
+    const bool oldLeader = SwarmUiSharedState::instance().cachedVehicleLeader(sysid);
 
     SwarmUiSharedState::instance().setVehicleGroup(sysid, groupId);
 
@@ -95,7 +94,6 @@ bool SwarmUiAssignmentController::stored_airplane_leader(int sysid)
 
 void SwarmUiAssignmentController::set_absolute_altitude(int sysid, double altitude)
 {
-    SwarmUiSharedState::instance().refreshFromVehicle(sysid);
     const QVariantMap result = _bridge.setVehicleAbsoluteAltitude(sysid, altitude);
     if (!result.value(QStringLiteral("success")).toBool()) {
         _emitOperationResult(sysid, SwarmOperationAckHandler::OperationUnknown, 0, 0, result);
