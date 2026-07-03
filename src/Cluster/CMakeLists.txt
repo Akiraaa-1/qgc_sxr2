@@ -36,6 +36,8 @@ target_include_directories(ClusterModule
         ${CMAKE_BINARY_DIR}/_deps/mavlink-build/include
         ${CMAKE_BINARY_DIR}/_deps/mavlink-build/include/mavlink
         ${CMAKE_BINARY_DIR}/_deps/mavlink-build/include/mavlink/${QGC_MAVLINK_DIALECT}
+        ${CPM_PACKAGE_mavlink_SOURCE_DIR}
+        ${CPM_PACKAGE_mavlink_SOURCE_DIR}/${QGC_MAVLINK_DIALECT}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../Comms
         ${CMAKE_CURRENT_SOURCE_DIR}/../FactSystem

@@ -62,6 +62,8 @@ Item {
     property var _vehicleStatusIconMap: ({})
     property string _pendingFlightMode: ""
     property int _pendingFlightModeVehicleId: -1
+    property bool _activeVehicleSwitchPending: false
+    property bool _missionPathSwitchSuppressed: false
     property var _clusterWorkspaceWindow: null
     readonly property var _vehicleStatusIconOptions: [
         { "source": "/InstrumentValueIcons/drone.svg",             "label": qsTr("Drone") },
@@ -102,14 +104,13 @@ Item {
         }
         root._rebuildActiveVehicleFactsController()
         root._refreshVehicleTelemetry()
-        root._profileMissionPoints = root._buildMissionProfilePoints()
+        profileVehicleSwitchRefresh.restart()
         root._profileReturnAltitudeSnapshot = NaN
         root._profileReturnSegmentActive = false
         root._profileLiveDistance = 0
         root._profileLiveAltitude = NaN
         root._profileLivePointIndex = -1
         root._profileLiveSegment = ""
-        root._updateProfileLiveState()
         root._syncPendingFlightMode()
     }
     Component.onCompleted: {
@@ -214,13 +215,13 @@ Item {
     function _guidedPanelActionUnavailableMessage(action) {
         switch (action) {
         case guidedActionsController.actionRTL:
-            return qsTr("Return/RTL is only available when the vehicle is armed, flying, and supports guided mode.")
+            return qsTr("返航/RTL 仅在飞行器已解锁、正在飞行并支持引导模式时可用。")
         case guidedActionsController.actionLand:
-            return qsTr("Land is only available when the vehicle is armed and supports guided landing.")
+            return qsTr("降落仅在飞行器已解锁并支持引导降落时可用。")
         case guidedActionsController.actionEmergencyStop:
-            return qsTr("Emergency Stop is only available when the vehicle is armed and flying.")
+            return qsTr("紧急停止仅在飞行器已解锁且正在飞行时可用。")
         default:
-            return qsTr("This action is currently unavailable.")
+            return qsTr("当前无法执行此操作。")
         }
     }
     function _openClusterWorkspaceWindow() {
@@ -242,7 +243,7 @@ Item {
         if (swarmComponent.status === Component.Error) {
             console.warn("Failed to load swarm workspace component:", swarmComponent.errorString())
             if (typeof mainWindow !== "undefined" && mainWindow && mainWindow.showMessageDialog) {
-                mainWindow.showMessageDialog(qsTr("Swarm"), qsTr("Failed to load the swarm workspace window."))
+                mainWindow.showMessageDialog(qsTr("集群"), qsTr("加载集群工作区窗口失败。"))
             }
             return
         }
@@ -256,7 +257,7 @@ Item {
         if (!root._clusterWorkspaceWindow) {
             console.warn("Failed to create swarm workspace window")
             if (typeof mainWindow !== "undefined" && mainWindow && mainWindow.showMessageDialog) {
-                mainWindow.showMessageDialog(qsTr("Swarm"), qsTr("Failed to create the swarm workspace window."))
+                mainWindow.showMessageDialog(qsTr("集群"), qsTr("创建集群工作区窗口失败。"))
             }
             return
         }
@@ -316,14 +317,73 @@ Item {
 
         QGroundControl.showMessageDialog(
             root,
-            qsTr("Change Flight Mode"),
-            qsTr("Change flight mode to %1?").arg(targetMode),
+            qsTr("切换飞行模式"),
+            qsTr("将飞行模式切换为 %1？").arg(root._flightModeDisplayName(targetMode)),
             Dialog.Yes | Dialog.Cancel,
             function() {
                 if (vehicle) {
                     vehicle.flightMode = targetMode
                 }
             })
+    }
+    function _flightModeDisplayName(flightMode) {
+        const rawMode = flightMode === undefined || flightMode === null ? "" : ("" + flightMode)
+        const mode = rawMode.trim()
+        const normalizedMode = mode.toLowerCase()
+
+        if (normalizedMode.indexOf("precision lan") === 0 || normalizedMode === "precland") {
+            return qsTr("精准降落")
+        }
+        if (normalizedMode.indexOf("safe recovery") === 0) {
+            return qsTr("安全恢复")
+        }
+        if (normalizedMode.indexOf("position slow") === 0) {
+            return qsTr("慢速位置")
+        }
+        if (normalizedMode.indexOf("follow target") === 0) {
+            return qsTr("跟随目标")
+        }
+        if (normalizedMode.indexOf("vtol takeoff") === 0) {
+            return qsTr("VTOL 起飞")
+        }
+
+        switch (mode) {
+        case "":
+            return qsTr("自动")
+        case "Hold":
+            return qsTr("保持")
+        case "Mission":
+            return qsTr("任务")
+        case "Return":
+        case "RTL":
+            return qsTr("返航/RTL")
+        case "Land":
+            return qsTr("降落")
+        case "Takeoff":
+            return qsTr("起飞")
+        case "Manual":
+            return qsTr("手动")
+        case "Position":
+        case "Position Hold":
+            return qsTr("位置保持")
+        case "Altitude":
+        case "Altitude Hold":
+            return qsTr("定高")
+        case "Stabilized":
+            return qsTr("增稳")
+        case "Acro":
+            return qsTr("特技")
+        case "Offboard":
+            return qsTr("机外控制")
+        case "Orbit":
+            return qsTr("环绕")
+        case "Descend":
+            return qsTr("下降")
+        case "Unknown":
+            return qsTr("未知")
+        default:
+            return mode
+        }
     }
     function _refreshVehicleTelemetry() {
         const altitudeFact = _activeVehicle ? _activeVehicle.altitudeRelative : null
@@ -438,19 +498,19 @@ Item {
         return fact.valueString + units
     }
     function _vehicleTitle(vehicle) {
-        if (!vehicle) { return qsTr("Vehicle --") }
+        if (!vehicle) { return qsTr("飞行器 --") }
         const names = [vehicle.vehicleName, vehicle.name, vehicle.callsign, vehicle.displayName, vehicle.objectName]
         for (let i = 0; i < names.length; i++) {
             const name = names[i] === undefined || names[i] === null ? "" : ("" + names[i]).trim()
             if (name !== "") { return name }
         }
-        return qsTr("Vehicle %1").arg(vehicle.id)
+        return qsTr("飞行器 %1").arg(vehicle.id)
     }
     function _missionTitle() {
         if (_activeVehicle && _activeVehicle.id !== undefined && _activeVehicle.id !== null) {
-            return qsTr("Mission %1").arg(_activeVehicle.id)
+            return qsTr("任务 %1").arg(_activeVehicle.id)
         }
-        return qsTr("Mission %1").arg(Math.max(_profileMissionPoints.length, 1))
+        return qsTr("任务 %1").arg(Math.max(_profileMissionPoints.length, 1))
     }
     function _vehicleStatusIcon(vehicle) {
         const defaultIcon = root._vehicleStatusIconOptions[0].source
@@ -468,7 +528,16 @@ Item {
         root._vehicleStatusIconMap = nextMap
     }
     function _vehicleTypeIcon(vehicle) { return root._vehicleStatusIcon(vehicle) }
-    function _setActiveVehicle(vehicle) { if (vehicle) { QGroundControl.multiVehicleManager.activeVehicle = vehicle } }
+    function _setActiveVehicle(vehicle) {
+        if (vehicle && vehicle !== QGroundControl.multiVehicleManager.activeVehicle && !_activeVehicleSwitchPending) {
+            _activeVehicleSwitchPending = true
+            _missionPathSwitchSuppressed = true
+            console.log("FlyIntegratedPage: switching active vehicle to", vehicle.id)
+            QGroundControl.multiVehicleManager.activeVehicle = vehicle
+            activeVehicleSwitchGuard.restart()
+            missionPathSwitchGuard.restart()
+        }
+    }
     function _batteryPercentForVehicle(vehicle) {
         if (!vehicle || !vehicle.batteries || vehicle.batteries.count === 0) { return NaN }
         const battery = vehicle.batteries.get(0)
@@ -535,10 +604,10 @@ Item {
     }
     function _compactPrearmReason(vehicle) {
         if (!vehicle) {
-            return qsTr("Connect a vehicle to view readiness")
+            return qsTr("连接飞行器后查看就绪状态")
         }
         if (vehicle.communicationLost) {
-            return qsTr("Communication lost")
+            return qsTr("通信已中断")
         }
 
         const report = vehicle.healthAndArmingCheckReport
@@ -557,12 +626,12 @@ Item {
         }
 
         if (vehicle.readyToFlyAvailable !== undefined && !vehicle.readyToFly) {
-            return qsTr("Vehicle is still completing pre-flight checks")
+            return qsTr("飞行器仍在完成飞行前检查")
         }
 
         return _compactReadinessLevel(vehicle) === 0
-            ? qsTr("Vehicle can arm")
-            : qsTr("Review vehicle status before takeoff")
+            ? qsTr("飞行器可以解锁")
+            : qsTr("起飞前请检查飞行器状态")
     }
     function _formatElapsedTime(fact) {
         if (!_hasFactValue(fact)) { return "--:--" }
@@ -1780,7 +1849,7 @@ Item {
             const startPoint = visiblePoints[startIndex]
             const endPoint = visiblePoints[endIndex]
             groups.push({
-                "label": qsTr("S2D Site %1").arg(i + 1),
+                "label": qsTr("测区 %1").arg(i + 1),
                 "startIndex": startIndex,
                 "endIndex": endIndex,
                 "startDistance": Number(startPoint.distance),
@@ -1942,16 +2011,16 @@ Item {
         root._hideStartMissionSlider()
         switch (root._mapPrimarySliderAction) {
         case guidedActionsController.actionArm:
-            root._showStartMissionFeedback(qsTr("Arm command sent. Verify vehicle state before takeoff."), false)
+            root._showStartMissionFeedback(qsTr("解锁指令已发送。起飞前请确认飞行器状态。"), false)
             break
         case guidedActionsController.actionForceArm:
-            root._showStartMissionFeedback(qsTr("Force arm command sent. Verify vehicle state before takeoff."), false)
+            root._showStartMissionFeedback(qsTr("强制解锁指令已发送。起飞前请确认飞行器状态。"), false)
             break
         case guidedActionsController.actionContinueMission:
-            root._showStartMissionFeedback(qsTr("Mission continue command sent. Verify vehicle state before takeoff."), false)
+            root._showStartMissionFeedback(qsTr("继续任务指令已发送。起飞前请确认飞行器状态。"), false)
             break
         default:
-            root._showStartMissionFeedback(qsTr("Mission start command sent. Verify vehicle state before takeoff."), false)
+            root._showStartMissionFeedback(qsTr("开始任务指令已发送。起飞前请确认飞行器状态。"), false)
             break
         }
         guidedActionsController.executeAction(root._mapPrimarySliderAction, undefined, 0, false)
@@ -1976,44 +2045,44 @@ Item {
     }
     function _startMissionUnavailableMessage() {
         if (!root._activeVehicle) {
-            return qsTr("No active vehicle. Connect to a vehicle before starting the mission.")
+            return qsTr("当前没有活动飞行器。开始任务前请先连接飞行器。")
         }
         switch (root._mapPrimaryActionCode()) {
         case guidedActionsController.actionArm:
             if (guidedActionsController._vehicleFlying) {
-                return qsTr("The vehicle is already flying.")
+                return qsTr("飞行器已经在飞行中。")
             }
             if (!guidedActionsController._checklistPassed) {
-                return qsTr("The preflight checklist has not passed yet.")
+                return qsTr("飞行前检查单尚未通过。")
             }
             if (!guidedActionsController._canArm) {
-                return qsTr("The vehicle is not ready to arm yet.")
+                return qsTr("飞行器当前尚未准备好解锁。")
             }
-            return qsTr("The current vehicle state does not allow arming.")
+            return qsTr("飞行器当前状态不允许解锁。")
         case guidedActionsController.actionForceArm:
             if (guidedActionsController._vehicleFlying) {
-                return qsTr("The vehicle is already flying.")
+                return qsTr("飞行器已经在飞行中。")
             }
-            return qsTr("Normal arming is currently blocked. Use force arm only if you understand the risk.")
+            return qsTr("当前普通解锁被阻止。只有在明确了解风险时才使用强制解锁。")
         case guidedActionsController.actionContinueMission:
-            return qsTr("The current vehicle state does not allow continuing the mission.")
+            return qsTr("飞行器当前状态不允许继续任务。")
         default:
             if (!guidedActionsController._missionAvailable) {
-                return qsTr("No mission is available to start.")
+                return qsTr("当前没有可开始的任务。")
             }
             if (guidedActionsController._missionActive) {
-                return qsTr("The mission is already active.")
+                return qsTr("任务已经处于活动状态。")
             }
             if (guidedActionsController._vehicleFlying) {
-                return qsTr("The vehicle is already flying.")
+                return qsTr("飞行器已经在飞行中。")
             }
             if (!guidedActionsController._checklistPassed) {
-                return qsTr("The preflight checklist has not passed yet.")
+                return qsTr("飞行前检查单尚未通过。")
             }
             if (!guidedActionsController._canStartMission) {
-                return qsTr("The vehicle is not ready to start the mission yet.")
+                return qsTr("飞行器当前尚未准备好开始任务。")
             }
-            return qsTr("The current vehicle state does not allow starting the mission.")
+            return qsTr("飞行器当前状态不允许开始任务。")
         }
     }
     function _isMapFollowMode() {
@@ -2048,13 +2117,13 @@ Item {
     function _mapPrimaryActionText() {
         switch (_mapPrimaryActionKey()) {
         case "arm":
-            return qsTr("ARM")
+            return qsTr("解锁")
         case "forceArm":
-            return qsTr("FORCE")
+            return qsTr("强制")
         case "continueMission":
-            return qsTr("PLAY")
+            return qsTr("继续")
         default:
-            return qsTr("START")
+            return qsTr("开始")
         }
     }
     function _mapPrimaryActionCode() {
@@ -2087,10 +2156,24 @@ Item {
             return guidedActionsController.armMessage
         case guidedActionsController.actionForceArm:
             return guidedActionsController.forceArmMessage
+        case guidedActionsController.actionStartMission:
+            return guidedActionsController.startMissionMessage
         case guidedActionsController.actionContinueMission:
             return guidedActionsController.continueMissionMessage
         default:
-            return guidedActionsController.startMissionMessage
+            return qsTr("滑动确认执行当前操作")
+        }
+    }
+    function _mapPrimaryActionDialogTitle() {
+        switch (root._mapPrimarySliderAction || root._mapPrimaryActionCode()) {
+        case guidedActionsController.actionArm:
+            return qsTr("解锁")
+        case guidedActionsController.actionForceArm:
+            return qsTr("强制解锁")
+        case guidedActionsController.actionContinueMission:
+            return qsTr("继续任务")
+        default:
+            return qsTr("开始任务")
         }
     }
     function _triggerMapPrimaryAction() {
@@ -2271,11 +2354,11 @@ Item {
         return Math.round(percent)
     }
     function _networkStatusText(percent) {
-        if (isNaN(percent) || percent <= 0) { return qsTr("No Link") }
-        if (percent >= 75) { return qsTr("Good") }
-        if (percent >= 50) { return qsTr("Fair") }
-        if (percent >= 25) { return qsTr("Weak") }
-        return qsTr("Poor")
+        if (isNaN(percent) || percent <= 0) { return qsTr("未连接") }
+        if (percent >= 75) { return qsTr("良好") }
+        if (percent >= 50) { return qsTr("一般") }
+        if (percent >= 25) { return qsTr("较弱") }
+        return qsTr("差")
     }
     function _networkStatusColor(percent) {
         if (isNaN(percent) || percent <= 0) { return "#6A7078" }
@@ -2649,20 +2732,20 @@ Item {
         }
     }
     function _vehicleSetupTuningStatusText() {
-        if (!_activeVehicle) { return qsTr("Connect a vehicle to tune") }
-        if (!_vehicleSetupTuningComponent(_activeVehicle)) { return qsTr("Unavailable on this vehicle") }
-        return qsTr("Ready")
+        if (!_activeVehicle) { return qsTr("连接飞行器后调参") }
+        if (!_vehicleSetupTuningComponent(_activeVehicle)) { return qsTr("此飞行器不可用") }
+        return qsTr("就绪")
     }
     function _vehicleSetupSensorStatusText() {
-        if (!_activeVehicle) { return qsTr("Connect a vehicle to calibrate") }
-        if (!_vehicleSetupSensorComponent(_activeVehicle)) { return qsTr("Sensor setup unavailable") }
-        if (_activeVehicle.armed) { return qsTr("Disarm to calibrate") }
-        return _vehicleSetupSensorComponent(_activeVehicle).setupComplete ? qsTr("Calibrated") : qsTr("Calibration required")
+        if (!_activeVehicle) { return qsTr("连接飞行器后校准") }
+        if (!_vehicleSetupSensorComponent(_activeVehicle)) { return qsTr("传感器设置不可用") }
+        if (_activeVehicle.armed) { return qsTr("上锁后校准") }
+        return _vehicleSetupSensorComponent(_activeVehicle).setupComplete ? qsTr("已校准") : qsTr("需要校准")
     }
     function _vehicleSetupFirmwareStatusText() {
-        if (!_vehicleSetupFirmwareAvailable()) { return qsTr("Firmware update unavailable") }
-        if (_activeVehicle && _activeVehicle.armed) { return qsTr("Disarm before update") }
-        return qsTr("Ready")
+        if (!_vehicleSetupFirmwareAvailable()) { return qsTr("固件更新不可用") }
+        if (_activeVehicle && _activeVehicle.armed) { return qsTr("上锁后更新") }
+        return qsTr("就绪")
     }
     function _normalizeSearchText(value) {
         return value === undefined || value === null ? "" : ("" + value).toLowerCase().trim()
@@ -2809,6 +2892,30 @@ Item {
         interval: 2600
         repeat: false
         onTriggered: root._hideStartMissionFeedback()
+    }
+
+    Timer {
+        id: activeVehicleSwitchGuard
+        interval: 300
+        repeat: false
+        onTriggered: root._activeVehicleSwitchPending = false
+    }
+
+    Timer {
+        id: missionPathSwitchGuard
+        interval: 1000
+        repeat: false
+        onTriggered: root._missionPathSwitchSuppressed = false
+    }
+
+    Timer {
+        id: profileVehicleSwitchRefresh
+        interval: 100
+        repeat: false
+        onTriggered: {
+            root._profileMissionPoints = root._buildMissionProfilePoints()
+            root._updateProfileLiveState()
+        }
     }
 
     Timer {
@@ -2987,7 +3094,7 @@ Item {
         id: flightModeMenu
         Instantiator {
             model: root._activeVehicle && root._activeVehicle.flightModeSetAvailable ? root._activeVehicle.flightModes : []
-            delegate: QGCMenuItem { required property var modelData; text: modelData; onTriggered: root._setPendingFlightMode(modelData) }
+            delegate: QGCMenuItem { required property var modelData; text: root._flightModeDisplayName(modelData); onTriggered: root._setPendingFlightMode(modelData) }
             onObjectAdded: (index, object) => flightModeMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => flightModeMenu.removeItem(object)
         }
@@ -3054,7 +3161,7 @@ Item {
                                 TextField {
                                     Layout.fillWidth: true
                                     color: text.length > 0 ? "#FFFFFF" : qgcPal.text
-                                    placeholderText: qsTr("Search...")
+                                    placeholderText: qsTr("搜索...")
                                     placeholderTextColor: qgcPal.windowShadeLight
                                     text: root._vehicleSearchText
                                     verticalAlignment: TextInput.AlignVCenter
@@ -3153,19 +3260,32 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.1
                                 Rectangle {
-                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.9
-                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.9
-                                    color: "transparent"
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.28
+                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.02
+                                    Layout.alignment: Qt.AlignVCenter
+                                    color: selected ? Qt.rgba(0.18, 0.46, 0.35, 0.95) : (switchMouse.containsMouse ? Qt.rgba(0.24, 0.27, 0.30, 0.96) : Qt.rgba(0.13, 0.14, 0.16, 0.94))
+                                    radius: ScreenTools.defaultFontPixelHeight * 0.16
+                                    border.width: 1
+                                    border.color: selected ? "#70D6A2" : (switchMouse.containsMouse ? "#8E969D" : "#4B535A")
+                                    opacity: root._activeVehicleSwitchPending ? 0.55 : 1
+
+                                    readonly property color _iconColor: selected ? "#EAF7EF" : (switchMouse.containsMouse ? "#FFFFFF" : "#D7DCE0")
 
                                     QGCLabel {
                                         anchors.centerIn: parent
                                         horizontalAlignment: Text.AlignHCenter
-                                        color: "#FFFFFF"
-                                        text: "\u25B8"
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: parent._iconColor
+                                        font.pixelSize: selected ? ScreenTools.defaultFontPixelHeight * 0.42 : ScreenTools.defaultFontPixelHeight * 0.52
+                                        font.weight: Font.DemiBold
+                                        text: selected ? "\u2713" : "\u25B8"
                                     }
 
                                     QGCMouseArea {
+                                        id: switchMouse
                                         anchors.fill: parent
+                                        hoverEnabled: true
+                                        enabled: !selected && !root._activeVehicleSwitchPending
                                         onClicked: root._setActiveVehicle(vehicleObject)
                                     }
                                 }
@@ -3206,15 +3326,6 @@ Item {
                             }
                         }
 
-                        QGCMouseArea {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            onClicked: {
-                                root._setActiveVehicle(vehicleObject)
-                            }
-                        }
                     }
                 }
 
@@ -3283,16 +3394,16 @@ Item {
                     readonly property real _sectionContentBottomMargin: ScreenTools.defaultFontPixelHeight * 0.12
                     readonly property real _sectionContentSpacing: ScreenTools.defaultFontPixelHeight * 0.11
                     readonly property var _statusPages: [
-                        { "icon": "/InstrumentValueIcons/dashboard.svg",    "title": qsTr("INSTRUMENTS") },
-                        { "icon": "/InstrumentValueIcons/bolt.svg",         "title": qsTr("VEHICLE STATUS") },
-                        { "icon": "/InstrumentValueIcons/news-paper.svg",   "title": qsTr("DOCS") },
-                        { "icon": "/InstrumentValueIcons/radio.svg",        "title": qsTr("SIGNAL") },
-                        { "icon": "/InstrumentValueIcons/cog.svg",          "title": qsTr("PARAMS") },
-                        { "icon": "/InstrumentValueIcons/chart.svg",        "title": qsTr("LOGS") },
-                        { "icon": "/InstrumentValueIcons/battery-full.svg", "title": qsTr("BATTERY") },
-                        { "icon": "/InstrumentValueIcons/show-sidebar.svg", "title": qsTr("ATTITUDE") },
-                        { "icon": "/InstrumentValueIcons/shield.svg",       "title": qsTr("SAFETY") },
-                        { "icon": "/InstrumentValueIcons/volume-up.svg",    "title": qsTr("AUDIO") }
+                        { "icon": "/InstrumentValueIcons/dashboard.svg",    "title": qsTr("仪表") },
+                        { "icon": "/InstrumentValueIcons/bolt.svg",         "title": qsTr("飞行器状态") },
+                        { "icon": "/InstrumentValueIcons/news-paper.svg",   "title": qsTr("文档") },
+                        { "icon": "/InstrumentValueIcons/radio.svg",        "title": qsTr("信号") },
+                        { "icon": "/InstrumentValueIcons/cog.svg",          "title": qsTr("参数") },
+                        { "icon": "/InstrumentValueIcons/chart.svg",        "title": qsTr("日志") },
+                        { "icon": "/InstrumentValueIcons/battery-full.svg", "title": qsTr("电池") },
+                        { "icon": "/InstrumentValueIcons/show-sidebar.svg", "title": qsTr("姿态") },
+                        { "icon": "/InstrumentValueIcons/shield.svg",       "title": qsTr("安全") },
+                        { "icon": "/InstrumentValueIcons/volume-up.svg",    "title": qsTr("音频") }
                     ]
 
                     RowLayout {
@@ -3386,7 +3497,7 @@ Item {
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.weight: Font.DemiBold
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
-                                                text: qsTr("VEHICLE STATUS")
+                                                text: qsTr("飞行器状态")
                                                 verticalAlignment: Text.AlignVCenter
                                             }
 
@@ -3538,7 +3649,7 @@ Item {
                                                 QGCLabel {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                                                    text: qsTr("Flight Mode")
+                                                    text: qsTr("飞行模式")
                                                 }
 
                                                 Item {
@@ -3578,7 +3689,7 @@ Item {
                                                             Layout.fillWidth: true
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
-                                                            text: root._activeVehicle && root._activeVehicle.flightMode ? root._activeVehicle.flightMode : qsTr("Auto")
+                                                            text: root._activeVehicle && root._activeVehicle.flightMode ? root._flightModeDisplayName(root._activeVehicle.flightMode) : qsTr("自动")
                                                         }
 
                                                         QGCColoredImage {
@@ -3621,7 +3732,7 @@ Item {
                                                     Layout.fillWidth: true
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
-                                                    text: qsTr("Pending: %1").arg(root._pendingFlightMode)
+                                                    text: qsTr("待确认：%1").arg(root._flightModeDisplayName(root._pendingFlightMode))
                                                     elide: Text.ElideRight
                                                     maximumLineCount: 1
                                                 }
@@ -3694,7 +3805,7 @@ Item {
                                                         anchors.centerIn: parent
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
-                                                        text: qsTr("Slide to Confirm")
+                                                        text: qsTr("滑动确认")
                                                         opacity: sliderMouseArea.pressed ? 0.55 : 0.9
                                                     }
 
@@ -3785,7 +3896,7 @@ Item {
                                                         anchors.verticalCenter: parent.verticalCenter
                                                         width: Math.max(implicitWidth, ScreenTools.defaultFontPixelWidth * 7.8)
                                                         height: ScreenTools.defaultFontPixelHeight * 1.5
-                                                        text: qsTr("Cancel")
+                                                        text: qsTr("取消")
                                                         pointSize: ScreenTools.smallFontPointSize
                                                         horizontalAlignment: Text.AlignHCenter
                                                         backgroundColor: vehicleStatusCard._buttonSecondaryColor
@@ -3837,13 +3948,13 @@ Item {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
                                                     font.weight: Font.DemiBold
-                                                    text: qsTr("Pre-Flight Checklist")
+                                                    text: qsTr("飞行前检查单")
                                                 }
 
                                                 QGCLabel {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
-                                                    text: qsTr("Open")
+                                                    text: qsTr("打开")
                                                 }
                                             }
 
@@ -3874,7 +3985,7 @@ Item {
                                                 QGCLabel {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                                                    text: qsTr("Show Flight Path")
+                                                    text: qsTr("显示航迹")
                                                 }
 
                                                 Item {
@@ -3907,8 +4018,8 @@ Item {
                                                     color: root._activeVehicle ? "#FFFFFF" : "#888888"
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
                                                     text: root._activeVehicle ?
-                                                          (root._activeVehicle.armed ? qsTr("Slide to Disarm") : qsTr("Slide to Arm")) :
-                                                          qsTr("No Vehicle Connected")
+                                                          (root._activeVehicle.armed ? qsTr("滑动上锁") : qsTr("滑动解锁")) :
+                                                          qsTr("未连接飞行器")
                                                 }
 
                                                 Item {
@@ -4012,21 +4123,21 @@ Item {
                                                     "background": vehicleStatusCard._buttonSecondaryColor,
                                                     "foreground": vehicleStatusCard._textPrimaryColor,
                                                     "icon": "/res/rtl.svg",
-                                                    "label": qsTr("Return/RTL"),
+                                                    "label": qsTr("返航/RTL"),
                                                     "action": guidedActionsController.actionRTL
                                                 },
                                                 {
                                                     "background": vehicleStatusCard._buttonSecondaryColor,
                                                     "foreground": vehicleStatusCard._textPrimaryColor,
                                                     "icon": "/res/land.svg",
-                                                    "label": qsTr("Land"),
+                                                    "label": qsTr("降落"),
                                                     "action": guidedActionsController.actionLand
                                                 },
                                                 {
                                                     "background": vehicleStatusCard._highlightColor,
                                                     "foreground": vehicleStatusCard._textPrimaryColor,
                                                     "icon": "/res/Stop.svg",
-                                                    "label": qsTr("Emergency Stop"),
+                                                    "label": qsTr("紧急停止"),
                                                     "action": guidedActionsController.actionEmergencyStop
                                                 }
                                             ]
@@ -4108,7 +4219,7 @@ Item {
                                                 useLegacySelectableControl: false
                                                 showHeader: true
                                                 showHeaderAction: true
-                                                headerTitle: qsTr("INSTRUMENTS")
+                                                headerTitle: qsTr("仪表")
                                                 headerHeight: vehicleStatusCard._sectionHeaderHeight
                                                 headerSpacing: vehicleStatusCard._sectionHeaderSpacing
                                                 headerTitleSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -4194,7 +4305,7 @@ Item {
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.weight: Font.DemiBold
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
-                                                text: qsTr("NETWORK")
+                                                text: qsTr("网络")
                                                 verticalAlignment: Text.AlignVCenter
                                             }
 
@@ -4256,7 +4367,7 @@ Item {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: networkStatusPage._primaryFontSize
-                                                        text: qsTr("GPS Status")
+                                                        text: qsTr("GPS 状态")
                                                     }
 
                                                     QGCColoredImage {
@@ -4291,7 +4402,7 @@ Item {
                                                         color: vehicleStatusCard._textSecondaryColor
                                                         font.pixelSize: networkStatusPage._secondaryFontSize
                                                         horizontalAlignment: Text.AlignHCenter
-                                                        text: qsTr("Satellite Count")
+                                                        text: qsTr("卫星数量")
                                                     }
 
                                                     QGCLabel {
@@ -4328,11 +4439,11 @@ Item {
                                         Repeater {
                                             model: [
                                                 {
-                                                    "label": qsTr("RC RSSI"),
+                                                    "label": qsTr("RC 信号"),
                                                     "percent": networkStatusPage._rcPercent
                                                 },
                                                 {
-                                                    "label": qsTr("Telemetry RSSI"),
+                                                    "label": qsTr("遥测信号"),
                                                     "percent": networkStatusPage._telemetryPercent
                                                 }
                                             ]
@@ -4413,7 +4524,7 @@ Item {
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.weight: Font.DemiBold
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
-                                                text: qsTr("VEHICLE SETUP")
+                                                text: qsTr("飞行器设置")
                                                 verticalAlignment: Text.AlignVCenter
                                             }
 
@@ -4451,6 +4562,7 @@ Item {
                                         }
 
                                         Rectangle {
+                                            id: setupVehicleSelectorField
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.82
                                             color: setupVehicleMouseArea.pressed
@@ -4492,31 +4604,31 @@ Item {
                                                 anchors.fill: parent
                                                 hoverEnabled: true
                                                 enabled: QGroundControl.multiVehicleManager.vehicles && QGroundControl.multiVehicleManager.vehicles.count > 0
-                                                onClicked: root._popupMenuInLeftPane(vehicleMenu, setupVehicleDropdownField, setupVehicleDropdownField.width)
+                                                onClicked: root._popupMenuInLeftPane(vehicleMenu, setupVehicleSelectorField, setupVehicleSelectorField.width)
                                             }
                                         }
 
                                         Repeater {
                                             model: [
                                                 {
-                                                    "title": qsTr("Flight Controller Tuning"),
-                                                    "buttonText": qsTr("Open"),
+                                                    "title": qsTr("飞控调参"),
+                                                    "buttonText": qsTr("打开"),
                                                     "statusText": root._vehicleSetupTuningStatusText(),
                                                     "statusColor": vehicleSetupPage._tuningEnabled ? "#AFC4D7" : "#8D939A",
                                                     "enabled": vehicleSetupPage._tuningEnabled,
                                                     "action": root._openVehicleSetupTuning
                                                 },
                                                 {
-                                                    "title": qsTr("Sensor Calibration"),
-                                                    "buttonText": qsTr("Calibrate"),
+                                                    "title": qsTr("传感器校准"),
+                                                    "buttonText": qsTr("校准"),
                                                     "statusText": root._vehicleSetupSensorStatusText(),
                                                     "statusColor": vehicleSetupPage._sensorEnabled ? "#AFC4D7" : (root._activeVehicle && root._activeVehicle.armed ? "#D6A566" : "#8D939A"),
                                                     "enabled": vehicleSetupPage._sensorEnabled,
                                                     "action": root._openVehicleSetupSensors
                                                 },
                                                 {
-                                                    "title": qsTr("Firmware Update"),
-                                                    "buttonText": qsTr("Update"),
+                                                    "title": qsTr("固件更新"),
+                                                    "buttonText": qsTr("更新"),
                                                     "statusText": root._vehicleSetupFirmwareStatusText(),
                                                     "statusColor": vehicleSetupPage._firmwareEnabled ? "#AFC4D7" : "#8D939A",
                                                     "enabled": vehicleSetupPage._firmwareEnabled,
@@ -4628,10 +4740,10 @@ Item {
                                     readonly property color _okColor: "#32D296"
                                     readonly property int _seriesMaxCount: 100
                                     readonly property var _summaryModel: [
-                                        { "title": qsTr("GPS"),           "bit": Vehicle.SysStatusSensorGPS,     "goodText": qsTr("Good"),       "badText": qsTr("Degraded"), "detail": "sat" },
-                                        { "title": qsTr("Compass"),       "bit": Vehicle.SysStatusSensor3dMag,   "goodText": qsTr("Calibrated"), "badText": qsTr("Recheck"),  "detail": ""    },
-                                        { "title": qsTr("Accelerometer"), "bit": Vehicle.SysStatusSensor3dAccel, "goodText": qsTr("Healthy"),    "badText": qsTr("Attention"),"detail": ""    },
-                                        { "title": qsTr("Gyroscope"),     "bit": Vehicle.SysStatusSensor3dGyro,  "goodText": qsTr("Healthy"),    "badText": qsTr("Attention"),"detail": ""    }
+                                        { "title": qsTr("GPS"),    "bit": Vehicle.SysStatusSensorGPS,     "goodText": qsTr("良好"),   "badText": qsTr("降级"),   "detail": "sat" },
+                                        { "title": qsTr("罗盘"),   "bit": Vehicle.SysStatusSensor3dMag,   "goodText": qsTr("已校准"), "badText": qsTr("复检"),   "detail": ""    },
+                                        { "title": qsTr("加速度计"),"bit": Vehicle.SysStatusSensor3dAccel, "goodText": qsTr("正常"),   "badText": qsTr("注意"),   "detail": ""    },
+                                        { "title": qsTr("陀螺仪"), "bit": Vehicle.SysStatusSensor3dGyro,  "goodText": qsTr("正常"),   "badText": qsTr("注意"),   "detail": ""    }
                                     ]
 
                                     property real _cpuLoadPercent: 15
@@ -4781,7 +4893,7 @@ Item {
                                                 font.weight: Font.DemiBold
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
                                                 horizontalAlignment: Text.AlignLeft
-                                                text: qsTr("SENSORS/TELEMETRY")
+                                                text: qsTr("传感器/遥测")
                                                 verticalAlignment: Text.AlignVCenter
                                             }
 
@@ -4878,7 +4990,7 @@ Item {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.weight: Font.DemiBold
                                                     font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
-                                                    text: qsTr("Flight Controller Status")
+                                                    text: qsTr("飞控状态")
                                                 }
 
                                                 RowLayout {
@@ -4938,7 +5050,7 @@ Item {
                                                                     font.pixelSize: sensorsTelemetryPage._textFontSize
                                                                     horizontalAlignment: Text.AlignHCenter
                                                                     wrapMode: Text.WordWrap
-                                                                    text: qsTr("CPU Load: %1%").arg(Math.round(sensorsTelemetryPage._cpuLoadPercent))
+                                                                    text: qsTr("CPU 负载：%1%").arg(Math.round(sensorsTelemetryPage._cpuLoadPercent))
                                                                 }
                                                             }
                                                         }
@@ -4985,7 +5097,7 @@ Item {
                                                                     font.pixelSize: sensorsTelemetryPage._textFontSize
                                                                     horizontalAlignment: Text.AlignHCenter
                                                                     wrapMode: Text.WordWrap
-                                                                    text: qsTr("Log Status: %1").arg(sensorsTelemetryPage._logActive ? qsTr("Active") : qsTr("Inactive"))
+                                                                    text: qsTr("日志状态：%1").arg(sensorsTelemetryPage._logActive ? qsTr("活动") : qsTr("未活动"))
                                                                 }
                                                             }
                                                         }
@@ -5024,7 +5136,7 @@ Item {
                                                                     font.pixelSize: sensorsTelemetryPage._textFontSize
                                                                     horizontalAlignment: Text.AlignHCenter
                                                                     wrapMode: Text.WordWrap
-                                                                    text: qsTr("Health: %1").arg(sensorsTelemetryPage._healthNominal ? qsTr("Nominal") : qsTr("Attention"))
+                                                                    text: qsTr("健康状态：%1").arg(sensorsTelemetryPage._healthNominal ? qsTr("正常") : qsTr("注意"))
                                                                 }
                                                             }
                                                         }
@@ -5055,7 +5167,7 @@ Item {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.weight: Font.DemiBold
                                                     font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
-                                                    text: qsTr("Sensor Live Telemetry")
+                                                    text: qsTr("传感器实时遥测")
                                                 }
 
                                                 Rectangle {
@@ -5159,10 +5271,10 @@ Item {
 
                                                     Repeater {
                                                         model: [
-                                                            { "label": qsTr("IMU Gyro"),       "color": "#4EA6FF" },
-                                                            { "label": qsTr("IMU Accel"),      "color": "#FF696E" },
-                                                            { "label": qsTr("Magnetometer"),   "color": "#56D38A" },
-                                                            { "label": qsTr("Barometer"),      "color": "#F2C94C" }
+                                                            { "label": qsTr("IMU 陀螺仪"), "color": "#4EA6FF" },
+                                                            { "label": qsTr("IMU 加速度计"), "color": "#FF696E" },
+                                                            { "label": qsTr("磁力计"), "color": "#56D38A" },
+                                                            { "label": qsTr("气压计"), "color": "#F2C94C" }
                                                         ]
 
                                                         delegate: RowLayout {
@@ -5211,7 +5323,7 @@ Item {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.weight: Font.DemiBold
                                                     font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
-                                                    text: qsTr("Sensor Health Summary")
+                                                    text: qsTr("传感器健康摘要")
                                                 }
 
                                                 GridLayout {
@@ -5257,14 +5369,14 @@ Item {
                                                                     QGCLabel {
                                                                         color: summaryCard._healthy ? sensorsTelemetryPage._okColor : "#F0BB6C"
                                                                         font.pixelSize: sensorsTelemetryPage._textFontSize
-                                                                        text: qsTr("Status: %1").arg(root._sensorStatusTextForBit(root._activeVehicle, modelData.bit, modelData.goodText, modelData.badText, qsTr("Offline")))
+                                                                        text: qsTr("状态：%1").arg(root._sensorStatusTextForBit(root._activeVehicle, modelData.bit, modelData.goodText, modelData.badText, qsTr("离线")))
                                                                     }
 
                                                                     QGCLabel {
                                                                         visible: modelData.detail === "sat"
                                                                         color: vehicleStatusCard._textSecondaryColor
                                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
-                                                                        text: qsTr("Satellites: %1").arg(root._sensorGpsSatelliteText(root._activeVehicle))
+                                                                        text: qsTr("卫星：%1").arg(root._sensorGpsSatelliteText(root._activeVehicle))
                                                                     }
                                                                 }
 
@@ -5382,7 +5494,7 @@ Item {
                                             color: vehicleStatusCard._textPrimaryColor
                                             font.weight: Font.DemiBold
                                             font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
-                                            text: qsTr("FLY PREP")
+                                            text: qsTr("飞行准备")
                                         }
 
                                         Repeater {
@@ -5474,7 +5586,7 @@ Item {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 color: vehicleStatusCard._textSecondaryColor
                                                 horizontalAlignment: Text.AlignHCenter
-                                                text: qsTr("This section is reserved for %1").arg(modelData.title)
+                                                text: qsTr("此区域预留给%1").arg(modelData.title)
                                                 wrapMode: Text.WordWrap
                                             }
                                         }
@@ -5491,11 +5603,9 @@ Item {
 
         Item {
             id: rightPane
-            anchors.left: leftPane.right
-            anchors.leftMargin: root._margin
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.leftMargin: root._margin
 
             Rectangle {
                 id: mapPanel
@@ -5518,7 +5628,7 @@ Item {
                     anchors.fill: parent
                     mapName: "FlyIntegratedMap"
                     pipMode: false
-                    showMissionPaths: root._showFlightPath
+                    showMissionPaths: root._showFlightPath && !root._missionPathSwitchSuppressed
                     planMasterController: planControllerInternal
                     rightPanelWidth: 0
                     toolInsets: toolInsets
@@ -5653,7 +5763,7 @@ Item {
                                         anchors.bottom: parent.bottom
                                         anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.12
                                         visible: _isStartMission
-                                        text: qsTr("START")
+                                        text: qsTr("开始")
                                         color: "#FFF7ED"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.42
                                         font.bold: true
@@ -5753,7 +5863,7 @@ Item {
                             QGCLabel {
                                 color: "#D7DBDF"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
-                                text: qsTr("Status")
+                                text: qsTr("状态")
                             }
 
                             QGCLabel {
@@ -5900,7 +6010,7 @@ Item {
                             color: "#E8E8E8"
                             font.weight: Font.DemiBold
                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
-                            text: qsTr("TRAFFIC VIEW")
+                            text: qsTr("交通视图")
                         }
 
                         QGCLabel {
@@ -5991,7 +6101,7 @@ Item {
                         anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                         color: "#7C8794"
                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.46
-                        text: qsTr("Range %1 km").arg((trafficViewPanel.displayRangeMeters / 1000).toFixed(1))
+                        text: qsTr("范围 %1 km").arg((trafficViewPanel.displayRangeMeters / 1000).toFixed(1))
                     }
 
                     QGCLabel {
@@ -6054,7 +6164,7 @@ Item {
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.35
 
                             QGCLabel {
-                                text: qsTr("INSTRUMENTS")
+                                text: qsTr("仪表")
                                 color: "#ECECEC"
                                 font.weight: Font.DemiBold
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
@@ -6091,7 +6201,7 @@ Item {
                                         Layout.fillWidth: true
                                         color: "#D8D9DA"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
-                                        text: qsTr("Flight Time")
+                                        text: qsTr("飞行时间")
                                     }
 
                                     QGCLabel {
@@ -6118,7 +6228,7 @@ Item {
                                         Layout.fillWidth: true
                                         color: "#D8D9DA"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
-                                        text: qsTr("Battery")
+                                        text: qsTr("电池")
                                     }
 
                                     QGCColoredImage {
@@ -6161,7 +6271,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Attitude"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("姿态"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6188,7 +6298,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Heading"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("航向"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6221,7 +6331,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Altitude"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("高度"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6261,7 +6371,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Air Speed"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("空速"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6356,7 +6466,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Turn Coordinator"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("转弯协调仪"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6417,7 +6527,7 @@ Item {
                                     anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("Vertical Speed"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { color: "#D8D9DA"; text: qsTr("垂直速度"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6607,7 +6717,7 @@ Item {
 
                         QGCLabel {
                             Layout.fillWidth: true
-                            text: qsTr("Start Mission")
+                            text: root._mapPrimaryActionDialogTitle()
                             color: "#F8FAFC"
                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.74
                             font.bold: true
@@ -6682,7 +6792,7 @@ Item {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: qsTr("Start Mission")
+                                text: root._mapPrimaryActionDialogTitle()
                                 color: "#F8FAFC"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
                                 font.bold: true
@@ -6783,7 +6893,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.45
                             focus: root._startMissionSliderVisible
-                            confirmText: qsTr("Slide or hold spacebar")
+                            confirmText: qsTr("滑动或按住空格键")
                             onAccept: root._confirmStartMissionSlider()
                         }
 
@@ -7235,7 +7345,7 @@ Item {
                                                     font.weight: Font.DemiBold
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
                                                     elide: Text.ElideRight
-                                                    text: root._activeVehicle ? root._vehicleTitle(root._activeVehicle) : qsTr("Vehicle --")
+                                                    text: root._activeVehicle ? root._vehicleTitle(root._activeVehicle) : qsTr("飞行器 --")
                                                 }
                                             }
                                         }

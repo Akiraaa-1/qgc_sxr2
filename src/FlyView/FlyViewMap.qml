@@ -16,7 +16,7 @@ FlightMap {
     id:                         _root
     allowGCSLocationCenter:     true
     allowVehicleLocationCenter: !_keepVehicleCentered
-    showGCSPositionMarker:      false
+    showGCSPositionMarker:      true
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
     center:                     QGroundControl.flightMapPosition
@@ -303,14 +303,14 @@ FlightMap {
         Connections {
             target:                 QGroundControl.multiVehicleManager
             function onActiveVehicleChanged(activeVehicle) {
-                trajectoryPolyline.path = _activeVehicle ? _activeVehicle.trajectoryPoints.list() : []
+                trajectoryPolyline.path = _activeVehicle ? QGroundControl.mapDisplayCoordinates(_activeVehicle.trajectoryPoints.list()) : []
             }
         }
 
         Connections {
             target:                             _activeVehicle ? _activeVehicle.trajectoryPoints : null
-            function onPointAdded(coordinate) { trajectoryPolyline.addCoordinate(coordinate) }
-            function onUpdateLastPoint(coordinate) { trajectoryPolyline.replaceCoordinate(trajectoryPolyline.pathLength() - 1, coordinate) }
+            function onPointAdded(coordinate) { trajectoryPolyline.addCoordinate(QGroundControl.mapDisplayCoordinate(coordinate)) }
+            function onUpdateLastPoint(coordinate) { trajectoryPolyline.replaceCoordinate(trajectoryPolyline.pathLength() - 1, QGroundControl.mapDisplayCoordinate(coordinate)) }
             function onPointsCleared() { trajectoryPolyline.path = [] }
         }
     }
@@ -320,7 +320,7 @@ FlightMap {
         model: QGroundControl.multiVehicleManager.vehicles
         delegate: VehicleMapItem {
             vehicle:        object
-            coordinate:     object.coordinate
+            sourceCoordinate: object.coordinate
             map:            _root
             showStatusCard: !pipMode
             size:           pipMode ? ScreenTools.defaultFontPixelHeight : ScreenTools.defaultFontPixelHeight * 3
@@ -346,7 +346,7 @@ FlightMap {
             line.width:      2
             line.color:      Qt.rgba(0.0, 0.9, 1.0, 0.38)
             path:            target && target.actualCoordinate && target.actualCoordinate.isValid && target.coordinate && target.coordinate.isValid
-                                 ? [ target.actualCoordinate, target.coordinate ]
+                                 ? QGroundControl.mapDisplayCoordinates([ target.actualCoordinate, target.coordinate ])
                                  : []
             z:               QGroundControl.zOrderVehicles - 2
         }
@@ -357,7 +357,7 @@ FlightMap {
         delegate: MapQuickItem {
             property var target: typeof object === "undefined" ? modelData : object
 
-            coordinate:      target && target.coordinate ? target.coordinate : QtPositioning.coordinate()
+            coordinate:      target && target.coordinate ? QGroundControl.mapDisplayCoordinate(target.coordinate) : QtPositioning.coordinate()
             anchorPoint.x:   targetItem.width / 2
             anchorPoint.y:   targetItem.height / 2
             visible:         coordinate.isValid
@@ -402,7 +402,7 @@ FlightMap {
     MapItemView {
         model: QGroundControl.adsbVehicleManager.adsbVehicles
         delegate: VehicleMapItem {
-            coordinate:     object.coordinate
+            sourceCoordinate: object.coordinate
             altitude:       object.altitude
             callsign:       object.callsign
             heading:        object.heading
@@ -424,8 +424,8 @@ FlightMap {
             vehicle:                _vehicle
             visible:                _vehicle !== _activeVehicle
             missionItemOpacity:     0.7
-            missionLineOpacity:     0.75
-            directionArrowOpacity:  0.9
+            missionLineOpacity:     0
+            directionArrowOpacity:  0
             missionLineColor:       _inactiveMissionLineColor
             directionArrowColor:    _inactiveMissionArrowColor
 
@@ -447,7 +447,7 @@ FlightMap {
             line.width: Math.max(10, ScreenTools.defaultFontPixelHeight * 0.96)
             line.color: _root._selectedMissionGlowColor
             z:          QGroundControl.zOrderWaypointLines + 2
-            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -460,7 +460,7 @@ FlightMap {
             line.width: Math.max(6, ScreenTools.defaultFontPixelHeight * 0.58)
             line.color: _root._selectedMissionBandColor
             z:          QGroundControl.zOrderWaypointLines + 3
-            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -473,7 +473,7 @@ FlightMap {
             line.width: Math.max(2, ScreenTools.defaultFontPixelHeight * 0.18)
             line.color: _root._selectedMissionCoreColor
             z:          QGroundControl.zOrderWaypointLines + 4
-            path:       _root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -483,8 +483,8 @@ FlightMap {
             : 0
 
         delegate: MapLineArrow {
-            fromCoord:      object ? object.coordinate1 : undefined
-            toCoord:        object ? object.coordinate2 : undefined
+            sourceFromCoord: object ? object.coordinate1 : undefined
+            sourceToCoord:   object ? object.coordinate2 : undefined
             arrowPosition:  3
             arrowColor:     _root._selectedMissionCoreColor
             _arrowSize:     ScreenTools.defaultFontPixelHeight * 0.9
@@ -504,7 +504,7 @@ FlightMap {
 
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
-            coordinate:     object ? object.coordinate : QtPositioning.coordinate()
+            coordinate:     object ? QGroundControl.mapDisplayCoordinate(object.coordinate) : QtPositioning.coordinate()
             visible:        !!(object && object.specifiesCoordinate && object.coordinate && object.coordinate.isValid)
             z:              QGroundControl.zOrderMapItems + 2
 
@@ -558,7 +558,7 @@ FlightMap {
             id:             itemIndicator
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
-            coordinate:     object.coordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(object.coordinate)
             z:              QGroundControl.zOrderMapItems
 
             sourceItem: MissionItemIndexLabel {
@@ -573,7 +573,7 @@ FlightMap {
         model: _activeVehicle ? _activeVehicle.cameraTriggerPoints : 0
 
         delegate: CameraTriggerIndicator {
-            coordinate:     object.coordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(object.coordinate)
             z:              QGroundControl.zOrderTopMost
         }
     }
@@ -821,7 +821,7 @@ FlightMap {
         id:             orbitCenterIndicator
         anchorPoint.x:  sourceItem.anchorPointX
         anchorPoint.y:  sourceItem.anchorPointY
-        coordinate:     _activeVehicle ? _activeVehicle.orbitMapCircle.center : QtPositioning.coordinate()
+        coordinate:     _activeVehicle ? QGroundControl.mapDisplayCoordinate(_activeVehicle.orbitMapCircle.center) : QtPositioning.coordinate()
         visible:        orbitTelemetryCircle.visible && !gotoLocationItem.visible
 
         sourceItem: MissionItemIndexLabel {

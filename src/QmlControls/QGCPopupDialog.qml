@@ -247,7 +247,7 @@ Popup {
                 font.pointSize:     ScreenTools.mediumFontPointSize
                 font.bold:          true
                 color:              popupStyle.primaryTextColor
-                verticalAlignment:	Text.AlignVCenter
+                verticalAlignment:  Text.AlignVCenter
             }
 
             QGCButton {

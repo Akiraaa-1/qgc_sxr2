@@ -19,7 +19,7 @@ ColumnLayout {
     QGCLabel {
         Layout.preferredWidth: parent.width
         wrapMode: Text.WordWrap
-        text: qsTr("Multiple buttons that have the same action must be pressed simultaneously to invoke the action.")
+        text: qsTr("多个分配为相同动作的按键必须同时按下，才能触发该动作。")
     }
 
     RowLayout {
@@ -73,7 +73,7 @@ ColumnLayout {
         }
 
         QGCCheckBox {
-            text: qsTr("Repeat")
+            text: qsTr("重复")
             checked: joystick.getButtonRepeat(buttonAssignmentRow.selectedButtonIndex)
             enabled: buttonActionCombo.currentIndex === -1 ? false : (joystick.assignableActions.get(buttonActionCombo.currentIndex) ? joystick.assignableActions.get(buttonActionCombo.currentIndex).canRepeat : false)
 
@@ -100,7 +100,7 @@ ColumnLayout {
         }
         Repeater {
             model: buttonAssignmentRow._assignedButtonModel
-            QGCLabel { text: repeat ? "Repeat" : "" }
+            QGCLabel { text: repeat ? qsTr("重复") : "" }
         }
     }
 

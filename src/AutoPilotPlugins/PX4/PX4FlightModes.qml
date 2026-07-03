@@ -8,6 +8,7 @@ import QGroundControl.Controls
 
 SetupPage {
     centerPageLoader: true
+    centerDescriptionText: true
     pageComponent:  pageComponent
     Component {
         id: pageComponent
@@ -32,6 +33,98 @@ SetupPage {
             readonly property real _cornerRadius: 8
 
             readonly property real _channelComboWidth: ScreenTools.defaultFontPixelWidth * 13
+            readonly property var _modeDisplayMap: ({
+                "Unassigned": qsTr("未分配"),
+                "Position": qsTr("位置"),
+                "Position Slow": qsTr("慢速位置"),
+                "Mission": qsTr("任务"),
+                "Stabilized": qsTr("增稳"),
+                "Altitude": qsTr("高度"),
+                "Manual": qsTr("手动"),
+                "Acro": qsTr("特技"),
+                "Offboard": qsTr("机外控制"),
+                "Return": qsTr("返航"),
+                "Hold": qsTr("悬停"),
+                "Takeoff": qsTr("起飞"),
+                "Land": qsTr("降落"),
+                "Precision Land": qsTr("精准降落"),
+                "Follow Me": qsTr("跟随"),
+                "Orbit": qsTr("盘旋"),
+                "External Mode 1": qsTr("外部模式 1"),
+                "External Mode 2": qsTr("外部模式 2"),
+                "External Mode 3": qsTr("外部模式 3"),
+                "External Mode 4": qsTr("外部模式 4"),
+                "External Mode 5": qsTr("外部模式 5"),
+                "External Mode 6": qsTr("外部模式 6"),
+                "External Mode 7": qsTr("外部模式 7"),
+                "External Mode 8": qsTr("外部模式 8")
+            })
+
+            function _displayText(text) {
+                if (text === undefined || text === null) {
+                    return ""
+                }
+
+                const value = text.toString()
+                if (_modeDisplayMap[value]) {
+                    return _modeDisplayMap[value]
+                }
+                if (value.indexOf("Channel ") === 0) {
+                    return qsTr("通道 %1").arg(value.substring("Channel ".length))
+                }
+
+                return value
+            }
+
+            function _displayModel(fact) {
+                if (!fact || !fact.enumStrings) {
+                    return []
+                }
+
+                const values = []
+                for (let i = 0; i < fact.enumStrings.length; i++) {
+                    values.push(_displayText(fact.enumStrings[i]))
+                }
+                return values
+            }
+
+            function _factCurrentIndex(fact, indexModel) {
+                if (!fact) {
+                    return 0
+                }
+                return indexModel ? fact.value : fact.enumIndex
+            }
+
+            function _setFactFromIndex(fact, index, indexModel) {
+                if (!fact || index < 0) {
+                    return
+                }
+
+                if (indexModel) {
+                    fact.value = index
+                } else if (fact.enumValues && index < fact.enumValues.length) {
+                    fact.value = fact.enumValues[index]
+                }
+            }
+
+            function _switchLabel(shortDescription) {
+                switch (shortDescription) {
+                case "Arm switch channel":
+                    return qsTr("解锁开关通道")
+                case "Emergency Kill switch channel":
+                    return qsTr("紧急停止开关通道")
+                case "Offboard switch channel":
+                    return qsTr("机外控制开关通道")
+                case "Landing gear switch channel":
+                    return qsTr("起落架开关通道")
+                case "Loiter switch channel":
+                    return qsTr("盘旋开关通道")
+                case "Return switch channel":
+                    return qsTr("返航开关通道")
+                default:
+                    return shortDescription
+                }
+            }
 
             Component.onCompleted: {
                 if (controller.vehicle.vtol) {
@@ -123,10 +216,13 @@ SetupPage {
                                         }
                                     }
 
-                                    FactComboBox {
+                                    QGCComboBox {
+                                        id: modeChannelCombo
+                                        property Fact fact: controller.getParameterFact(-1, "RC_MAP_FLTMODE")
+                                        property bool indexModel: fact ? fact.enumValues.length === 0 : true
                                         Layout.fillWidth:   true
-                                        fact:               controller.getParameterFact(-1, "RC_MAP_FLTMODE")
-                                        indexModel:         false
+                                        model:              root._displayModel(fact)
+                                        currentIndex:       root._factCurrentIndex(fact, indexModel)
                                         sizeToContents:     true
                                         backgroundColor:    _inputColor
                                         borderColor:        _borderColor
@@ -138,15 +234,30 @@ SetupPage {
                                         delegateSelectedTextColor: _primaryTextColor
                                         showFocusBorder:    true
                                         borderRadius:       _cornerRadius
+                                        onActivated: (index) => root._setFactFromIndex(fact, index, indexModel)
+
+                                        Connections {
+                                            target: fact
+                                            function onValueChanged() {
+                                                modeChannelCombo.currentIndex = root._factCurrentIndex(modeChannelCombo.fact, modeChannelCombo.indexModel)
+                                            }
+                                            function onEnumsChanged() {
+                                                modeChannelCombo.model = root._displayModel(modeChannelCombo.fact)
+                                                modeChannelCombo.currentIndex = root._factCurrentIndex(modeChannelCombo.fact, modeChannelCombo.indexModel)
+                                            }
+                                        }
                                     }
 
                                     Repeater {
                                         model: 6
 
-                                        FactComboBox {
+                                        QGCComboBox {
+                                            id: flightModeCombo
+                                            property Fact fact: controller.getParameterFact(-1, "COM_FLTMODE" + (modelData + 1))
+                                            property bool indexModel: fact ? fact.enumValues.length === 0 : true
                                             Layout.fillWidth:   true
-                                            fact:               controller.getParameterFact(-1, "COM_FLTMODE" + (modelData + 1))
-                                            indexModel:         false
+                                            model:              root._displayModel(fact)
+                                            currentIndex:       root._factCurrentIndex(fact, indexModel)
                                             sizeToContents:     true
                                             backgroundColor:    _inputColor
                                             borderColor:        _borderColor
@@ -158,6 +269,18 @@ SetupPage {
                                             delegateSelectedTextColor: _primaryTextColor
                                             showFocusBorder:    true
                                             borderRadius:       _cornerRadius
+                                            onActivated: (index) => root._setFactFromIndex(fact, index, indexModel)
+
+                                            Connections {
+                                                target: fact
+                                                function onValueChanged() {
+                                                    flightModeCombo.currentIndex = root._factCurrentIndex(flightModeCombo.fact, flightModeCombo.indexModel)
+                                                }
+                                                function onEnumsChanged() {
+                                                    flightModeCombo.model = root._displayModel(flightModeCombo.fact)
+                                                    flightModeCombo.currentIndex = root._factCurrentIndex(flightModeCombo.fact, flightModeCombo.indexModel)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -212,15 +335,17 @@ SetupPage {
                                                                                      (controller.rcChannelValues[swChannel] > thPWM) :
                                                                                      (controller.rcChannelValues[swChannel] <= thPWM))
                                             QGCLabel {
-                                                text:               swFact.shortDescription
+                                                text:               root._switchLabel(swFact.shortDescription)
                                                 Layout.fillWidth:   true
                                                 color:              swActive ? _accentColor : _secondaryTextColor
                                             }
 
-                                            FactComboBox {
+                                            QGCComboBox {
+                                                id: switchChannelCombo
+                                                property bool indexModel: swFact ? swFact.enumValues.length === 0 : true
                                                 Layout.preferredWidth:  _channelComboWidth
-                                                fact:                   swFact
-                                                indexModel:             false
+                                                model:                  root._displayModel(swFact)
+                                                currentIndex:           root._factCurrentIndex(swFact, indexModel)
                                                 backgroundColor:        _inputColor
                                                 borderColor:            _borderColor
                                                 focusBorderColor:       _accentColor
@@ -231,6 +356,18 @@ SetupPage {
                                                 delegateSelectedTextColor: _primaryTextColor
                                                 showFocusBorder:        true
                                                 borderRadius:           _cornerRadius
+                                                onActivated: (comboIndex) => root._setFactFromIndex(swFact, comboIndex, indexModel)
+
+                                                Connections {
+                                                    target: swFact
+                                                    function onValueChanged() {
+                                                        switchChannelCombo.currentIndex = root._factCurrentIndex(swFact, switchChannelCombo.indexModel)
+                                                    }
+                                                    function onEnumsChanged() {
+                                                        switchChannelCombo.model = root._displayModel(swFact)
+                                                        switchChannelCombo.currentIndex = root._factCurrentIndex(swFact, switchChannelCombo.indexModel)
+                                                    }
+                                                }
                                             }
                                         }
                                     }

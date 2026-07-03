@@ -45,14 +45,17 @@ Item {
     property bool   _disableDueToFlying:    vehicleComponent ? (!_vehicleIsRover && !vehicleComponent.allowSetupWhileFlying && _vehicleFlying) : false
     property string _disableReason:         _disableDueToArmed ? qsTr("armed") : qsTr("flying")
     property real   _margins:               ScreenTools.defaultFontPixelHeight * 0.5
-    readonly property string _sensorsCalibDescription: "Configure and calibrate gyroscope, accelerometer, magnetometer, and airspeed sensors."
-    readonly property string _powerDescription: "Configure battery parameters, ESC calibration, and UAVCAN bus settings."
-    readonly property string _safetyDescription: "Configure failsafe actions, geofence, return to launch, and land mode settings."
+    readonly property var _centeredDescriptions: [
+        "Configure and calibrate gyroscope, accelerometer, magnetometer, and airspeed sensors.",
+        qsTr("Configure and calibrate gyroscope, accelerometer, magnetometer, and airspeed sensors."),
+        "Configure battery parameters, ESC calibration, and UAVCAN bus settings.",
+        qsTr("Configure battery parameters, ESC calibration, and UAVCAN bus settings."),
+        "Configure failsafe actions, geofence, return to launch, and land mode settings.",
+        qsTr("Configure failsafe actions, geofence, return to launch, and land mode settings.")
+    ]
     readonly property bool _centerPageDescription: false
     readonly property bool _shouldCenterDescription: centerDescriptionText
-        || pageDescription === _sensorsCalibDescription
-        || pageDescription === _powerDescription
-        || pageDescription === _safetyDescription
+        || _centeredDescriptions.indexOf(pageDescription) !== -1
 
     Component.onCompleted: {
         if(pageLoader.item && pageLoader.item.setupPageCompleted) {

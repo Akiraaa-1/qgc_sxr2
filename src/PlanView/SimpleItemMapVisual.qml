@@ -151,7 +151,7 @@ Item {
         id: indicatorComponent
 
         MissionItemIndicator {
-            coordinate:     _missionItem.coordinate
+            sourceCoordinate: _missionItem.coordinate
             visible:        _missionItem.specifiesCoordinate
             z:              QGroundControl.zOrderMapItems
             missionItem:    _missionItem
@@ -166,7 +166,7 @@ Item {
 
         MapQuickItem {
             id:                               loiterMapQuickItem
-            coordinate:                       _root._missionItem.coordinate
+            coordinate:                       QGroundControl.mapDisplayCoordinate(_root._missionItem.coordinate)
             visible:                          _root.interactive && _missionItem.isSimpleItem && _missionItem.showLoiterRadius
 
             property alias blockSignals:      loiterMapCircleVisuals.blockSignals
@@ -181,7 +181,7 @@ Item {
             }
 
             function handleCoordinateChange() {
-                coordinate = _missionItem.coordinate
+                coordinate = QGroundControl.mapDisplayCoordinate(_missionItem.coordinate)
             }
 
             onCoordinateChanged:              _mapCircle.center = coordinate

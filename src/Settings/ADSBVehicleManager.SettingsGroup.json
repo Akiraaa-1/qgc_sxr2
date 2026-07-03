@@ -4,27 +4,27 @@
     "QGC.MetaData.Facts": [
         {
             "name": "adsbServerConnectEnabled",
-            "shortDesc": "Enable connection to an ADS-B SBS-1 server to receive nearby aircraft tracking data.",
-            "longDesc": "Connect to ADSB SBS-1 server using specified address/port",
+            "shortDesc": "启用连接 ADS-B SBS-1 服务器，以接收附近航空器跟踪数据。",
+            "longDesc": "使用指定地址和端口连接 ADS-B SBS-1 服务器",
             "type": "bool",
             "default": false,
-            "label": "Connect to ADSB SBS server",
+            "label": "连接 ADS-B SBS 服务器",
             "keywords": "adsb,ads-b,traffic,aircraft,tracking"
         },
         {
             "name": "adsbServerHostAddress",
-            "shortDesc": "IP address or hostname of the ADS-B SBS-1 server to connect to.",
+            "shortDesc": "要连接的 ADS-B SBS-1 服务器 IP 地址或主机名。",
             "type": "string",
             "default": "127.0.0.1",
-            "label": "Host address",
+            "label": "主机地址",
             "keywords": "adsb,server,host"
         },
         {
             "name": "adsbServerPort",
-            "shortDesc": "Network port number on which the ADS-B SBS-1 server is listening.",
+            "shortDesc": "ADS-B SBS-1 服务器监听的网络端口号。",
             "type": "string",
             "default": 30003,
-            "label": "Server port",
+            "label": "服务器端口",
             "keywords": "adsb,server,port"
         }
     ]

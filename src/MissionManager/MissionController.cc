@@ -27,7 +27,10 @@
 
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QPointer>
 #include <QtMath>
+
+#include <utility>
 
 #define UPDATE_TIMEOUT 5000 ///< How often we check for bounding box changes
 
@@ -581,12 +584,17 @@ void MissionController::_setupNewVisualItems(QmlObjectListModel* newItems)
 
     if (oldItems) {
         _deinitAllVisualItems();
+        oldItems->setParent(nullptr);
 
         // Destroy old items after a delay — TreeView delegates are torn down
         // asynchronously during a polish cycle and may still hold bindings.
-        QTimer::singleShot(1000, oldItems, [oldItems] {
-            oldItems->clearAndDeleteContents();
-            oldItems->deleteLater();
+        QPointer<QmlObjectListModel> oldItemsPtr(oldItems);
+        QTimer::singleShot(1000, this, [oldItemsPtr] {
+            if (!oldItemsPtr) {
+                return;
+            }
+            oldItemsPtr->clearAndDeleteContents();
+            oldItemsPtr->deleteLater();
         });
     }
 
@@ -1211,8 +1219,13 @@ void MissionController::_recalcFlightPathSegments(void)
     _simpleFlightPathSegments.endResetModel();
     _directionArrows.endResetModel();
 
-    // Anything left in the old table is an obsolete line object that can go
-    qDeleteAll(oldSegmentTable);
+    // Anything left in the old table is obsolete. Defer deletion so QML map
+    // delegates can release references after the model reset completes.
+    for (FlightPathSegment* segment : std::as_const(oldSegmentTable)) {
+        if (segment) {
+            segment->deleteLater();
+        }
+    }
 
     emit _recalcMissionFlightStatusSignal();
 

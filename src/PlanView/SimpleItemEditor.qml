@@ -163,7 +163,7 @@ Rectangle {
 
                         QGCLabel {
                             Layout.fillWidth: true
-                            text: qsTr("Alt Frame")
+                            text: qsTr("高度框架")
                             color: theme.secondaryTextColor
                         }
 
@@ -177,7 +177,7 @@ Rectangle {
                     PlanFactTextFieldSlider {
                         id: altField
                         Layout.fillWidth: true
-                        label: qsTr("Altitude%1").arg(_extraLabelText())
+                        label: qsTr("高度%1").arg(_extraLabelText())
                         fact: missionItem.altitude
 
                         function _extraLabelText() {
@@ -187,7 +187,7 @@ Rectangle {
 
                     QGCLabel {
                         font.pointSize: ScreenTools.smallFontPointSize
-                        text: qsTr("Actual AMSL alt sent: %1 %2").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
+                        text: qsTr("实际发送的 AMSL 高度：%1 %2").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
                         visible: missionItem.altitudeFrame === QGroundControl.AltitudeFrameCalcAboveTerrain
                         color: theme.secondaryTextColor
                     }
@@ -248,7 +248,7 @@ Rectangle {
 
                 PlanFactTextFieldSlider {
                     Layout.fillWidth: true
-                    label: qsTr("Flight Speed")
+                    label: qsTr("飞行速度")
                     fact: missionItem.speedSection.flightSpeed
                     showEnableCheckbox: true
                     enableCheckBoxChecked: missionItem.speedSection.specifyFlightSpeed

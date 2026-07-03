@@ -23,6 +23,28 @@ Rectangle {
     property bool _waypointsOnlyMode: QGroundControl.corePlugin.options.missionWaypointsOnly
     property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16
 
+    function _vehicleTypeText(vehicleType) {
+        switch (vehicleType) {
+        case "Fixed Wing":
+            return qsTr("固定翼")
+        case "Multi-Rotor":
+        case "Multirotor":
+            return qsTr("多旋翼")
+        case "VTOL":
+            return qsTr("VTOL")
+        case "Rover":
+            return qsTr("无人车/船")
+        case "Sub":
+            return qsTr("水下航行器")
+        case "Airship":
+            return qsTr("飞艇")
+        case "Unknown":
+            return qsTr("未知")
+        default:
+            return vehicleType
+        }
+    }
+
     width:  parent ? parent.width : 0
     height: mainColumn.height + ScreenTools.defaultFontPixelHeight
     color:  theme.panelColor
@@ -46,13 +68,13 @@ Rectangle {
             spacing: 0
 
             QGCLabel {
-                text: qsTr("Plan File")
+                text: qsTr("计划文件")
                 color: theme.textColor
             }
 
             PlanTextField {
                 id: planNameField
-                placeholderText: qsTr("Untitled")
+                placeholderText: qsTr("未命名")
                 Layout.fillWidth: true
 
                 Component.onCompleted: text = _root.planMasterController.currentPlanFileName
@@ -74,7 +96,7 @@ Rectangle {
         PlanSectionHeader {
             id: vehicleInfoSectionHeader
             Layout.fillWidth: true
-            text: qsTr("Vehicle Info")
+            text: qsTr("飞行器信息")
             visible: !_root._waypointsOnlyMode
         }
 
@@ -103,7 +125,7 @@ Rectangle {
                 visible: _root._multipleVehicleTypes && _root._allowFWVehicleTypeSelection
             }
             QGCLabel {
-                text: _root._controllerVehicle ? _root._controllerVehicle.vehicleTypeString : ""
+                text: _root._controllerVehicle ? _root._vehicleTypeText(_root._controllerVehicle.vehicleTypeString) : ""
                 Layout.fillWidth: true
                 visible: _root._multipleVehicleTypes && !_root._allowFWVehicleTypeSelection
                 color: theme.secondaryTextColor
@@ -114,7 +136,7 @@ Rectangle {
         PlanSectionHeader {
             id: plannedHomePositionSection
             Layout.fillWidth: true
-            text: qsTr("Expected Home Position")
+            text: qsTr("预计 Home 位置")
         }
 
         GridLayout {
@@ -124,7 +146,7 @@ Rectangle {
             visible: plannedHomePositionSection.checked
 
             QGCLabel {
-                text: qsTr("Altitude (AMSL)")
+                text: qsTr("高度 (AMSL)")
                 color: theme.secondaryTextColor
             }
             PlanFactTextField {
@@ -144,14 +166,14 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             font.pointSize: ScreenTools.smallFontPointSize
-            text: qsTr("Actual position/alt set by vehicle at flight time.")
+            text: qsTr("实际位置/高度由飞行器在飞行时设置。")
             horizontalAlignment: Text.AlignHCenter
             visible: plannedHomePositionSection.checked
             color: theme.secondaryTextColor
         }
 
         PlanButton {
-            text: qsTr("Move To Map Center")
+            text: qsTr("移至地图中心")
             Layout.alignment: Qt.AlignHCenter
             visible: plannedHomePositionSection.checked
             onClicked: {

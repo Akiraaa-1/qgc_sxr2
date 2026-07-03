@@ -263,7 +263,7 @@ ColumnLayout {
 
         QGCCheckBox {
             id:      discoverableCheck
-            text:    qsTr("Discoverable")
+            text:    qsTr("可被发现")
             checked: root.subEditConfig ? root.subEditConfig.adapterDiscoverable : false
             enabled: root.adapterOn
             onClicked: { if (root.subEditConfig) root.subEditConfig.setAdapterDiscoverable(discoverableCheck.checked) }
@@ -275,7 +275,7 @@ ColumnLayout {
     //==========================================================================
     SectionHeader {
         Layout.fillWidth: true
-        text:             qsTr("Connection")
+        text:             qsTr("连接")
     }
 
     GridLayout {
@@ -284,39 +284,39 @@ ColumnLayout {
         rowSpacing:       root._rowSpacing
         Layout.fillWidth: true
 
-        QGCLabel { text: qsTr("Mode") }
+        QGCLabel { text: qsTr("模式") }
         RowLayout {
             Layout.preferredWidth: root._secondColumnWidth
             spacing:               root._colSpacing
 
             QGCRadioButton {
-                text:    qsTr("Classic")
+                text:    qsTr("经典")
                 checked: root.isClassicMode
                 onClicked: { if (root.subEditConfig) root.subEditConfig.mode = root.btConfig.BluetoothMode.ModeClassic }
             }
 
             QGCRadioButton {
-                text:    qsTr("BLE")
+                text:    qsTr("低功耗蓝牙")
                 checked: root.isBleMode
                 onClicked: { if (root.subEditConfig) root.subEditConfig.mode = root.btConfig.BluetoothMode.ModeLowEnergy }
             }
         }
 
-        QGCLabel { text: qsTr("Selected Device") }
+        QGCLabel { text: qsTr("已选设备") }
         QGCLabel {
             Layout.preferredWidth: root._secondColumnWidth
-            text: root.subEditConfig && root.subEditConfig.deviceName ? root.subEditConfig.deviceName : qsTr("None")
+            text: root.subEditConfig && root.subEditConfig.deviceName ? root.subEditConfig.deviceName : qsTr("无")
         }
 
-        QGCLabel { text: qsTr("Device Address") }
+        QGCLabel { text: qsTr("设备地址") }
         QGCLabel {
             Layout.preferredWidth: root._secondColumnWidth
-            text: root.currentAddress || qsTr("N/A")
+            text: root.currentAddress || qsTr("无")
         }
 
         // Classic Bluetooth Pairing
         QGCLabel {
-            text:    qsTr("Pairing")
+            text:    qsTr("配对")
             visible: root.isClassicMode && root.currentAddress !== ""
         }
         RowLayout {
@@ -330,7 +330,7 @@ ColumnLayout {
             }
 
             QGCButton {
-                text: root.paired ? qsTr("Unpair") : qsTr("Pair")
+                text: root.paired ? qsTr("取消配对") : qsTr("配对")
                 onClicked: {
                     if (!root.subEditConfig) return
                     root.paired ? root.subEditConfig.removePairing(root.currentAddress)
@@ -341,7 +341,7 @@ ColumnLayout {
 
         // BLE Signal Strength
         QGCLabel {
-            text:    qsTr("Signal Strength")
+            text:    qsTr("信号强度")
             visible: root.isBleMode && (rssiDisplay.hasConnected || rssiDisplay.hasSelected)
         }
         RowLayout {
@@ -386,7 +386,7 @@ ColumnLayout {
             }
 
             QGCLabel {
-                text: rssiDisplay.hasConnected ? qsTr("(Connected)") : qsTr("(Last Scan)")
+                text: rssiDisplay.hasConnected ? qsTr("(已连接)") : qsTr("(上次扫描)")
                 font.pointSize: root.screenTools.smallFontPointSize
                 color: root.palette.buttonText
             }
@@ -398,7 +398,7 @@ ColumnLayout {
     //==========================================================================
     QGCCheckBox {
         id:      showBleConfig
-        text:    qsTr("Advanced BLE Configuration")
+        text:    qsTr("高级 BLE 配置")
         visible: root.isBleMode
         checked: false
     }
@@ -410,36 +410,36 @@ ColumnLayout {
         Layout.fillWidth: true
         visible:          root.isBleMode && showBleConfig.checked
 
-        QGCLabel { text: qsTr("Service UUID") }
+        QGCLabel { text: qsTr("服务 UUID") }
         QGCTextField {
             id:                    serviceUuidField
             Layout.preferredWidth: root._secondColumnWidth
             text:                  root.subEditConfig ? root.subEditConfig.serviceUuid : ""
-            placeholderText:       qsTr("Auto-detect")
+            placeholderText:       qsTr("自动检测")
             onEditingFinished:     { if (root.subEditConfig) root.subEditConfig.serviceUuid = serviceUuidField.text }
         }
 
-        QGCLabel { text: qsTr("RX Characteristic") }
+        QGCLabel { text: qsTr("RX 特征") }
         QGCTextField {
             id:                    readUuidField
             Layout.preferredWidth: root._secondColumnWidth
             text:                  root.subEditConfig ? root.subEditConfig.readUuid : ""
-            placeholderText:       qsTr("Auto-detect")
+            placeholderText:       qsTr("自动检测")
             onEditingFinished:     { if (root.subEditConfig) root.subEditConfig.readUuid = readUuidField.text }
         }
 
-        QGCLabel { text: qsTr("TX Characteristic") }
+        QGCLabel { text: qsTr("TX 特征") }
         QGCTextField {
             id:                    writeUuidField
             Layout.preferredWidth: root._secondColumnWidth
             text:                  root.subEditConfig ? root.subEditConfig.writeUuid : ""
-            placeholderText:       qsTr("Auto-detect")
+            placeholderText:       qsTr("自动检测")
             onEditingFinished:     { if (root.subEditConfig) root.subEditConfig.writeUuid = writeUuidField.text }
         }
     }
 
     QGCLabel {
-        text:             qsTr("UUIDs are auto-detected for most devices. Only configure if connection fails.")
+        text:             qsTr("大多数设备的 UUID 会自动检测。仅在连接失败时才需要配置。")
         visible:          root.isBleMode && showBleConfig.checked
         wrapMode:         Text.WordWrap
         Layout.fillWidth: true
@@ -452,7 +452,7 @@ ColumnLayout {
     //==========================================================================
     SectionHeader {
         Layout.fillWidth: true
-        text:             qsTr("Known Devices")
+        text:             qsTr("已知设备")
         visible:          root.isClassicMode && root.knownDevices.length > 0
     }
 
@@ -468,7 +468,7 @@ ColumnLayout {
                 property var  dev: modelData
                 property bool isConnected: dev.isConnected === true
 
-                text: (dev.name || dev.address || qsTr("Unknown")) + (isConnected ? " [Connected]" : "")
+                text: (dev.name || dev.address || qsTr("Unknown")) + (isConnected ? qsTr(" [已连接]") : "")
                 checkable:  true
                 checked:    dev.address === root.currentAddress
                 onClicked:  { if (root.subEditConfig && dev.address) root.subEditConfig.setDeviceByAddress(dev.address) }
@@ -481,7 +481,7 @@ ColumnLayout {
     //==========================================================================
     SectionHeader {
         Layout.fillWidth: true
-        text: root.isBleMode ? qsTr("Available BLE Devices") : qsTr("Available Devices")
+        text: root.isBleMode ? qsTr("可用 BLE 设备") : qsTr("可用设备")
     }
 
     // Scanning status
@@ -497,7 +497,7 @@ ColumnLayout {
         }
 
         QGCLabel {
-            text:  qsTr("Scanning for devices...")
+            text:  qsTr("正在扫描设备...")
             color: root.palette.text
         }
     }
@@ -578,7 +578,7 @@ ColumnLayout {
 
                         QGCLabel {
                             visible:        deviceBtn.isPaired
-                            text:           qsTr("Paired")
+                            text:           qsTr("已配对")
                             font.pointSize: root.screenTools.smallFontPointSize
                             color:          root.palette.buttonText
                         }
@@ -608,15 +608,15 @@ ColumnLayout {
         visible:          !root.isScanning && root.sortedDevices.length === 0
 
         QGCLabel {
-            text:                qsTr("No devices found")
+            text:                qsTr("未找到设备")
             Layout.fillWidth:    true
             horizontalAlignment: Text.AlignHCenter
             color:               root.palette.warningText
         }
 
         QGCLabel {
-            text: root.isBleMode ? qsTr("Make sure your BLE device is powered on and advertising")
-                            : qsTr("Make sure your Bluetooth device is powered on and discoverable")
+            text: root.isBleMode ? qsTr("请确认你的 BLE 设备已开启并正在广播")
+                            : qsTr("请确认你的蓝牙设备已开启并可被发现")
             Layout.fillWidth:    true
             horizontalAlignment: Text.AlignHCenter
             wrapMode:            Text.WordWrap
@@ -628,7 +628,7 @@ ColumnLayout {
     // Scan button
     QGCButton {
         Layout.alignment: Qt.AlignHCenter
-        text:             root.isScanning ? qsTr("Stop Scan") : qsTr("Scan for Devices")
+        text:             root.isScanning ? qsTr("停止扫描") : qsTr("扫描设备")
         onClicked: {
             if (!root.subEditConfig) return
             root.isScanning ? root.subEditConfig.stopScan() : root.subEditConfig.startScan()

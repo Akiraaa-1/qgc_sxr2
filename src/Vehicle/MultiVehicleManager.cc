@@ -174,6 +174,11 @@ void MultiVehicleManager::_deleteVehiclePhase1(Vehicle *vehicle)
 {
     qCDebug(MultiVehicleManagerLog) << Q_FUNC_INFO << vehicle;
 
+    if (_pendingActiveVehicle == vehicle) {
+        _pendingActiveVehicle = nullptr;
+        ++_pendingActiveVehicleRequest;
+    }
+
     const int vehicleId = vehicle->id();
     bool found = false;
     for (int i = 0; i < _vehicles->count(); i++) {
@@ -248,6 +253,11 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
 {
     qCDebug(MultiVehicleManagerLog) << Q_FUNC_INFO << vehicle;
 
+    if (vehicle && !_containsVehicle(vehicle)) {
+        qCWarning(MultiVehicleManagerLog) << "Ignoring request to activate vehicle which is not in the vehicle list" << vehicle;
+        return;
+    }
+
     if (vehicle != _activeVehicle) {
         _pendingActiveVehicle = vehicle;
         const quint64 request = ++_pendingActiveVehicleRequest;
@@ -260,6 +270,7 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
             // any existing ui from the currently active vehicle.
             _setActiveVehicleAvailable(false);
             _setParameterReadyVehicleAvailable(false);
+            _setActiveVehicle(nullptr);
         }
 
         QTimer::singleShot(20, this, [this, request]() {
@@ -269,6 +280,10 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
 
             Vehicle *const pendingVehicle = _pendingActiveVehicle;
             _pendingActiveVehicle = nullptr;
+            if (pendingVehicle && !_containsVehicle(pendingVehicle)) {
+                qCWarning(MultiVehicleManagerLog) << "Pending active vehicle was removed before activation" << pendingVehicle;
+                return;
+            }
             _setActiveVehiclePhase2(pendingVehicle);
         });
     }
@@ -341,6 +356,10 @@ void MultiVehicleManager::selectVehicle(int vehicleId)
 {
     if(!_vehicleSelected(vehicleId)) {
         Vehicle *const vehicle = getVehicleById(vehicleId);
+        if (!vehicle) {
+            qCWarning(MultiVehicleManagerLog) << "Ignoring request to select unknown vehicle" << vehicleId;
+            return;
+        }
         _selectedVehicles->append(vehicle);
         return;
     }
@@ -350,7 +369,7 @@ void MultiVehicleManager::deselectVehicle(int vehicleId)
 {
     for (int i = 0; i < _selectedVehicles->count(); i++) {
         Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
-        if (vehicle->id() == vehicleId) {
+        if (vehicle && vehicle->id() == vehicleId) {
             _selectedVehicles->removeAt(i);
             return;
         }
@@ -366,7 +385,7 @@ bool MultiVehicleManager::_vehicleSelected(int vehicleId)
 {
     for (int i = 0; i < _selectedVehicles->count(); i++) {
         Vehicle *const vehicle = qobject_cast<Vehicle*>(_selectedVehicles->get(i));
-        if (vehicle->id() == vehicleId) {
+        if (vehicle && vehicle->id() == vehicleId) {
             return true;
         }
     }
@@ -407,4 +426,19 @@ void MultiVehicleManager::_setParameterReadyVehicleAvailable(bool parametersRead
         _parameterReadyVehicleAvailable = parametersReady;
         parameterReadyVehicleAvailableChanged(parametersReady);
     }
+}
+
+bool MultiVehicleManager::_containsVehicle(const Vehicle *vehicle) const
+{
+    if (!vehicle) {
+        return false;
+    }
+
+    for (int i = 0; i < _vehicles->count(); i++) {
+        if (_vehicles->get(i) == vehicle) {
+            return true;
+        }
+    }
+
+    return false;
 }

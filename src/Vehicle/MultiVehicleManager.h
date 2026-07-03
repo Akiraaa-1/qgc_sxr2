@@ -76,6 +76,7 @@ private:
     void _setActiveVehicleAvailable(bool activeVehicleAvailable);
     bool _getParameterReadyVehicleAvailable() const { return _parameterReadyVehicleAvailable; }
     void _setParameterReadyVehicleAvailable(bool parametersReady);
+    bool _containsVehicle(const Vehicle *vehicle) const;
 
     QTimer *_gcsHeartbeatTimer = nullptr;           ///< Timer to emit heartbeats
     QmlObjectListModel *_vehicles = nullptr;

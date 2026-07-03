@@ -5,25 +5,33 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 
-RowLayout {
-    spacing: _colSpacing
+ColumnLayout {
+    spacing: _rowSpacing
 
     function saveSettings() {
         console.log(logField.text)
         subEditConfig.filename = logField.text
     }
 
-    QGCLabel { text: qsTr("Log File") }
-
-    QGCTextField {
-        id: logField
-        Layout.preferredWidth: _secondColumnWidth
-        text: subEditConfig.filename
+    QGCLabel {
+        text: qsTr("Log File")
     }
 
-    QGCButton {
-        text: qsTr("Browse")
-        onClicked: filePicker.openForLoad()
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: _colSpacing
+
+        QGCTextField {
+            id: logField
+            Layout.fillWidth: true
+            Layout.preferredWidth: _secondColumnWidth
+            text: subEditConfig.filename
+        }
+
+        QGCButton {
+            text: qsTr("Browse")
+            onClicked: filePicker.openForLoad()
+        }
     }
 
     QGCFileDialog {

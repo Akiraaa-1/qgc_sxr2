@@ -189,7 +189,7 @@ Item {
             readonly property int   _decimalPlaces:             8
 
             onClicked: (mouse) => {
-                var coordinate = map.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)
+                var coordinate = QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
                 coordinate.latitude = coordinate.latitude.toFixed(_decimalPlaces)
                 coordinate.longitude = coordinate.longitude.toFixed(_decimalPlaces)
                 coordinate.altitude = coordinate.altitude.toFixed(_decimalPlaces)

@@ -7,7 +7,7 @@ import QGroundControl.Controls
 
 QGCPopupDialog {
     id:                     escCalibrationDlg
-    title:                  qsTr("ESC Calibration")
+    title:                  qsTr("ESC 校准")
     buttons:                Dialog.Ok
     acceptButtonEnabled:    false
 
@@ -18,40 +18,40 @@ QGCPopupDialog {
         target: controller
 
         function onOldFirmware() {
-            textLabel.text = _highlightPrefix + qsTr("ESC Calibration failed. ") + _highlightSuffix +
-                qsTr("%1 cannot perform ESC Calibration with this version of firmware. You will need to upgrade to a newer firmware.").arg(QGroundControl.appName)
+            textLabel.text = _highlightPrefix + qsTr("ESC 校准失败。") + _highlightSuffix +
+                qsTr("%1 无法使用当前固件版本执行 ESC 校准。你需要升级到更新的固件。").arg(QGroundControl.appName)
             escCalibrationDlg.acceptButtonEnabled = true
         }
 
         function onNewerFirmware() {
-            textLabel.text = _highlightPrefix + qsTr("ESC Calibration failed. ") + _highlightSuffix +
-                qsTr("%1 cannot perform ESC Calibration with this version of firmware. You will need to upgrade %1.").arg(QGroundControl.appName)
+            textLabel.text = _highlightPrefix + qsTr("ESC 校准失败。") + _highlightSuffix +
+                qsTr("%1 无法使用当前固件版本执行 ESC 校准。你需要升级 %1。").arg(QGroundControl.appName)
             escCalibrationDlg.acceptButtonEnabled = true
         }
 
         function onDisconnectBattery() {
-            textLabel.text = _highlightPrefix + qsTr("ESC Calibration failed. ") + _highlightSuffix +
-                qsTr("You must disconnect the battery prior to performing ESC Calibration. Disconnect your battery and try again.")
+            textLabel.text = _highlightPrefix + qsTr("ESC 校准失败。") + _highlightSuffix +
+                qsTr("在执行 ESC 校准前必须断开电池。请断开电池后重试。")
             escCalibrationDlg.acceptButtonEnabled = true
         }
 
         function onConnectBattery() {
-            textLabel.text = _highlightPrefix + qsTr("WARNING: Props must be removed from vehicle prior to performing ESC calibration.") + _highlightSuffix +
-                qsTr(" Connect the battery now and calibration will begin.")
+            textLabel.text = _highlightPrefix + qsTr("警告：在执行 ESC 校准前必须拆下螺旋桨。") + _highlightSuffix +
+                qsTr(" 现在接通电池后将开始校准。")
         }
 
         function onBatteryConnected() {
-            textLabel.text = qsTr("Performing calibration. This will take a few seconds..")
+            textLabel.text = qsTr("正在执行校准。这将需要几秒钟。")
         }
 
         function onCalibrationFailed(errorMessage) {
             escCalibrationDlg.acceptButtonEnabled = true
-            textLabel.text = _highlightPrefix + qsTr("ESC Calibration failed. ") + _highlightSuffix + errorMessage
+            textLabel.text = _highlightPrefix + qsTr("ESC 校准失败。") + _highlightSuffix + errorMessage
         }
 
         function onCalibrationSuccess() {
             escCalibrationDlg.acceptButtonEnabled = true
-            textLabel.text = qsTr("Calibration complete. You can disconnect your battery now if you like.")
+            textLabel.text = qsTr("校准完成。现在可以断开电池了。")
         }
     }
 
@@ -61,7 +61,7 @@ QGCPopupDialog {
         QGCLabel {
             id:                     textLabel
             wrapMode:               Text.WordWrap
-            text:                   qsTr("Starting ESC calibration...")
+            text:                   qsTr("正在开始 ESC 校准...")
             Layout.fillWidth:       true
             Layout.maximumWidth:    mainWindow.width / 2
         }

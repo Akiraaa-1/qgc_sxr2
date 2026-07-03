@@ -157,7 +157,11 @@ public:
     enum GripperActions {
         GripperActionRelease  = GRIPPER_ACTION_RELEASE,
         GripperActionGrab     = GRIPPER_ACTION_GRAB,
+#if defined(GRIPPER_ACTION_HOLD)
         GripperActionHold     = GRIPPER_ACTION_HOLD,
+#else
+        GripperActionHold     = GRIPPER_ACTIONS_ENUM_END,
+#endif
         GripperOptionInvalid  = GRIPPER_ACTIONS_ENUM_END,
     };
     Q_ENUM(GripperActions)

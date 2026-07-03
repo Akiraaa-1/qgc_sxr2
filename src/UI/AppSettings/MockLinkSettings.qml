@@ -75,7 +75,7 @@ ColumnLayout {
     QGCCheckBoxSlider {
         id: sendStatus
         Layout.fillWidth: true
-        text: qsTr("Send Status Text and Voice")
+        text: qsTr("Send status text and voice")
         checked: subEditConfig.sendStatus
     }
 
@@ -96,7 +96,7 @@ ColumnLayout {
     QGCCheckBoxSlider {
         id: incrementVehicleId
         Layout.fillWidth: true
-        text: qsTr("Increment Vehicle Id")
+        text: qsTr("Increment Vehicle ID")
         checked: subEditConfig.incrementVehicleId
     }
 

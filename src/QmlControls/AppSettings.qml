@@ -145,6 +145,32 @@ Rectangle {
         }
     }
 
+    function _settingsUiContext(pageUrl) {
+        if (!pageUrl) return ""
+        var url = pageUrl.toString()
+        var page = url.substring(url.lastIndexOf("/") + 1)
+        var contexts = {
+            "ADSBServerSettings.qml":    "ADSBVehicleManager.SettingsUI.json",
+            "CommLinksSettings.qml":     "CommLinks.SettingsUI.json",
+            "FlyViewSettings.qml":       "FlyView.SettingsUI.json",
+            "GeneralSettings.qml":       "General.SettingsUI.json",
+            "MapsSettings.qml":          "Maps.SettingsUI.json",
+            "NTRIPSettings.qml":         "NTRIP.SettingsUI.json",
+            "PlanViewSettings.qml":      "PlanView.SettingsUI.json",
+            "PX4LogTransferSettings.qml": "PX4LogTransfer.SettingsUI.json",
+            "RemoteIDSettings.qml":      "RemoteID.SettingsUI.json",
+            "TelemetrySettings.qml":     "Telemetry.SettingsUI.json",
+            "VideoSettings.qml":         "Video.SettingsUI.json",
+            "Viewer3DSettings.qml":      "Viewer3D.SettingsUI.json"
+        }
+        return contexts[page] || ""
+    }
+
+    function _translateSettingsSection(pageUrl, text) {
+        var context = _settingsUiContext(pageUrl)
+        return context === "" ? text : qsTranslate(context, text)
+    }
+
     function showSettingsPage(settingsPage) {
         for (var i = 0; i < settingsPagesModel.count; i++) {
             var entry = settingsPagesModel.get(i)
@@ -274,7 +300,7 @@ Rectangle {
                             // Page button
                             SettingsButton {
                                 Layout.fillWidth: true
-                                text:          pageName
+                                text:          qsTranslate("SettingsPages.json", pageName)
                                 icon.source:   pageIconUrl
                                 expandable:    hasMultipleSections
                                 expanded:      isExpanded
@@ -355,7 +381,7 @@ Rectangle {
                                     }
 
                                     contentItem: QGCLabel {
-                                        text:  modelData
+                                        text:  settingsView._translateSettingsSection(pageColumn.pageUrl, modelData)
                                         color: sectionBtn.textColor
                                         font.pointSize: ScreenTools.defaultFontPointSize * 0.9
                                         horizontalAlignment: Text.AlignLeft

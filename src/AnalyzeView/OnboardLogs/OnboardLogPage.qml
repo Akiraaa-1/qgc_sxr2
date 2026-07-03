@@ -126,7 +126,7 @@ AnalyzePage {
 
                         onClicked: {
                             if (!QGroundControl.multiVehicleManager.activeVehicle || QGroundControl.multiVehicleManager.activeVehicle.isOfflineEditingVehicle) {
-                                QGroundControl.showMessageDialog(onboardLogPage, qsTr("Onboard Log Refresh"), qsTr("You must be connected to a vehicle in order to download onboard logs."))
+                                QGroundControl.showMessageDialog(onboardLogPage, qsTr("机载日志刷新"), qsTr("必须连接飞行器后才能下载机载日志。"))
                                 return
                             }
 
@@ -149,7 +149,7 @@ AnalyzePage {
                             }
 
                             if (!logsSelected) {
-                                QGroundControl.showMessageDialog(onboardLogPage, qsTr("Onboard Log"), qsTr("You must select at least one onboard log file to download."))
+                                QGroundControl.showMessageDialog(onboardLogPage, qsTr("机载日志"), qsTr("必须至少选择一个机载日志文件才能下载。"))
                                 return
                             }
 
@@ -158,7 +158,7 @@ AnalyzePage {
                                 return
                             }
 
-                            fileDialog.title = qsTr("Select save directory")
+                            fileDialog.title = qsTr("选择保存目录")
                             fileDialog.folder = QGroundControl.settingsManager.appSettings.logSavePath
                             fileDialog.selectFolder = true
                             fileDialog.openForLoad()
@@ -179,8 +179,8 @@ AnalyzePage {
                         text: qsTr("Erase All")
                         onClicked: QGroundControl.showMessageDialog(
                             onboardLogPage,
-                            qsTr("Delete All Onboard Log Files"),
-                            qsTr("All onboard log files will be erased permanently. Is this really what you want?"),
+                            qsTr("删除所有机载日志文件"),
+                            qsTr("所有机载日志文件将被永久删除。确定要继续吗？"),
                             Dialog.Yes | Dialog.No,
                             function() { OnboardLogController.eraseAll() }
                         )

@@ -18,6 +18,19 @@ The `lupdate.yml` workflow runs automatically every Sunday to regenerate the `.t
 
 These are coded using the standard Qt tr() for C++ and qsTr() for Qml mechanisms.
 
+## Local audit
+
+Before and after a localization pass, run the local audit to catch BOM, garbled text, generated-file edits, and a small set of known English regressions:
+
+```bash
+python3 tools/translations/localization_audit.py
+
+# or scope it to specific files/directories
+python3 tools/translations/localization_audit.py src/UI/MainWindow.qml src/QmlControls
+```
+
+This audit is intentionally conservative. It does not replace a full UI pass, but it will catch the most common causes of Chinese text reverting or building with corrupted source files.
+
 ## Translating strings within Json files
 
 QGC uses json files internally for metadata. These files need to be translated as well. There is a [python json parser](https://github.com/mavlink/qgroundcontrol/blob/master/tools/translations/qgc-lupdate-json.py) which is used to find all the json files in the source tree and pull all the strings out for translation. This parser outputs the localization file for json strings in Qt .ts file format.

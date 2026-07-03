@@ -43,14 +43,14 @@ SetupPage {
                     anchors.margins:    ScreenTools.defaultFontPixelHeight
                     wrapMode:           Text.WordWrap
                     color:              popupStyle.primaryTextColor
-                    text:               qsTr("Your vehicle is using a custom airframe configuration. ") +
-                                        qsTr("This configuration can only be modified through the Parameter Editor.\n\n") +
-                                        qsTr("If you want to reset your airframe configuration and select a standard configuration, click 'Reset' below.")
+                    text:               qsTr("当前飞行器使用的是自定义机架配置。") +
+                                        qsTr(" 该配置只能通过参数编辑器进行修改。\n\n") +
+                                        qsTr("如果你想重置机架配置并选择标准配置，请点击下方的“重置”。")
                 }
             }
 
             QGCButton {
-                text:       qsTr("Reset")
+                text:       qsTr("重置")
                 enabled:    sys_autostart
                 anchors.horizontalCenter: parent.horizontalCenter
                 property Fact sys_autostart: controller.getParameterFact(-1, "SYS_AUTOSTART")
@@ -131,9 +131,9 @@ SetupPage {
                     anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.6
                     anchors.verticalCenter: parent.verticalCenter
                     text:           (controller.currentVehicleName != "" ?
-                                         qsTr("You've connected a %1.").arg(controller.currentVehicleName) :
-                                         qsTr("Airframe is not set.")) +
-                                    qsTr(" To change this configuration, select the desired airframe below then click 'Apply and Restart'.")
+                                         qsTr("已连接 %1。").arg(controller.currentVehicleName) :
+                                         qsTr("机架未设置。")) +
+                                    qsTr(" 要更改此配置，请在下方选择所需机架，然后点击“应用并重启”。")
                     font.bold:      true
                     wrapMode:       Text.WordWrap
                     color:          popupStyle.primaryTextColor
@@ -144,7 +144,7 @@ SetupPage {
                     anchors.right:  parent.right
                     anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.6
                     anchors.verticalCenter: parent.verticalCenter
-                    text:           qsTr("Apply and Restart")
+                    text:           qsTr("应用并重启")
                     showBorder:     true
                     backRadius:     popupStyle.cornerRadius
                     backgroundColor: popupStyle.primaryButtonColor
@@ -154,10 +154,10 @@ SetupPage {
                     hoverOverlayOpacity: 0.12
                     pressedOverlayOpacity: 0.20
                     stateAnimationDuration: popupStyle.stateAnimationDuration
-                    onClicked:      QGroundControl.showMessageDialog(airframePage, qsTr("Apply and Restart"),
-                                                                 qsTr("Clicking 'Apply' will save the changes you have made to your airframe configuration.<br><br>\
-                                                                        All vehicle parameters other than Radio Calibration will be reset.<br><br>\
-                                                                        Your vehicle will also be restarted in order to complete the process."),
+                    onClicked:      QGroundControl.showMessageDialog(airframePage, qsTr("应用并重启"),
+                                                                 qsTr("点击“应用”将保存你对机架配置所做的更改。<br><br>\
+                                                                        除遥控器校准外，所有飞行器参数都会被重置。<br><br>\
+                                                                        飞行器也会重启以完成该过程。"),
                                                                  Dialog.Apply | Dialog.Cancel,
                                                                  function() { controller.changeAutostart() })
                 }
@@ -181,7 +181,6 @@ SetupPage {
                 Repeater {
                     model: controller.airframeTypes
 
-                    // Outer summary item rectangle
                     Rectangle {
                         width:  _boxWidth
                         height: ScreenTools.defaultFontPixelHeight * 14
@@ -251,10 +250,9 @@ SetupPage {
                             }
 
                             QGCCheckBox {
-                                // Although this item is invisible we still use it to manage state
                                 id:             airframeCheckBox
                                 checked:        modelData.name === controller.currentAirframeType
-                                buttonGroup: airframeTypeExclusive
+                                buttonGroup:    airframeTypeExclusive
                                 visible:        false
 
                                 onCheckedChanged: {
@@ -296,15 +294,15 @@ SetupPage {
 
                                 onActivated: (index) => {
                                     applyButton.primary = true
-                                    airframeCheckBox.checked = true;
+                                    airframeCheckBox.checked = true
                                     console.log("combo change", index)
                                     controller.autostartId = modelData.airframes[index].autostartId
                                 }
                             }
                         }
                     }
-                } // Repeater - summary boxes
-            } // Flow - summary boxes
-        } // Column
-    } // Component
-} // SetupPage
+                }
+            }
+        }
+    }
+}

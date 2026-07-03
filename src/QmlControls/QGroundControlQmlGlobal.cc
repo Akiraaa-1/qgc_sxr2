@@ -28,6 +28,75 @@
 
 #include <QtCore/QSettings>
 #include <QtCore/QLineF>
+#include <QtCore/QVariant>
+#include <QtMath>
+
+namespace
+{
+constexpr double kChinaPi = 3.1415926535897932384626;
+constexpr double kChinaSemiMajorAxis = 6378245.0;
+constexpr double kChinaEccentricitySquared = 0.00669342162296594323;
+
+double transformLatitude(double x, double y)
+{
+    double result = -100.0 + (2.0 * x) + (3.0 * y) + (0.2 * y * y) + (0.1 * x * y) + (0.2 * qSqrt(qAbs(x)));
+    result += ((20.0 * qSin(6.0 * x * kChinaPi)) + (20.0 * qSin(2.0 * x * kChinaPi))) * 2.0 / 3.0;
+    result += ((20.0 * qSin(y * kChinaPi)) + (40.0 * qSin((y / 3.0) * kChinaPi))) * 2.0 / 3.0;
+    result += ((160.0 * qSin((y / 12.0) * kChinaPi)) + (320.0 * qSin((y * kChinaPi) / 30.0))) * 2.0 / 3.0;
+    return result;
+}
+
+double transformLongitude(double x, double y)
+{
+    double result = 300.0 + x + (2.0 * y) + (0.1 * x * x) + (0.1 * x * y) + (0.1 * qSqrt(qAbs(x)));
+    result += ((20.0 * qSin(6.0 * x * kChinaPi)) + (20.0 * qSin(2.0 * x * kChinaPi))) * 2.0 / 3.0;
+    result += ((20.0 * qSin(x * kChinaPi)) + (40.0 * qSin((x / 3.0) * kChinaPi))) * 2.0 / 3.0;
+    result += ((150.0 * qSin((x / 12.0) * kChinaPi)) + (300.0 * qSin((x / 30.0) * kChinaPi))) * 2.0 / 3.0;
+    return result;
+}
+
+bool isInsideChina(const QGeoCoordinate &coordinate)
+{
+    return coordinate.isValid()
+        && coordinate.longitude() >= 72.004
+        && coordinate.longitude() <= 137.8347
+        && coordinate.latitude() >= 0.8293
+        && coordinate.latitude() <= 55.8271;
+}
+
+QGeoCoordinate wgs84ToGcj02(const QGeoCoordinate &coordinate)
+{
+    if (!isInsideChina(coordinate)) {
+        return coordinate;
+    }
+
+    const double latitude = coordinate.latitude();
+    const double longitude = coordinate.longitude();
+    const double deltaLat = transformLatitude(longitude - 105.0, latitude - 35.0);
+    const double deltaLon = transformLongitude(longitude - 105.0, latitude - 35.0);
+    const double radLat = qDegreesToRadians(latitude);
+    const double magic = 1.0 - (kChinaEccentricitySquared * qPow(qSin(radLat), 2.0));
+    const double sqrtMagic = qSqrt(magic);
+
+    const double adjustedLat = latitude + ((deltaLat * 180.0) / (((kChinaSemiMajorAxis * (1.0 - kChinaEccentricitySquared)) / (magic * sqrtMagic)) * kChinaPi));
+    const double adjustedLon = longitude + ((deltaLon * 180.0) / ((kChinaSemiMajorAxis / sqrtMagic) * qCos(radLat) * kChinaPi));
+
+    return QGeoCoordinate(adjustedLat, adjustedLon, coordinate.altitude());
+}
+
+QGeoCoordinate gcj02ToWgs84(const QGeoCoordinate &coordinate)
+{
+    if (!isInsideChina(coordinate)) {
+        return coordinate;
+    }
+
+    const QGeoCoordinate gcjEstimate = wgs84ToGcj02(coordinate);
+    return QGeoCoordinate(
+        coordinate.latitude() * 2.0 - gcjEstimate.latitude(),
+        coordinate.longitude() * 2.0 - gcjEstimate.longitude(),
+        coordinate.altitude());
+}
+}
 
 QGC_LOGGING_CATEGORY(GuidedActionsControllerLog, "QMLControls.GuidedActionsController")
 
@@ -229,6 +298,36 @@ bool QGroundControlQmlGlobal::linesIntersect(QPointF line1A, QPointF line1B, QPo
 
     return  intersect == QLineF::BoundedIntersection &&
             intersectPoint != line1A && intersectPoint != line1B;
+}
+
+bool QGroundControlQmlGlobal::isChinaOffsetMapActive() const
+{
+    return _settingsManager
+        && _settingsManager->flightMapSettings()
+        && (_settingsManager->flightMapSettings()->mapProvider()->rawValue().toString() == QStringLiteral("TianDiTu"));
+}
+
+QGeoCoordinate QGroundControlQmlGlobal::mapDisplayCoordinate(const QGeoCoordinate &coordinate) const
+{
+    return isChinaOffsetMapActive() ? wgs84ToGcj02(coordinate) : coordinate;
+}
+
+QGeoCoordinate QGroundControlQmlGlobal::mapSourceCoordinate(const QGeoCoordinate &coordinate) const
+{
+    return isChinaOffsetMapActive() ? gcj02ToWgs84(coordinate) : coordinate;
+}
+
+QVariantList QGroundControlQmlGlobal::mapDisplayCoordinates(const QVariantList &coordinates) const
+{
+    QVariantList displayCoordinates;
+    displayCoordinates.reserve(coordinates.size());
+
+    for (const QVariant &coordinateValue: coordinates) {
+        const QGeoCoordinate coordinate = coordinateValue.value<QGeoCoordinate>();
+        displayCoordinates.append(QVariant::fromValue(mapDisplayCoordinate(coordinate)));
+    }
+
+    return displayCoordinates;
 }
 
 void QGroundControlQmlGlobal::setFlightMapPosition(QGeoCoordinate& coordinate)

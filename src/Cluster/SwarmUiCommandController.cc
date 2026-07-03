@@ -8,9 +8,9 @@
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
 
-#include "mavlink_msg_swarm_operation_ack.h"
-#include "mavlink_msg_swarm_start_flag.h"
-#include "mavlink_msg_uav_info.h"
+#include <common/mavlink_msg_swarm_operation_ack.h>
+#include <common/mavlink_msg_swarm_start_flag.h>
+#include <common/mavlink_msg_uav_info.h>
 
 QGC_LOGGING_CATEGORY(SwarmUiCommandControllerLog, "Cluster.SwarmUiCommandController")
 

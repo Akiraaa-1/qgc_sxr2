@@ -55,7 +55,7 @@ QStringList JsonHelper::_addDefaultLocKeys(QJsonObject& jsonObject)
             if (jsonObject.contains(_translateKeysKey)) {
                 translateKeys = jsonObject[_translateKeysKey].toString();
             } else {
-                translateKeys = QStringLiteral("shortDesc,longDesc,enumStrings");
+                translateKeys = QStringLiteral("label,shortDesc,longDesc,enumStrings");
                 jsonObject[_translateKeysKey] = translateKeys;
             }
 

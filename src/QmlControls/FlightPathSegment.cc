@@ -97,6 +97,14 @@ void FlightPathSegment::_sendTerrainPathQuery(void)
 void FlightPathSegment::_terrainDataReceived(bool success, const TerrainPathQuery::PathHeightInfo_t& pathHeightInfo)
 {
     qCDebug(FlightPathSegmentLog) << this << "_terrainDataReceived" << success << pathHeightInfo.heights.count();
+    TerrainPathQuery* query = qobject_cast<TerrainPathQuery*>(sender());
+    if (!query || query != _currentTerrainPathQuery) {
+        if (query) {
+            query->deleteLater();
+        }
+        return;
+    }
+
     if (success) {
         if (!QGC::fuzzyCompare(pathHeightInfo.distanceBetween, _distanceBetween)) {
             _distanceBetween = pathHeightInfo.distanceBetween;
@@ -114,7 +122,7 @@ void FlightPathSegment::_terrainDataReceived(bool success, const TerrainPathQuer
         emit amslTerrainHeightsChanged();
     }
 
-    _currentTerrainPathQuery->deleteLater();
+    query->deleteLater();
     _currentTerrainPathQuery = nullptr;
 
     _updateTerrainCollision();

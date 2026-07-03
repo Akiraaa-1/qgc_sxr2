@@ -105,7 +105,7 @@ SetupPage {
                             }
 
                             QGCCheckBox {
-                                text: qsTr("Enable")
+                                text: qsTr("启用")
                                 checked: joystickManager.activeJoystickEnabledForActiveVehicle
                                 enabled: activeJoystickCalibrated
 
@@ -115,13 +115,13 @@ SetupPage {
                             QGCLabel {
                                 font.pointSize: ScreenTools.smallFontPointSize
                                 color: "#B0B0B0"
-                                text: qsTr("Not currently available")
+                                text: qsTr("当前不可用")
                                 visible: !activeJoystick
                             }
 
                             QGCLabel {
                                 id: calibrationRequiredLabel
-                                text: activeJoystickCalibrated ? qsTr("Calibrated") : qsTr("Requires Calibration")
+                                text: activeJoystickCalibrated ? qsTr("已校准") : qsTr("需要校准")
                                 enabled: !activeJoystickCalibrated
                             }
                         }
@@ -167,8 +167,8 @@ SetupPage {
                                         }
                                         QGroundControl.showMessageDialog(
                                                     contentLayout,
-                                                    qsTr("Enable Joystick"),
-                                                    qsTr("%1 calibration is complete. Enable it now?").arg(_activeJoystick.name),
+                                                    qsTr("启用摇杆"),
+                                                    qsTr("%1 已完成校准。现在启用吗？").arg(_activeJoystick.name),
                                                     Dialog.Yes | Dialog.No,
                                                     function() { joystickManager.activeJoystickEnabledForActiveVehicle = true });
                                     }
@@ -186,12 +186,12 @@ SetupPage {
                                             Layout.fillWidth: true
 
                                             QGCTabButton {
-                                                text: qsTr("Buttons")
+                                                text: qsTr("按钮")
                                                 checked: true
                                             }
 
                                             QGCTabButton {
-                                                text: qsTr("Settings")
+                                                text: qsTr("设置")
                                                 checked: false
                                             }
                                         }
@@ -261,14 +261,14 @@ SetupPage {
 
                     QGCLabel {
                         Layout.fillWidth: true
-                        text: qsTr("Configure axis calibration, button assignments, and input settings.")
+                        text: qsTr("配置轴校准、按键映射和输入设置。")
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
                     }
 
                     QGCLabel {
                         Layout.fillWidth: true
-                        text: qsTr("No joysticks or gamepads detected.")
+                        text: qsTr("未检测到摇杆或游戏手柄。")
                         color: "#B0B0B0"
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter

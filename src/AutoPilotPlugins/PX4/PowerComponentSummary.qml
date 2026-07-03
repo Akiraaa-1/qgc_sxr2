@@ -59,22 +59,22 @@ Item {
             }
 
             VehicleSummaryRow {
-                labelText: showBatteryIndex ? qsTr("Battery %1 Source").arg(batteryIndex) : qsTr("Battery Source")
+                labelText: showBatteryIndex ? qsTr("电池 %1 来源").arg(batteryIndex) : qsTr("电池来源")
                 valueText: battParams.battSource.enumStringValue
             }
 
             VehicleSummaryRow {
-                labelText: showBatteryIndex ? qsTr("Battery %1 Full").arg(batteryIndex) : qsTr("Battery Full")
+                labelText: showBatteryIndex ? qsTr("电池 %1 满电").arg(batteryIndex) : qsTr("电池满电")
                 valueText: battParams.battHighVoltAvailable ? battParams.battHighVolt.valueString + " " + battParams.battHighVolt.units : _naString
             }
 
             VehicleSummaryRow {
-                labelText: showBatteryIndex ? qsTr("Battery %1 Empty").arg(batteryIndex) : qsTr("Battery Empty")
+                labelText: showBatteryIndex ? qsTr("电池 %1 空电").arg(batteryIndex) : qsTr("电池空电")
                 valueText: battParams.battLowVoltAvailable ? battParams.battLowVolt.valueString + " " + battParams.battLowVolt.units : _naString
             }
 
             VehicleSummaryRow {
-                labelText: showBatteryIndex ? qsTr("Battery %1 Number of Cells").arg(batteryIndex) : qsTr("Number of Cells")
+                labelText: showBatteryIndex ? qsTr("电池 %1 电芯数").arg(batteryIndex) : qsTr("电芯数")
                 valueText: battParams.battNumCellsAvailable ? battParams.battNumCells.valueString : _naString
             }
         }

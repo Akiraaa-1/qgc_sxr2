@@ -27,16 +27,16 @@ Item {
     // Help text which is shown both in the status text area prior to pressing a cal button and in the
     // pre-calibration dialog.
 
-    readonly property string boardRotationText: qsTr("If the orientation is in the direction of flight, select ROTATION_NONE.")
-    readonly property string compassRotationText: qsTr("If the orientation is in the direction of flight, select ROTATION_NONE.")
+    readonly property string boardRotationText: qsTr("如果朝向与飞行方向一致，请选择 ROTATION_NONE。")
+    readonly property string compassRotationText: qsTr("如果朝向与飞行方向一致，请选择 ROTATION_NONE。")
 
-    readonly property string compassHelp:   qsTr("For Compass calibration you will need to rotate your vehicle through a number of positions.")
-    readonly property string gyroHelp:      qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.")
-    readonly property string accelHelp:     qsTr("For Accelerometer calibration you will need to place your vehicle on all six sides on a perfectly level surface and hold it still in each orientation for a few seconds.")
-    readonly property string levelHelp:     qsTr("To level the horizon you need to place the vehicle in its level flight position and leave still.")
-    readonly property string airspeedHelp:  qsTr("For Airspeed calibration you will need to keep your airspeed sensor out of any wind and then blow across the sensor. Do not touch the sensor or obstruct any holes during the calibration.")
+    readonly property string compassHelp:   qsTr("磁力计校准时，需要将飞行器旋转到多个不同姿态。")
+    readonly property string gyroHelp:      qsTr("陀螺仪校准时，需要将飞行器放置在平面上并保持静止。")
+    readonly property string accelHelp:     qsTr("加速度计校准时，需要将飞行器依次放置在六个面上，确保每个朝向都位于绝对水平的平面上，并在每个姿态下保持静止几秒钟。")
+    readonly property string levelHelp:     qsTr("地平线校准时，需要将飞行器放置在其平飞姿态并保持静止。")
+    readonly property string airspeedHelp:  qsTr("空速校准时，需要让空速传感器避开一切气流，然后朝传感器吹气。校准过程中请勿触碰传感器，也不要堵住任何气孔。")
 
-    readonly property string statusTextAreaDefaultText: qsTr("Start the individual calibration steps by clicking one of the buttons to the left.")
+    readonly property string statusTextAreaDefaultText: qsTr("点击左侧任一按钮即可开始对应的校准步骤。")
 
     // Used to pass what type of calibration is being performed to the preCalibrationDialog
     property string preCalibrationDialogType
@@ -142,7 +142,7 @@ Item {
 
         onMagCalComplete: {
             setOrientationsDialogShowBoardOrientation   = false
-            setOrientationsDialogFactory.open({ title: qsTr("Compass Calibration Complete"), showRebootVehicleButton: true })
+            setOrientationsDialogFactory.open({ title: qsTr("磁力计校准完成"), showRebootVehicleButton: true })
         }
 
         onWaitingForCancelChanged: {
@@ -153,7 +153,7 @@ Item {
 
         onCalibrationActiveChanged: {
             if (controller.calibrationActive) {
-                globals.navigationBlockedReason = qsTr("Complete or cancel the current calibration first")
+                globals.navigationBlockedReason = qsTr("请先完成或取消当前校准")
             } else {
                 globals.navigationBlockedReason = ""
             }
@@ -172,8 +172,8 @@ Item {
         id: waitForCancelDialogComponent
 
         QGCSimpleMessageDialog {
-            title:      qsTr("Calibration Cancel")
-            text:       qsTr("Waiting for Vehicle to response to Cancel. This may take a few seconds.")
+            title:      qsTr("取消校准")
+            text:       qsTr("正在等待飞行器响应取消操作，这可能需要几秒钟。")
             buttons:    0
 
             Connections {
@@ -232,12 +232,12 @@ Item {
                         id:         boardRotationHelp
                         wrapMode:   Text.WordWrap
                         visible:    !_sensorsHaveFixedOrientation && (preCalibrationDialogType == "accel" || preCalibrationDialogType == "compass")
-                        text:       qsTr("Set autopilot orientation before calibrating.")
+                        text:       qsTr("校准前请先设置飞控方向。")
                     }
 
                     Column {
                         visible:    boardRotationHelp.visible
-                        QGCLabel { text: qsTr("Autopilot Orientation") }
+                        QGCLabel { text: qsTr("飞控方向") }
 
                         FactComboBox {
                             sizeToContents: true
@@ -256,13 +256,13 @@ Item {
 
                         QGCLabel {
                             wrapMode:   Text.WordWrap
-                            text:       qsTr("ROTATION_NONE indicates component points in direction of flight.")
+                            text:       qsTr("ROTATION_NONE 表示组件朝向与飞行方向一致。")
                         }
                     }
 
                     QGCLabel {
                         wrapMode:   Text.WordWrap
-                        text:       qsTr("Click Ok to start calibration.")
+                        text:       qsTr("点击确定开始校准。")
                     }
                 }
             }
@@ -305,7 +305,7 @@ Item {
                 }
 
                 QGCLabel {
-                    text:       qsTr("Adjust orientations as needed.\n\nROTATION_NONE indicates component points in direction of flight.")
+                    text:       qsTr("请按需调整方向。\n\nROTATION_NONE 表示组件朝向与飞行方向一致。")
                     visible:    _boardOrientationChangeAllowed || (_compassOrientationChangeAllowed && currentExternalMagCount() !== 0)
                 }
 
@@ -369,12 +369,12 @@ Item {
     property string sectionNameFilter: ""
 
     function sectionVisible(name) {
-        if (name === qsTr("Compass")) return !_allMagsDisabled && QGroundControl.corePlugin.options.showSensorCalibrationCompass && showSensorCalibrationCompass
-        if (name === qsTr("Gyroscope")) return QGroundControl.corePlugin.options.showSensorCalibrationGyro && showSensorCalibrationGyro
-        if (name === qsTr("Accelerometer")) return QGroundControl.corePlugin.options.showSensorCalibrationAccel && showSensorCalibrationAccel
-        if (name === qsTr("Level Horizon")) return QGroundControl.corePlugin.options.showSensorCalibrationLevel && showSensorCalibrationLevel
-        if (name === qsTr("Airspeed")) return vehicleComponent.airspeedCalSupported && QGroundControl.corePlugin.options.showSensorCalibrationAirspeed && showSensorCalibrationAirspeed
-        if (name === qsTr("Orientations")) return orientationsButtonVisible()
+        if (name === qsTr("磁力计")) return !_allMagsDisabled && QGroundControl.corePlugin.options.showSensorCalibrationCompass && showSensorCalibrationCompass
+        if (name === qsTr("陀螺仪")) return QGroundControl.corePlugin.options.showSensorCalibrationGyro && showSensorCalibrationGyro
+        if (name === qsTr("加速度计")) return QGroundControl.corePlugin.options.showSensorCalibrationAccel && showSensorCalibrationAccel
+        if (name === qsTr("地平线")) return QGroundControl.corePlugin.options.showSensorCalibrationLevel && showSensorCalibrationLevel
+        if (name === qsTr("空速")) return vehicleComponent.airspeedCalSupported && QGroundControl.corePlugin.options.showSensorCalibrationAirspeed && showSensorCalibrationAirspeed
+        if (name === qsTr("方向设置")) return orientationsButtonVisible()
         return true
     }
 
@@ -395,30 +395,32 @@ Item {
     }
 
     readonly property bool _recognizedSectionFilter:
-        _sectionMatches(sectionNameFilter, "Compass") ||
-        _sectionMatches(sectionNameFilter, "Gyroscope") ||
-        _sectionMatches(sectionNameFilter, "Accelerometer") ||
-        _sectionMatches(sectionNameFilter, "Level Horizon") ||
-        _sectionMatches(sectionNameFilter, "Airspeed") ||
-        _sectionMatches(sectionNameFilter, "Orientations")
+        _sectionMatches(sectionNameFilter, "Compass") || _sectionMatches(sectionNameFilter, "磁力计") ||
+        _sectionMatches(sectionNameFilter, "Gyroscope") || _sectionMatches(sectionNameFilter, "陀螺仪") ||
+        _sectionMatches(sectionNameFilter, "Accelerometer") || _sectionMatches(sectionNameFilter, "加速度计") ||
+        _sectionMatches(sectionNameFilter, "Level Horizon") || _sectionMatches(sectionNameFilter, "地平线") ||
+        _sectionMatches(sectionNameFilter, "Airspeed") || _sectionMatches(sectionNameFilter, "空速") ||
+        _sectionMatches(sectionNameFilter, "Orientations") || _sectionMatches(sectionNameFilter, "方向设置")
 
     readonly property string _effectiveSectionFilter: _recognizedSectionFilter ? sectionNameFilter : ""
 
     property bool _showOrientationPreview: !controller.calibrationActive &&
         (_effectiveSectionFilter !== "") &&
-        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") ||
-         _sectionMatches(_effectiveSectionFilter, "Compass") ||
-         _sectionMatches(_effectiveSectionFilter, "Gyroscope"))
+        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") || _sectionMatches(_effectiveSectionFilter, "加速度计") ||
+         _sectionMatches(_effectiveSectionFilter, "Compass") || _sectionMatches(_effectiveSectionFilter, "磁力计") ||
+         _sectionMatches(_effectiveSectionFilter, "Gyroscope") || _sectionMatches(_effectiveSectionFilter, "陀螺仪"))
 
     property bool _showAllSidesPreview: _showOrientationPreview &&
-        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") || _sectionMatches(_effectiveSectionFilter, "Compass"))
+        (_sectionMatches(_effectiveSectionFilter, "Accelerometer") || _sectionMatches(_effectiveSectionFilter, "加速度计") ||
+         _sectionMatches(_effectiveSectionFilter, "Compass") || _sectionMatches(_effectiveSectionFilter, "磁力计"))
 
     property bool _showDownOnlyPreview: _showOrientationPreview &&
-        _sectionMatches(_effectiveSectionFilter, "Gyroscope")
+        _sectionMatches(_effectiveSectionFilter, "Gyroscope") || _sectionMatches(_effectiveSectionFilter, "陀螺仪")
 
     property bool _showStatusPreview: !controller.calibrationActive &&
         (_effectiveSectionFilter !== "") &&
-        (_sectionMatches(_effectiveSectionFilter, "Level Horizon") || _sectionMatches(_effectiveSectionFilter, "Airspeed"))
+        (_sectionMatches(_effectiveSectionFilter, "Level Horizon") || _sectionMatches(_effectiveSectionFilter, "地平线") ||
+         _sectionMatches(_effectiveSectionFilter, "Airspeed") || _sectionMatches(_effectiveSectionFilter, "空速"))
 
     readonly property color _panelColor:         "#2D2D2D"
     readonly property color _inputColor:         "#252525"
@@ -454,8 +456,8 @@ Item {
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Calibrate Compass")
-                visible:    sectionVisible(qsTr("Compass"))
+                text:       qsTr("校准磁力计")
+                visible:    sectionVisible(qsTr("磁力计"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
@@ -464,14 +466,14 @@ Item {
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("compass", compassHelp, qsTr("Calibrate Compass"))
+                onClicked:  _startCalibration("compass", compassHelp, qsTr("校准磁力计"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Calibrate Gyroscope")
-                visible:    sectionVisible(qsTr("Gyroscope"))
+                text:       qsTr("校准陀螺仪")
+                visible:    sectionVisible(qsTr("陀螺仪"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
@@ -480,14 +482,14 @@ Item {
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("gyro", gyroHelp, qsTr("Calibrate Gyro"))
+                onClicked:  _startCalibration("gyro", gyroHelp, qsTr("校准陀螺仪"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Calibrate Accelerometer")
-                visible:    sectionVisible(qsTr("Accelerometer"))
+                text:       qsTr("校准加速度计")
+                visible:    sectionVisible(qsTr("加速度计"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
@@ -496,15 +498,15 @@ Item {
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("accel", accelHelp, qsTr("Calibrate Accelerometer"))
+                onClicked:  _startCalibration("accel", accelHelp, qsTr("校准加速度计"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Level Horizon")
+                text:       qsTr("校平地平线")
                 enabled:    cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
-                visible:    sectionVisible(qsTr("Level Horizon"))
+                visible:    sectionVisible(qsTr("地平线"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
@@ -513,14 +515,14 @@ Item {
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("level", levelHelp, qsTr("Level Horizon"))
+                onClicked:  _startCalibration("level", levelHelp, qsTr("校平地平线"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Calibrate Airspeed")
-                visible:    sectionVisible(qsTr("Airspeed"))
+                text:       qsTr("校准空速")
+                visible:    sectionVisible(qsTr("空速"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
@@ -529,14 +531,14 @@ Item {
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("airspeed", airspeedHelp, qsTr("Calibrate Airspeed"))
+                onClicked:  _startCalibration("airspeed", airspeedHelp, qsTr("校准空速"))
             }
 
             QGCButton {
                 Layout.fillWidth: true
                 Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Set Orientations")
-                visible:    sectionVisible(qsTr("Orientations"))
+                text:       qsTr("设置方向")
+                visible:    sectionVisible(qsTr("方向设置"))
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding

@@ -13,6 +13,61 @@
 
 bool AirframeComponentController::_typesRegistered = false;
 
+QString AirframeComponentController::_translateAirframeType(const QString& name) const
+{
+    static const QHash<QString, QString> translations = {
+        { QStringLiteral("Airship"),            tr("飞艇") },
+        { QStringLiteral("Autogyro"),           tr("旋翼机") },
+        { QStringLiteral("Balloon"),            tr("气球") },
+        { QStringLiteral("Dodecarotor cox"),    tr("十二旋翼共轴") },
+        { QStringLiteral("Flying Wing"),        tr("飞翼") },
+        { QStringLiteral("Free-Flyer"),         tr("自由飞行器") },
+        { QStringLiteral("Helicopter"),         tr("直升机") },
+        { QStringLiteral("Hexarotor +"),        tr("六旋翼 +") },
+        { QStringLiteral("Hexarotor Coaxial"),  tr("六旋翼共轴") },
+        { QStringLiteral("Hexarotor x"),        tr("六旋翼 X") },
+        { QStringLiteral("Octorotor +"),        tr("八旋翼 +") },
+        { QStringLiteral("Octorotor Coaxial"),  tr("八旋翼共轴") },
+        { QStringLiteral("Octorotor x"),        tr("八旋翼 X") },
+        { QStringLiteral("Quadrotor +"),        tr("四旋翼 +") },
+        { QStringLiteral("Quadrotor H"),        tr("四旋翼 H") },
+        { QStringLiteral("Quadrotor x"),        tr("四旋翼 X") },
+        { QStringLiteral("Plane A-Tail"),       tr("A 尾布局固定翼") },
+        { QStringLiteral("Standard Plane"),     tr("标准固定翼") },
+        { QStringLiteral("Rover"),              tr("无人车") },
+        { QStringLiteral("Simulation"),         tr("仿真") },
+        { QStringLiteral("Tricopter Y+"),       tr("三旋翼 Y+") },
+        { QStringLiteral("Underwater Robot"),   tr("水下机器人") },
+        { QStringLiteral("Vectored 6 DOF UUV"), tr("矢量 6 自由度 UUV") }
+    };
+
+    return translations.value(name, name);
+}
+
+QString AirframeComponentController::_translateAirframeName(const QString& name) const
+{
+    static const QHash<QString, QString> translations = {
+        { QStringLiteral("Generic Quadcopter"),                 tr("通用四旋翼") },
+        { QStringLiteral("Generic Flying Wing"),                tr("通用飞翼") },
+        { QStringLiteral("Generic Dodecarotor cox geometry"),   tr("通用十二旋翼共轴构型") },
+        { QStringLiteral("Generic Helicopter (Tail ESC)"),      tr("通用直升机（尾部电调）") },
+        { QStringLiteral("Generic Hexarotor + geometry"),       tr("通用六旋翼 + 构型") },
+        { QStringLiteral("Generic Hexarotor coaxial geometry"), tr("通用六旋翼共轴构型") },
+        { QStringLiteral("Generic Hexarotor x geometry"),       tr("通用六旋翼 X 构型") },
+        { QStringLiteral("Generic Octocopter + geometry"),      tr("通用八旋翼 + 构型") },
+        { QStringLiteral("Generic Octocopter X geometry"),      tr("通用八旋翼 X 构型") },
+        { QStringLiteral("Generic Quad + geometry"),            tr("通用四旋翼 + 构型") },
+        { QStringLiteral("Generic 10\" Octo coaxial geometry"), tr("通用 10 寸八旋翼共轴构型") },
+        { QStringLiteral("Generic Rover Differential"),         tr("通用差速无人车") },
+        { QStringLiteral("Generic Rover Ackermann"),            tr("通用阿克曼无人车") },
+        { QStringLiteral("Generic Rover Mecanum"),              tr("通用麦克纳姆无人车") },
+        { QStringLiteral("Generic Standard Plane"),             tr("通用标准固定翼") },
+        { QStringLiteral("Cloudship"),                          tr("云舰") }
+    };
+
+    return translations.value(name, name);
+}
+
 AirframeComponentController::AirframeComponentController(void) :
     _currentVehicleIndex(0),
     _autostartId(0),
@@ -38,7 +93,8 @@ AirframeComponentController::AirframeComponentController(void) :
 
         const AirframeComponentAirframes::AirframeType_t* pType = AirframeComponentAirframes::get().values().at(tindex);
 
-        AirframeType* airframeType = new AirframeType(pType->name, pType->imageResource, this);
+        const QString translatedTypeName = _translateAirframeType(pType->name);
+        AirframeType* airframeType = new AirframeType(translatedTypeName, pType->imageResource, this);
         Q_CHECK_PTR(airframeType);
 
         for (int index = 0; index < pType->rgAirframeInfo.count(); index++) {
@@ -50,11 +106,11 @@ AirframeComponentController::AirframeComponentController(void) :
                     qWarning() << "AirframeComponentController::AirframeComponentController duplicate ids found:" << _autostartId;
                 }
                 autostartFound = true;
-                _currentAirframeType = pType->name;
-                _currentVehicleName = pInfo->name;
+                _currentAirframeType = translatedTypeName;
+                _currentVehicleName = _translateAirframeName(pInfo->name);
                 _currentVehicleIndex = index;
             }
-            airframeType->addAirframe(pInfo->name, pInfo->autostartId);
+            airframeType->addAirframe(_translateAirframeName(pInfo->name), pInfo->autostartId);
         }
 
         _airframeTypes.append(QVariant::fromValue(airframeType));

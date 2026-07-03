@@ -21,6 +21,7 @@ ColumnLayout {
     }
 
     RowLayout {
+        Layout.fillWidth: true
         spacing: _colSpacing
 
         QGCLabel { text: qsTr("Port") }
@@ -55,10 +56,12 @@ ColumnLayout {
     }
 
     RowLayout {
+        Layout.fillWidth: true
         spacing: _colSpacing
 
         QGCTextField {
             id:                     hostField
+            Layout.fillWidth:       true
             Layout.preferredWidth:  _secondColumnWidth
             placeholderText:        qsTr("Example: 127.0.0.1:14550")
         }

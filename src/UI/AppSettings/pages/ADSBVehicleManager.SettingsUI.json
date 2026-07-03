@@ -3,7 +3,7 @@
     "fileType": "SettingsUI",
     "groups": [
         {
-            "heading": "ADSB Server",
+            "heading": "ADSB 服务器",
             "keywords": ["adsb", "ads-b", "traffic", "aircraft", "tracking", "sbs", "server", "host", "port"],
             "controls": [
                 {

@@ -30,32 +30,32 @@ Item {
         spacing: 0
 
         VehicleSummaryRow {
-            labelText: qsTr("Low Battery Failsafe")
+            labelText: qsTr("低电量失控保护")
             valueText: lowBattAction ? lowBattAction.enumStringValue : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("RC/Joystick Loss Failsafe")
+            labelText: qsTr("RC/摇杆丢失失控保护")
             valueText: rcLossAction ? rcLossAction.enumStringValue : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("RC/Joystick Loss Timeout")
+            labelText: qsTr("RC/摇杆丢失超时")
             valueText: commRCLossFact ? commRCLossFact.valueString + " " + commRCLossFact.units : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Data Link Loss Failsafe")
+            labelText: qsTr("数据链路丢失失控保护")
             valueText: dataLossAction ? dataLossAction.enumStringValue : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("RTL Climb To")
+            labelText: qsTr("返航爬升至")
             valueText: returnAltFact ? returnAltFact.valueString + " " + returnAltFact.units : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("RTL, Then")
+            labelText: qsTr("返航，然后")
             valueText: _rtlLandDelayValue === 0 ?
                            qsTr("Land immediately") :
                            (_rtlLandDelayValue < 0 ?
@@ -65,13 +65,13 @@ Item {
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Loiter Alt")
+            labelText: qsTr("盘旋高度")
             valueText: _descendAltFact.valueString + " " + _descendAltFact.units
             visible:    _rtlLandDelayValue !== 0
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Land Delay")
+            labelText: qsTr("降落延时")
             valueText: _rtlLandDelayValue + " " + _rtlLandDelayFact.units
             visible:    _rtlLandDelayValue > 0
         }

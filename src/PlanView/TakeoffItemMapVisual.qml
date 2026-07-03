@@ -97,7 +97,7 @@ Item {
         id: takeoffIndicatorComponent
 
         MissionItemIndicator {
-            coordinate:     _missionItem.specifiesCoordinate ? _missionItem.coordinate : _missionItem.launchCoordinate
+            sourceCoordinate: _missionItem.specifiesCoordinate ? _missionItem.coordinate : _missionItem.launchCoordinate
             z:              QGroundControl.zOrderMapItems
             missionItem:    _missionItem
             sequenceNumber: _missionItem.sequenceNumber
@@ -110,7 +110,7 @@ Item {
         id: launchIndicatorComponent
 
         MapQuickItem {
-            coordinate:     _missionItem.launchCoordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.launchCoordinate)
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             visible:        !_missionItem.launchTakeoffAtSameLocation && _root.interactive
@@ -138,7 +138,7 @@ Item {
             readonly property int   _decimalPlaces: 8
 
             onClicked: (mouse) => {
-                var coordinate = map.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)
+                var coordinate = QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
                 coordinate.latitude = coordinate.latitude.toFixed(_decimalPlaces)
                 coordinate.longitude = coordinate.longitude.toFixed(_decimalPlaces)
                 coordinate.altitude = coordinate.altitude.toFixed(_decimalPlaces)

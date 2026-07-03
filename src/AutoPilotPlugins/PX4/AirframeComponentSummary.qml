@@ -9,9 +9,9 @@ import QGroundControl.Controls
 Item {
     implicitWidth: mainLayout.implicitWidth
     implicitHeight: mainLayout.implicitHeight
-    width: parent.width  // grows when Loader is wider than implicitWidth
+    width: parent.width
 
-    AirframeComponentController { id: controller; }
+    AirframeComponentController { id: controller }
 
     property Fact sysIdFact:        controller.getParameterFact(-1, "MAV_SYS_ID")
     property Fact sysAutoStartFact: controller.getParameterFact(-1, "SYS_AUTOSTART")
@@ -25,25 +25,25 @@ Item {
         spacing: 0
 
         VehicleSummaryRow {
-            labelText: qsTr("System ID")
+            labelText: qsTr("系统 ID")
             valueText: sysIdFact ? sysIdFact.valueString : ""
         }
         VehicleSummaryRow {
-            labelText: qsTr("Airframe type")
-            valueText: autoStartSet ? controller.currentAirframeType : qsTr("Setup required")
+            labelText: qsTr("机架类型")
+            valueText: autoStartSet ? controller.currentAirframeType : qsTr("需要设置")
         }
         VehicleSummaryRow {
-            labelText: qsTr("Vehicle")
-            valueText: autoStartSet ? controller.currentVehicleName : qsTr("Setup required")
+            labelText: qsTr("飞行器")
+            valueText: autoStartSet ? controller.currentVehicleName : qsTr("需要设置")
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Firmware Version")
-            valueText: globals.activeVehicle.firmwareMajorVersion === -1 ? qsTr("Unknown") : globals.activeVehicle.firmwareMajorVersion + "." + globals.activeVehicle.firmwareMinorVersion + "." + globals.activeVehicle.firmwarePatchVersion + globals.activeVehicle.firmwareVersionTypeString
+            labelText: qsTr("固件版本")
+            valueText: globals.activeVehicle.firmwareMajorVersion === -1 ? qsTr("未知") : globals.activeVehicle.firmwareMajorVersion + "." + globals.activeVehicle.firmwareMinorVersion + "." + globals.activeVehicle.firmwarePatchVersion + globals.activeVehicle.firmwareVersionTypeString
         }
         VehicleSummaryRow {
             visible: globals.activeVehicle.firmwareCustomMajorVersion !== -1
-            labelText: qsTr("Custom Fw. Ver.")
+            labelText: qsTr("自定义固件版本")
             valueText: globals.activeVehicle.firmwareCustomMajorVersion + "." + globals.activeVehicle.firmwareCustomMinorVersion + "." + globals.activeVehicle.firmwareCustomPatchVersion
         }
     }

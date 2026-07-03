@@ -30,11 +30,34 @@ SetupPage {
         id: pageComponent
 
         Item {
+            id: pageRoot
+
             property real _outerMargin: ScreenTools.defaultFontPixelHeight
             implicitWidth: Math.max(framedPanel.implicitWidth + (_outerMargin * 2), radioPage.availableWidth)
             implicitHeight: Math.max(framedPanel.implicitHeight + (_outerMargin * 2), radioPage.availableHeight)
             width: implicitWidth
             height: implicitHeight
+
+            function radioDisplayLabel(text) {
+                switch (text) {
+                case "AUX1 Passthrough RC channel":
+                    return "AUX1 透传 RC 通道"
+                case "AUX2 Passthrough RC channel":
+                    return "AUX2 透传 RC 通道"
+                case "PARAM1 tuning channel":
+                    return "PARAM1 调参通道"
+                case "PARAM2 tuning channel":
+                    return "PARAM2 调参通道"
+                case "PARAM3 tuning channel":
+                    return "PARAM3 调参通道"
+                case "Flaps channel":
+                    return "襟翼通道"
+                case "Payload Power Switch RC channel":
+                    return "载荷电源开关 RC 通道"
+                default:
+                    return text
+                }
+            }
 
             Rectangle {
                 anchors.fill: parent
@@ -97,7 +120,7 @@ SetupPage {
                                             0
 
                                 LabelledFactComboBox {
-                                    label: (fact && fact.shortDescription !== "") ? fact.shortDescription : modelData
+                                    label: pageRoot.radioDisplayLabel((fact && fact.shortDescription !== "") ? fact.shortDescription : modelData)
                                     fact: controller.getParameterFact(-1, modelData)
                                     indexModel: false
                                     comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 18

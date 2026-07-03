@@ -404,25 +404,25 @@ void SimpleMissionItem::_rebuildTextFieldFacts(void)
     _textFieldFactsAdvanced.clear();
 
     if (rawEdit()) {
-        _missionItem._param1Fact.setName("Param1");
+        _missionItem._param1Fact.setName(QStringLiteral("参数1"));
         _missionItem._param1Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param1Fact);
-        _missionItem._param2Fact.setName("Param2");
+        _missionItem._param2Fact.setName(QStringLiteral("参数2"));
         _missionItem._param2Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param2Fact);
-        _missionItem._param3Fact.setName("Param3");
+        _missionItem._param3Fact.setName(QStringLiteral("参数3"));
         _missionItem._param3Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param3Fact);
-        _missionItem._param4Fact.setName("Param4");
+        _missionItem._param4Fact.setName(QStringLiteral("参数4"));
         _missionItem._param4Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param4Fact);
-        _missionItem._param5Fact.setName("Lat/X");
+        _missionItem._param5Fact.setName(QStringLiteral("纬度/X"));
         _missionItem._param5Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param5Fact);
-        _missionItem._param6Fact.setName("Lon/Y");
+        _missionItem._param6Fact.setName(QStringLiteral("经度/Y"));
         _missionItem._param6Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param6Fact);
-        _missionItem._param7Fact.setName("Alt/Z");
+        _missionItem._param7Fact.setName(QStringLiteral("高度/Z"));
         _missionItem._param7Fact.setMetaData(_defaultParamMetaData);
         _textFieldFacts.append(&_missionItem._param7Fact);
     } else {

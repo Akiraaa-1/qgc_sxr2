@@ -31,7 +31,7 @@ ColumnLayout {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Spring loaded throttle smoothing")
+            text: qsTr("Center throttle smoothing")
             fact: _joystickSettings.throttleSmoothing
             visible: fact.userVisible && _joystickSettings.throttleModeCenterZero.rawValue
         }
@@ -44,7 +44,7 @@ ColumnLayout {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Negative Thrust")
+            text: qsTr("Negative thrust")
             fact: _joystickSettings.negativeThrust
             visible: globals.activeVehicle.supports.negativeThrust && fact.userVisible
         }
@@ -63,7 +63,7 @@ ColumnLayout {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("Circle Correction")
+            text: qsTr("Circle correction")
             fact: _joystickSettings.circleCorrection
             visible: fact.userVisible
         }
@@ -88,7 +88,7 @@ ColumnLayout {
             visible: advancedSettingsCheckbox.checked
 
             FactCheckBoxSlider {
-                text: qsTr("Deadband")
+                text: qsTr("Deadbands")
                 fact: _joystickSettings.useDeadband
                 visible: fact.userVisible
             }
@@ -97,7 +97,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 font.pointSize: ScreenTools.smallFontPointSize
                 wrapMode: Text.WordWrap
-                text: qsTr("Deadband can be set during the first step of calibration by gently wiggling each axis. ")
+                text: qsTr("Deadbands can be set during the first step of calibration by lightly touching each axis.")
             }
         }
 
@@ -117,42 +117,42 @@ ColumnLayout {
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux1")
+            text: qsTr("MANUAL_CONTROL Auxiliary 1")
             fact: _joystickSettings.enableManualControlAux1
             visible: fact.userVisible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux2")
+            text: qsTr("MANUAL_CONTROL Auxiliary 2")
             fact: _joystickSettings.enableManualControlAux2
             visible: fact.userVisible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux3")
+            text: qsTr("MANUAL_CONTROL Auxiliary 3")
             fact: _joystickSettings.enableManualControlAux3
             visible: fact.userVisible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux4")
+            text: qsTr("MANUAL_CONTROL Auxiliary 4")
             fact: _joystickSettings.enableManualControlAux4
             visible: fact.userVisible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux5")
+            text: qsTr("MANUAL_CONTROL Auxiliary 5")
             fact: _joystickSettings.enableManualControlAux5
             visible: fact.userVisible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth: true
-            text: qsTr("MANUAL_CONTROL Aux6")
+            text: qsTr("MANUAL_CONTROL Auxiliary 6")
             fact: _joystickSettings.enableManualControlAux6
             visible: fact.userVisible
         }

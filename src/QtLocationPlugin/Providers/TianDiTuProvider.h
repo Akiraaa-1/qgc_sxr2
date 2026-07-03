@@ -11,13 +11,14 @@ protected:
     TianDiTuProvider(const QString &mapName, const QString &mapTypeCode, const QString &imageFormat, quint32 averageSize,
                     QGeoMapType::MapStyle mapType)
         : MapProvider(mapName, QStringLiteral("https://map.tianditu.gov.cn/"), imageFormat, averageSize, mapType)
-        , _mapType(mapTypeCode) {}
+        , _mapType(mapTypeCode)
+        , _layerName(mapTypeCode.first(3)) {}
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
 
     const QString _mapType;
-    const QString _mapUrl = QStringLiteral("https://t%1.tianditu.gov.cn/DataServer?tk=%2&T=%3&x=%4&y=%5&l=%6");
+    const QString _layerName;
 };
 
 class TianDiTuRoadProvider : public TianDiTuProvider
@@ -26,7 +27,7 @@ public:
     TianDiTuRoadProvider()
         : TianDiTuProvider(
             QObject::tr("TianDiTu Road"),
-            QStringLiteral("cia_w"),
+            QStringLiteral("vec_w"),
             QStringLiteral("png"),
             AVERAGE_TIANDITU_STREET_MAP,
             QGeoMapType::StreetMap) {}

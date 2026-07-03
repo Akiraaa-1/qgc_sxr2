@@ -59,7 +59,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     _missionItem.coordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.coordinate)
             visible:        _missionItem.exitCoordinate.isValid && _root.interactive
 
             sourceItem: MissionItemIndexLabel {
@@ -79,7 +79,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     _missionItem.exitCoordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.exitCoordinate)
             visible:        _missionItem.exitCoordinate.isValid && _root.interactive
 
             sourceItem: MissionItemIndexLabel {

@@ -38,6 +38,39 @@ Column {
 
     signal actuatorValueChanged(real value, real sliderValue)
 
+    function actuatorDisplayText(text) {
+        switch (text) {
+        case "All Motors":
+            return qsTr("所有电机")
+        case "Motor 1":
+            return qsTr("电机 1")
+        case "Motor 2":
+            return qsTr("电机 2")
+        case "Motor 3":
+            return qsTr("电机 3")
+        case "Motor 4":
+            return qsTr("电机 4")
+        case "Motor 5":
+            return qsTr("电机 5")
+        case "Motor 6":
+            return qsTr("电机 6")
+        case "Motor 7":
+            return qsTr("电机 7")
+        case "Motor 8":
+            return qsTr("电机 8")
+        case "Servo 1":
+            return qsTr("舵机 1")
+        case "Servo 2":
+            return qsTr("舵机 2")
+        case "Servo 3":
+            return qsTr("舵机 3")
+        case "Servo 4":
+            return qsTr("舵机 4")
+        default:
+            return text
+        }
+    }
+
     QGCSlider {
         id:                         channelSlider
         orientation:                Qt.Vertical
@@ -92,7 +125,7 @@ Column {
     QGCLabel {
         id: channelLabel
         anchors.horizontalCenter: parent.horizontalCenter
-        text:                     channel.label
+        text:                     root.actuatorDisplayText(channel.label)
         color:                    _popupStyled ? popupStyle.primaryTextColor : qgcPal.text
         width:                    contentHeight
         height:                   contentWidth

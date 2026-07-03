@@ -11,6 +11,8 @@ MapQuickItem {
     property color  arrowColor:     "white"
     property var    fromCoord:      QtPositioning.coordinate()
     property var    toCoord:        QtPositioning.coordinate()
+    property var    sourceFromCoord: QtPositioning.coordinate()
+    property var    sourceToCoord:   QtPositioning.coordinate()
     property int    arrowPosition:  1 ///< 1: first quarter, 2: halfway, 3: last quarter
 
     property var    _map:           parent
@@ -18,10 +20,14 @@ MapQuickItem {
     property real   _arrowHeading:  0
 
     function _updateArrowDetails() {
-        if (fromCoord && fromCoord.isValid && toCoord && toCoord.isValid) {
-            var lineDistanceQuarter = fromCoord.distanceTo(toCoord) / 4
-            coordinate = fromCoord.atDistanceAndAzimuth(lineDistanceQuarter * arrowPosition, fromCoord.azimuthTo(toCoord))
-            _arrowHeading = coordinate.azimuthTo(toCoord) // Account for changing bearing along great circle path
+        const startCoord = sourceFromCoord && sourceFromCoord.isValid ? sourceFromCoord : fromCoord
+        const endCoord = sourceToCoord && sourceToCoord.isValid ? sourceToCoord : toCoord
+
+        if (startCoord && startCoord.isValid && endCoord && endCoord.isValid) {
+            var lineDistanceQuarter = startCoord.distanceTo(endCoord) / 4
+            var sourceCoordinate = startCoord.atDistanceAndAzimuth(lineDistanceQuarter * arrowPosition, startCoord.azimuthTo(endCoord))
+            coordinate = QGroundControl.mapDisplayCoordinate(sourceCoordinate)
+            _arrowHeading = sourceCoordinate.azimuthTo(endCoord) // Account for changing bearing along great circle path
         } else {
             coordinate = QtPositioning.coordinate()
             _arrowHeading = 0
@@ -30,6 +36,8 @@ MapQuickItem {
 
     onFromCoordChanged: _updateArrowDetails()
     onToCoordChanged:   _updateArrowDetails()
+    onSourceFromCoordChanged: _updateArrowDetails()
+    onSourceToCoordChanged:   _updateArrowDetails()
 
     sourceItem: Canvas {
         x:      -_arrowSize

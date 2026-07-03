@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
@@ -180,7 +180,7 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { title: qsTr("Actuators"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuator", "servo", "motor"] },
+                        { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuator", "servo", "motor"] },
                         { title: qsTr("传感器"), icon: "/qmlimages/SensorsComponentIcon.png", keys: ["sensor", "calibration"] },
                         { title: qsTr("安全"), icon: "/qmlimages/SafetyComponentIcon.png", keys: ["safety", "failsafe"] },
                         { title: qsTr("固件"), icon: "/qmlimages/FirmwareUpgradeIcon.png", special: "firmware" }

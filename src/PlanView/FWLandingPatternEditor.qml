@@ -26,8 +26,8 @@ Rectangle {
     property var    _missionVehicle:            _masterControler.controllerVehicle
     property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
     property real   _spacer:                    ScreenTools.defaultFontPixelWidth / 2
-    property string _setToVehicleHeadingStr:    qsTr("Set to vehicle heading")
-    property string _setToVehicleLocationStr:   qsTr("Set to vehicle location")
+    property string _setToVehicleHeadingStr:    qsTr("设为飞行器航向")
+    property string _setToVehicleLocationStr:   qsTr("设为飞行器位置")
     property int    _altitudeFrame:              missionItem.altitudesAreRelative ? QGroundControl.AltitudeFrameRelative : QGroundControl.AltitudeFrameAbsolute
 
     PlanEditorTheme { id: theme }
@@ -44,7 +44,7 @@ Rectangle {
             id:             finalApproachSection
             anchors.left:   parent.left
             anchors.right:  parent.right
-            text:           qsTr("Final approach")
+            text:           qsTr("最终进近")
         }
 
         Column {
@@ -56,7 +56,7 @@ Rectangle {
             Item { width: 1; height: _spacer }
 
             PlanFactCheckBox {
-                text:       qsTr("Use loiter to altitude")
+                text:       qsTr("盘旋至高度")
                 fact:       missionItem.useLoiterToAlt
             }
 
@@ -65,7 +65,7 @@ Rectangle {
                 anchors.right:   parent.right
                 columns:         2
 
-                QGCLabel { text: qsTr("Altitude"); color: theme.secondaryTextColor }
+                QGCLabel { text: qsTr("高度"); color: theme.secondaryTextColor }
 
                 PlanAltitudeFactTextField {
                     Layout.fillWidth:   true
@@ -75,7 +75,7 @@ Rectangle {
 
                 PlanFactCheckBox {
                     id:         flightSpeedCheckbox
-                    text:       qsTr("Flight Speed")
+                    text:       qsTr("飞行速度")
                     fact:       missionItem.useDoChangeSpeed
                 }
 
@@ -86,7 +86,7 @@ Rectangle {
                 }
 
                 QGCLabel {
-                    text:       qsTr("Radius")
+                    text:       qsTr("半径")
                     visible:    missionItem.useLoiterToAlt.rawValue
                     color:      theme.secondaryTextColor
                 }
@@ -101,7 +101,7 @@ Rectangle {
             Item { width: 1; height: _spacer }
 
             PlanFactCheckBox {
-                text:       qsTr("Loiter clockwise")
+                text:       qsTr("顺时针盘旋")
                 fact:       missionItem.loiterClockwise
                 visible:    missionItem.useLoiterToAlt.rawValue
             }
@@ -117,7 +117,7 @@ Rectangle {
             id:             landingPointSection
             anchors.left:   parent.left
             anchors.right:  parent.right
-            text:           qsTr("Landing point")
+            text:           qsTr("降落点")
         }
 
         Column {
@@ -133,14 +133,14 @@ Rectangle {
                 anchors.right:   parent.right
                 columns:         2
 
-                QGCLabel { text: qsTr("Heading"); color: theme.secondaryTextColor }
+                QGCLabel { text: qsTr("航向"); color: theme.secondaryTextColor }
 
                 PlanFactTextField {
                     Layout.fillWidth:   true
                     fact:               missionItem.landingHeading
                 }
 
-                QGCLabel { text: qsTr("Altitude"); color: theme.secondaryTextColor }
+                QGCLabel { text: qsTr("高度"); color: theme.secondaryTextColor }
 
                 PlanAltitudeFactTextField {
                     Layout.fillWidth:   true
@@ -150,7 +150,7 @@ Rectangle {
 
                 PlanRadioButton {
                     id:                 specifyLandingDistance
-                    text:               qsTr("Distance")
+                    text:               qsTr("距离")
                     checked:            missionItem.valueSetIsDistance.rawValue
                     onClicked:          missionItem.valueSetIsDistance.rawValue = checked
                     Layout.fillWidth:   true
@@ -164,7 +164,7 @@ Rectangle {
 
                 PlanRadioButton {
                     id:                 specifyGlideSlope
-                    text:               qsTr("Glide Slope")
+                    text:               qsTr("下滑角")
                     checked:            !missionItem.valueSetIsDistance.rawValue
                     onClicked:          missionItem.valueSetIsDistance.rawValue = !checked
                     Layout.fillWidth:   true
@@ -189,7 +189,7 @@ Rectangle {
 
         PlanCheckBox {
             anchors.right:  parent.right
-            text:           qsTr("Altitudes relative to launch")
+            text:           qsTr("高度相对起飞点")
             checked:        missionItem.altitudesAreRelative
             visible:        QGroundControl.corePlugin.options.showMissionAbsoluteAltitude || !missionItem.altitudesAreRelative
             onClicked:      missionItem.altitudesAreRelative = checked
@@ -319,17 +319,17 @@ Rectangle {
             QGCLabel {
                 Layout.fillWidth:   true
                 wrapMode:           Text.WordWrap
-                text:               qsTr("Drag the loiter point to adjust landing direction for wind and obstacles.")
+                text:               qsTr("拖动盘旋点以根据风向和障碍物调整降落方向。")
             }
 
             PlanFactCheckBox {
-                text:       qsTr("Loiter clockwise")
+                text:       qsTr("顺时针盘旋")
                 fact:       missionItem.loiterClockwise
                 visible:    missionItem.useLoiterToAlt.rawValue
             }
 
             PlanButton {
-                text:               qsTr("Done")
+                text:               qsTr("完成")
                 Layout.fillWidth:   true
                 onClicked: {
                     missionItem.wizardMode = false

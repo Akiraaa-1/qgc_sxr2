@@ -41,6 +41,8 @@ private slots:
 
 private:
     static bool _typesRegistered;
+    QString _translateAirframeType(const QString& name) const;
+    QString _translateAirframeName(const QString& name) const;
 
     QVariantList    _airframeTypes;
     QString         _currentAirframeType;

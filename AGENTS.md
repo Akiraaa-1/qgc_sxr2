@@ -43,9 +43,17 @@ cd tools && uv run --extra scripts --extra test pytest tests/ -q
 5. **QML Colors**: Use `QGCPalette`, never hardcoded colors.
 6. **Match existing style**: Follow conventions of surrounding code. See CODING_STYLE.md.
 
+## Localization Rules
+
+- Save localization source files as `UTF-8` without BOM.
+- Do not edit files under `build/` or generated QML cache output.
+- Change user-visible QML/C++ text at the `qsTr(...)` / `tr(...)` source, not by patching generated output.
+- Change metadata-driven text at the metadata source (`*.json`, `*.xml`, related `*.cc`/`*.h`), not the generated page.
+- Keep terminology consistent. See [translations/LOCALIZATION_RULES.md](translations/LOCALIZATION_RULES.md).
+
 ## Project Layout
 
-```
+```text
 src/                    # C++/QML application source
 ├── Vehicle/            # Vehicle state and communications
 ├── FactSystem/         # Parameter management (Fact, FactGroup, FactMetaData)

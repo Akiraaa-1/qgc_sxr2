@@ -269,6 +269,42 @@ Rectangle {
         return isNaN(value) ? "--" : (Math.round(value) + "%")
     }
 
+    function _componentTitle(component) {
+        if (!component) {
+            return ""
+        }
+
+        const key = _componentKey(component)
+        switch (key) {
+        case "joystick":        return qsTr("Joystick")
+        case "sensors":         return qsTr("Sensors")
+        case "safety":          return qsTr("Safety")
+        case "airframe":        return qsTr("Airframe")
+        case "power":           return qsTr("Power")
+        case "radio":           return qsTr("Radio")
+        case "flightModes":     return qsTr("Flight Modes")
+        case "actuators":
+        case "motors":          return qsTr("Actuators")
+        case "flightBehavior":  return qsTr("Flight Behavior")
+        }
+
+        const name = component.name ? component.name.toString() : ""
+        switch (name) {
+        case "Joystick":                return qsTr("Joystick")
+        case "Sensors":                 return qsTr("Sensors")
+        case "Safety":                  return qsTr("Safety")
+        case "Airframe":                return qsTr("Airframe")
+        case "Power":                   return qsTr("Power")
+        case "Radio":                   return qsTr("Radio")
+        case "Flight Modes":            return qsTr("Flight Modes")
+        case "Actuators":               return qsTr("Actuators")
+        case "Motors":                  return qsTr("Motors")
+        case "Vehicle Configuration":   return qsTr("Vehicle Configuration")
+        }
+
+        return name
+    }
+
     function _isActuatorComponent(component) {
         return _componentKey(component) === "actuators"
     }
@@ -632,41 +668,6 @@ Rectangle {
                 }
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                color: _summaryRoot._cardBaseColor
-                radius: _summaryRoot._cardCornerRadius
-                border.width: 1
-                border.color: _summaryRoot._cardBorderColor
-                implicitHeight: statusMessage.implicitHeight + (_summaryRoot._cardPadding * 2)
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -1
-                    radius: parent.radius + 1
-                    color: _summaryRoot._cardShadowColor
-                    z: -1
-                }
-
-                QGCLabel {
-                    id: statusMessage
-
-                    anchors.fill: parent
-                    anchors.margins: _summaryRoot._cardPadding
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                    color: setupComplete ? _summaryRoot._cardPrimaryTextColor : qgcPal.warningText
-                    font.bold: true
-                    text: setupComplete
-                        ? qsTr("Your vehicle configuration summary appears below. Select components on the left to review or fine-tune settings.")
-                        : qsTr("WARNING: Configuration tasks remain before this vehicle is ready to fly. Complete checklist items and open the highlighted components below.")
-
-                    property bool setupComplete: _summaryRoot._activeVehicle
-                        ? _summaryRoot._activeVehicle.autopilotPlugin.setupComplete
-                        : false
-                }
-            }
-
             GridLayout {
                 id: summaryCardsGrid
 
@@ -773,7 +774,7 @@ Rectangle {
 
                                 QGCLabel {
                                     Layout.fillWidth: true
-                                    text: summaryComponent ? summaryComponent.name : ""
+                                    text: _summaryRoot._componentTitle(summaryComponent)
                                     font.pointSize: ScreenTools.defaultFontPointSize * 1.12
                                     font.bold: true
                                     color: _summaryRoot._cardPrimaryTextColor
@@ -831,3 +832,4 @@ Rectangle {
         }
     }
 }
+

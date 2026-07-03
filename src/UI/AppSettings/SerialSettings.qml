@@ -143,7 +143,7 @@ ColumnLayout {
         QGCLabel { text: qsTr("Parity") }
         QGCComboBox {
             Layout.preferredWidth:  _secondColumnWidth
-            model:                  [qsTr("None"), qsTr("Even"), qsTr("Odd")]
+            model:                  [qsTr("None"), qsTr("Even"), qsTr("Odd") ]
 
             onActivated: (index) => {
                 // Hard coded values from qserialport.h

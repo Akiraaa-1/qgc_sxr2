@@ -140,6 +140,10 @@ public:
     Q_INVOKABLE static void disableAllLoggingCategories();
 
     Q_INVOKABLE bool linesIntersect(QPointF xLine1, QPointF yLine1, QPointF xLine2, QPointF yLine2);
+    Q_INVOKABLE bool isChinaOffsetMapActive() const;
+    Q_INVOKABLE QGeoCoordinate mapDisplayCoordinate(const QGeoCoordinate &coordinate) const;
+    Q_INVOKABLE QGeoCoordinate mapSourceCoordinate(const QGeoCoordinate &coordinate) const;
+    Q_INVOKABLE QVariantList mapDisplayCoordinates(const QVariantList &coordinates) const;
 
     Q_INVOKABLE QString altitudeFrameExtraUnits(AltitudeFrame altFrame);        ///< String shown in the FactTextField.extraUnits ui
     Q_INVOKABLE QString altitudeFrameShortDescription(AltitudeFrame altFrame);  ///< String shown when a user needs to select an altitude frame

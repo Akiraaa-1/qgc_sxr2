@@ -130,7 +130,7 @@ void SensorsComponentController::_stopCalibration(SensorsComponentController::St
 
     switch (code) {
         case StopCalibrationSuccess:
-            _orientationCalAreaHelpText->setProperty("text", tr("Calibration complete"));
+            _orientationCalAreaHelpText->setProperty("text", tr("校准完成"));
             if (!_airspeedCalInProgress && !_levelCalInProgress) {
                 emit resetStatusTextArea();
             }
@@ -147,7 +147,7 @@ void SensorsComponentController::_stopCalibration(SensorsComponentController::St
         default:
             // Assume failed
             _hideAllCalAreas();
-            qgcApp()->showAppMessage(tr("Calibration failed. Calibration log will be displayed."));
+            qgcApp()->showAppMessage(tr("校准失败。将显示校准日志。"));
             break;
     }
 
@@ -467,14 +467,14 @@ void SensorsComponentController::cancelCalibration(void)
 void SensorsComponentController::_handleParametersReset(bool success)
 {
     if (success) {
-        qgcApp()->showAppMessage(tr("Reset successful"));
+        qgcApp()->showAppMessage(tr("重置成功"));
 
         QTimer::singleShot(1000, this, [this]() {
             _refreshParams();
         });
     }
     else {
-        qgcApp()->showAppMessage(tr("Reset failed"));
+        qgcApp()->showAppMessage(tr("重置失败"));
     }
 }
 

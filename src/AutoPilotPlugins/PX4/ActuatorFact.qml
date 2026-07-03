@@ -42,7 +42,7 @@ Loader {
 	Component {
 		id: notAvailable
 		QGCLabel {
-			text:           qsTr("(Param not available)")
+			text:           qsTr("(参数不可用)")
 		}
 	}
 	sourceComponent: fact ?

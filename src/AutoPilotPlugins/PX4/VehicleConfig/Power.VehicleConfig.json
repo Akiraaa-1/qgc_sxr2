@@ -14,7 +14,7 @@
     },
     "sections": [
         {
-            "title": "Battery",
+            "title": "电池",
             "keywords": [
                 "battery",
                 "voltage",
@@ -34,35 +34,35 @@
             "controls": [
                 {
                     "param": "_SOURCE",
-                    "label": "Source",
+                    "label": "来源",
                     "control": "combobox"
                 },
                 {
                     "param": "_N_CELLS",
-                    "label": "Number of cells (in series)",
+                    "label": "串联电芯数",
                     "optional": true,
                     "showWhen": "controller.parameterExists(-1, _fullParamName(\"_N_CELLS\"))"
                 },
                 {
                     "param": "_V_EMPTY",
-                    "label": "Empty voltage (per cell)",
+                    "label": "空电电压（每芯）",
                     "optional": true,
                     "showWhen": "controller.parameterExists(-1, _fullParamName(\"_V_EMPTY\"))"
                 },
                 {
                     "param": "_V_CHARGED",
-                    "label": "Full voltage (per cell)",
+                    "label": "满电电压（每芯）",
                     "optional": true,
                     "showWhen": "controller.parameterExists(-1, _fullParamName(\"_V_CHARGED\"))"
                 },
                 {
                     "param": "_V_DIV",
-                    "label": "Voltage divider",
+                    "label": "电压分压比",
                     "optional": true,
                     "showWhen": "controller.parameterExists(-1, _fullParamName(\"_V_DIV\"))",
                     "control": "dialogButton",
                     "dialogButton": {
-                        "text": "Calculate",
+                        "text": "计算",
                         "dialogComponent": "CalcVoltageDividerDialog",
                         "buttonAfter": false,
                         "dialogParams": {
@@ -72,12 +72,12 @@
                 },
                 {
                     "param": "_A_PER_V",
-                    "label": "Amps per volt",
+                    "label": "安培/伏特",
                     "optional": true,
                     "showWhen": "controller.parameterExists(-1, _fullParamName(\"_A_PER_V\"))",
                     "control": "dialogButton",
                     "dialogButton": {
-                        "text": "Calculate",
+                        "text": "计算",
                         "dialogComponent": "CalcAmpsPerVoltDialog",
                         "buttonAfter": false,
                         "dialogParams": {
@@ -123,7 +123,7 @@
             ]
         },
         {
-            "title": "UAVCAN Bus Configuration",
+            "title": "UAVCAN 总线配置",
             "keywords": [
                 "uavcan",
                 "can bus",
@@ -141,28 +141,28 @@
                 },
                 {
                     "control": "label",
-                    "label": "WARNING: Propellers must be removed from vehicle prior to performing UAVCAN ESC configuration.",
+                    "label": "警告：在执行 UAVCAN 电调配置前，必须先拆下螺旋桨。",
                     "warning": true
                 },
                 {
                     "control": "label",
-                    "label": "ESC parameters will only be accessible in the editor after assignment."
+                    "label": "执行分配后，才能在编辑器中访问电调参数。"
                 },
                 {
                     "control": "label",
-                    "label": "Start the process, then turn each motor into its turn direction, in the order of their motor indices."
+                    "label": "启动流程后，请按照电机编号顺序，将每个电机转到其对应的旋转方向。"
                 },
                 {
                     "control": "actionButton",
                     "actionButton": {
-                        "text": "Start Assignment",
+                        "text": "开始分配",
                         "onClicked": "controller.startBusConfigureActuators()"
                     }
                 },
                 {
                     "control": "actionButton",
                     "actionButton": {
-                        "text": "Stop Assignment",
+                        "text": "停止分配",
                         "onClicked": "controller.stopBusConfigureActuators()"
                     }
                 }

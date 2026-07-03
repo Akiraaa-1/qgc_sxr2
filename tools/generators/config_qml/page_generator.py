@@ -983,11 +983,12 @@ def _qml_repeat_section(
         lines.append(f'{ind}        function _fullParamName(postfix) {{ return _prefix + postfix }}')
     else:
         lines.append(f"{ind}        property int _rawIndex: index + {rep.startIndex}")
+        lines.append(f"{ind}        property int _effectiveIndex: Math.max(_rawIndex, {rep.startIndex})")
         if rep.firstIndexOmitsNumber:
-            lines.append(f'{ind}        property string _indexStr: (_rawIndex === {rep.startIndex}) ? "" : String(_rawIndex)')
+            lines.append(f'{ind}        property string _indexStr: (_effectiveIndex === {rep.startIndex}) ? "" : String(_effectiveIndex)')
         else:
-            lines.append(f"{ind}        property string _indexStr: String(_rawIndex)")
-        lines.append(f'{ind}        property string _displayIndex: String(_rawIndex)')
+            lines.append(f"{ind}        property string _indexStr: String(_effectiveIndex)")
+        lines.append(f'{ind}        property string _displayIndex: String(_effectiveIndex)')
         lines.append(f'{ind}        function _fullParamName(postfix) {{ return "{rep.paramPrefix}" + _indexStr + postfix }}')
 
     ctrl_indent = ind + "        "

@@ -54,6 +54,7 @@ Rectangle {
     property var    _expandedComponents:     ({})
     property int    _expandedRevision:       0
     property string _searchQuery:            ""
+    property bool   _hadConnectedVehicle:    false
 
     function _setExpanded(compIndex, value) {
         _expandedComponents[compIndex] = value
@@ -268,22 +269,38 @@ Rectangle {
 
     Component.onCompleted: _showMenuPanel()
 
-    onReadOnlyModeChanged: _showMenuPanel()
-
     Connections {
         target: QGroundControl.corePlugin
         function onShowAdvancedUIChanged(showAdvancedUI) {
-            if (!showAdvancedUI) {
+            // Advanced UI visibility changes should not force navigation away
+            // from the page the user is currently viewing.
+        }
+    }
+
+    Connections {
+        target: QGroundControl.multiVehicleManager
+        function onActiveVehicleAvailableChanged(activeVehicleAvailable) {
+            if (activeVehicleAvailable) {
+                vehicleConfigView._hadConnectedVehicle = true
+            }
+        }
+
+        function onParameterReadyVehicleAvailableChanged(parametersReady) {
+            if (_selectedSpecial === "summary") {
+                _showSummaryPanel()
+            } else if (_selectedSpecial === "menu") {
                 _showMenuPanel()
             }
         }
     }
 
     Connections {
-        target: QGroundControl.multiVehicleManager
-        function onParameterReadyVehicleAvailableChanged(parametersReady) {
-            if (parametersReady || _selectedSpecial === "summary" || _selectedSpecial !== "firmware") {
-                _showMenuPanel()
+        target: QGroundControl.multiVehicleManager.vehicles
+        ignoreUnknownSignals: true
+
+        function onCountChanged() {
+            if (count === 0 && vehicleConfigView._hadConnectedVehicle) {
+                vehicleConfigView._showMenuPanel()
             }
         }
     }
@@ -336,7 +353,7 @@ Rectangle {
                     font.pointSize: ScreenTools.largeFontPointSize
                     font.weight: Font.DemiBold
                     color: vehicleConfigView._primaryTextColor
-                    text: qsTr("Offline Configure (Read-Only)")
+                    text: qsTr("离线配置（只读）")
                 }
 
                 QGCLabel {
@@ -344,7 +361,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     color: vehicleConfigView._secondaryTextColor
-                    text: qsTr("You are browsing configuration offline. Editing and calibration actions are disabled until a vehicle is connected and parameters are downloaded.")
+                    text: qsTr("当前正在离线浏览配置。在连接飞行器并完成参数下载之前，编辑和校准操作将被禁用。")
                 }
 
                 QGCLabel {
@@ -353,8 +370,8 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     color: vehicleConfigView._secondaryTextColor
                     text: _activeVehicle
-                        ? qsTr("Offline vehicle: %1").arg(_activeVehicle.vehicleClassInternalName())
-                        : qsTr("Offline vehicle information is not available.")
+                        ? qsTr("离线飞行器：%1").arg(_activeVehicle.vehicleClassInternalName())
+                        : qsTr("无法获取离线飞行器信息。")
                 }
             }
         }
@@ -375,8 +392,8 @@ Rectangle {
                 wrapMode:               Text.WordWrap
                 font.pointSize:         ScreenTools.mediumFontPointSize
                 color:                  vehicleConfigView._secondaryTextColor
-                text:                   qsTr("%1 does not currently support configuration of your vehicle. ").arg(QGroundControl.appName) +
-                                        "If your vehicle is already configured you can still Fly."
+                                        text:                   qsTr("%1 当前不支持对该飞行器进行配置。").arg(QGroundControl.appName) +
+                                        qsTr("如果飞行器已经完成配置，仍然可以进行飞行。")
             }
         }
     }
@@ -400,10 +417,10 @@ Rectangle {
                     font.pointSize:     ScreenTools.largeFontPointSize
                     color:              vehicleConfigView._secondaryTextColor
                     text:               !_activeVehicle
-                                            ? qsTr("Vehicle configuration pages will display after you connect your vehicle and parameters have been downloaded.")
+                                            ? qsTr("连接飞行器并完成参数下载后，将显示飞行器配置页面。")
                                             : (_activeVehicle.parameterManager.parameterDownloadSkipped
-                                                ? qsTr("Parameter download was skipped because the vehicle is flying. Configuration pages will be available after parameters are downloaded.")
-                                                : qsTr("Waiting for vehicle parameters to download..."))
+                                                ? qsTr("由于飞行器正在飞行，参数下载已被跳过。完成参数下载后即可使用配置页面。")
+                                                : qsTr("正在等待下载飞行器参数……"))
                 }
                 QGCButton {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -784,7 +801,7 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.35
         z: QGroundControl.zOrderWidgets
-        text: qsTr("Back to Menu")
+        text: qsTr("返回菜单")
         visible: _fullParameterVehicleAvailable && vehicleConfigView._selectedSpecial !== "menu"
         backgroundColor: "#6B7280"
         borderColor: "#80879A"

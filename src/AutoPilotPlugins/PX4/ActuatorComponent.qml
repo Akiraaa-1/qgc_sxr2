@@ -22,6 +22,65 @@ SetupPage {
 
     QGCPopupStyle { id: popupStyle }
 
+    function _translatedActuatorText(text) {
+        if (text && text.indexOf("Rev Range") !== -1) {
+            return qsTr("反向范围（舵机）")
+        }
+
+        switch (text) {
+        case "Geometry":
+            return qsTr("几何")
+        case "Multirotor":
+            return qsTr("多旋翼")
+        case "Motors":
+            return qsTr("电机")
+        case "Position X":
+            return qsTr("X 位置")
+        case "Position Y":
+            return qsTr("Y 位置")
+        case "Position Z":
+            return qsTr("Z 位置")
+        case "Direction CCW":
+            return qsTr("逆时针方向")
+        case "Function":
+            return qsTr("功能")
+        case "Disarmed":
+            return qsTr("未解锁")
+        case "Minimum":
+            return qsTr("最小值")
+        case "Maximum":
+            return qsTr("最大值")
+        case "Actuator Outputs":
+            return qsTr("执行器输出")
+        case "PWM AUX":
+            return qsTr("PWM 辅助")
+        case "PWM MAIN":
+            return qsTr("PWM 主")
+        case "Configure":
+            return qsTr("配置")
+        case "Bitrate":
+            return qsTr("比特率")
+        default:
+            return text
+        }
+    }
+
+    function _translatedMixerTitle(title) {
+        return _translatedActuatorText(title)
+    }
+
+    function _translatedChannelLabel(label) {
+        const auxMatch = label.match(/^AUX (\d+(?:-\d+)?)$/)
+        if (auxMatch) {
+            return qsTr("AUX %1").arg(auxMatch[1])
+        }
+        const motorMatch = label.match(/^Motor (\d+)$/)
+        if (motorMatch) {
+            return qsTr("电机 %1").arg(motorMatch[1])
+        }
+        return _translatedActuatorText(label)
+    }
+
     Component {
         id: pageComponent
 
@@ -66,7 +125,7 @@ SetupPage {
                     Layout.preferredWidth:      pageRoot._leftColumnWidth
                     visible:                    actuators.mixer.groups.count > 0
                     QGCLabel {
-                        text:                   qsTr("Geometry") + (actuators.mixer.title ? ": " + actuators.mixer.title : "")
+                        text:                   qsTr("Geometry") + (actuators.mixer.title ? ": " + actuatorPage._translatedMixerTitle(actuators.mixer.title) : "")
                         font.pointSize:         ScreenTools.mediumFontPointSize
                         Layout.fillWidth:       true
                     }
@@ -107,7 +166,7 @@ SetupPage {
 
                                 RowLayout {
                                     QGCLabel {
-                                        text:                    mixerGroup.label
+                                        text:                    actuatorPage._translatedActuatorText(mixerGroup.label)
                                         font.bold:               true
                                         rightPadding:            ScreenTools.defaultFontPixelWidth * 3
                                     }
@@ -130,7 +189,7 @@ SetupPage {
                                         Repeater {
                                             model:              mixerGroup.channelConfigs
                                             QGCLabel {
-                                                text:           object.label
+                                                text:           actuatorPage._translatedActuatorText(object.label)
                                                 color:          popupStyle.secondaryTextColor
                                                 visible:        object.visible && (_showAdvanced || !object.advanced)
                                                 Layout.row:     0
@@ -141,7 +200,7 @@ SetupPage {
                                         Repeater {
                                             model:              mixerGroup.channels
                                             QGCLabel {
-                                                text:           object.label + ":"
+                                                text:           actuatorPage._translatedChannelLabel(object.label) + ":"
                                                 color:          popupStyle.secondaryTextColor
                                                 Layout.row:     1 + index
                                                 Layout.column:  0
@@ -173,7 +232,7 @@ SetupPage {
                                     RowLayout {
                                         spacing:     ScreenTools.defaultFontPixelWidth
                                         QGCLabel {
-                                            text:    object.label + ":"
+                                            text:    actuatorPage._translatedActuatorText(object.label) + ":"
                                             color:   popupStyle.secondaryTextColor
                                             visible: _showAdvanced || !object.advanced
                                         }
@@ -366,12 +425,12 @@ SetupPage {
                 id: actuatorOutputsColumn
 
                 QGCLabel {
-                    text:               qsTr("Actuator Outputs")
+                    text:               actuatorPage._translatedActuatorText("Actuator Outputs")
                     font.pointSize:     ScreenTools.mediumFontPointSize
                     bottomPadding:      ScreenTools.defaultFontPixelHeight
                 }
                 QGCLabel {
-                    text:          qsTr("One or more actuator still needs to be assigned to an output.")
+                    text:          qsTr("仍有一个或多个执行器需要分配到输出。")
                     visible:       actuators.hasUnsetRequiredFunctions
                     color:         popupStyle.secondaryTextColor
                     bottomPadding: ScreenTools.defaultFontPixelHeight
@@ -385,7 +444,7 @@ SetupPage {
                     Repeater {
                         model: actuators.actuatorOutputs
                         QGCTabButton {
-                            text:                   "   " + object.label + "   "
+                            text:                   "   " + actuatorPage._translatedActuatorText(object.label) + "   "
                             width:                  implicitWidth
                             showBorder:             true
                             backRadius:             popupStyle.cornerRadius
@@ -427,7 +486,7 @@ SetupPage {
                             anchors.right:     parent.right
                             spacing:           _margins
                             QGCButton {
-                                text:          qsTr("Identify & Assign Motors")
+                                text:          qsTr("识别并分配电机")
                                 primary:       true
                                 visible:       !actuators.motorAssignmentActive && selActuatorOutput.actuatorOutput.groupsVisible
                                 enabled:       actuators.motorAssignmentEnabled
@@ -444,7 +503,7 @@ SetupPage {
                                     visible:    false
                                     //icon:       StandardIcon.Warning
                                     buttons:    MessageDialog.Yes | MessageDialog.No
-                                    title:      qsTr("Motor Order Identification and Assignment")
+                                    title:      qsTr("电机顺序识别与分配")
                                     text:       actuators.motorAssignmentMessage
                                     onButtonClicked: function (button, role) {
                                         switch (button) {
@@ -459,19 +518,19 @@ SetupPage {
                                     visible:    false
                                     //icon:       StandardIcon.Critical
                                     buttons:    MessageDialog.Ok
-                                    title:      qsTr("Error")
+                                    title:      qsTr("错误")
                                     text:       actuators.motorAssignmentMessage
                                 }
                             }
                             QGCButton {
-                                text:          qsTr("Spin Motor Again")
+                                text:          qsTr("重新转动电机")
                                 visible:       actuators.motorAssignmentActive
                                 onClicked: {
                                     actuators.spinCurrentMotor()
                                 }
                             }
                             QGCButton {
-                                text:          qsTr("Abort")
+                                text:          qsTr("中止")
                                 visible:       actuators.motorAssignmentActive
                                 onClicked: {
                                     actuators.abortMotorAssignment()
@@ -487,7 +546,7 @@ SetupPage {
                                 property var enableParam:     selActuatorOutput.actuatorOutput.enableParam
                                 QGCLabel {
                                     visible:                  parent.enableParam != null
-                                    text:                     parent.enableParam ? parent.enableParam.label + ":" : ""
+                                    text:                     parent.enableParam ? actuatorPage._translatedActuatorText(parent.enableParam.label) + ":" : ""
                                     color:                    popupStyle.secondaryTextColor
                                 }
                                 ActuatorFact {
@@ -507,7 +566,7 @@ SetupPage {
                                     RowLayout {
                                         visible: subgroup.label != ""
                                         QGCLabel {
-                                            text:                    subgroup.label
+                                            text:                    actuatorPage._translatedChannelLabel(subgroup.label)
                                             font.bold:               true
                                             rightPadding:            ScreenTools.defaultFontPixelWidth * 3
                                         }
@@ -530,7 +589,7 @@ SetupPage {
                                             Repeater {
                                                 model: subgroup.channelConfigs
                                                 QGCLabel {
-                                                    text:           object.label
+                                                    text:           actuatorPage._translatedActuatorText(object.label)
                                                     color:          popupStyle.secondaryTextColor
                                                     visible:        object.visible && (_showAdvanced || !object.advanced)
                                                     Layout.row:     0
@@ -541,7 +600,7 @@ SetupPage {
                                             Repeater {
                                                 model: subgroup.channels
                                                 QGCLabel {
-                                                    text:            object.label + ":"
+                                                    text:            actuatorPage._translatedChannelLabel(object.label) + ":"
                                                     color:           popupStyle.secondaryTextColor
                                                     Layout.row:      1 + index
                                                     Layout.column:   0
@@ -565,11 +624,12 @@ SetupPage {
 
                                     // extra subgroup config params
                                     Repeater {
-                                        model: subgroup.configParams
+                                    model: subgroup.configParams
 
                                         RowLayout {
+                                            visible: !!object.fact
                                             QGCLabel {
-                                                text: object.label + ":"
+                                                text: actuatorPage._translatedActuatorText(object.label) + ":"
                                                 color: popupStyle.secondaryTextColor
                                             }
                                             ActuatorFact {
@@ -586,8 +646,9 @@ SetupPage {
                                 model: selActuatorOutput.actuatorOutput.configParams
 
                                 RowLayout {
+                                    visible: !!object.fact
                                     QGCLabel {
-                                        text: object.label + ":"
+                                        text: actuatorPage._translatedActuatorText(object.label) + ":"
                                         color: popupStyle.secondaryTextColor
                                     }
                                     ActuatorFact {

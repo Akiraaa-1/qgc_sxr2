@@ -13,19 +13,20 @@ import QGroundControl.Controls
 QtObject {
     property var controller     ///< FactPanelController
     property int batteryIndex   ///< 1-based battery index
+    readonly property int _safeBatteryIndex: Math.max(1, batteryIndex)
 
-    property Fact battSource:                   controller.getParameterFact(-1, "BAT#_SOURCE".replace       ("#", batteryIndex))
-    property Fact battNumCells:                 controller.getParameterFact(-1, "BAT#_N_CELLS".replace      ("#", batteryIndex), false)
-    property Fact battHighVolt:                 controller.getParameterFact(-1, "BAT#_V_CHARGED".replace    ("#", batteryIndex), false)
-    property Fact battLowVolt:                  controller.getParameterFact(-1, "BAT#_V_EMPTY".replace      ("#", batteryIndex), false)
-    property Fact battVoltLoadDrop:             controller.getParameterFact(-1, "BAT#_V_LOAD_DROP".replace  ("#", batteryIndex), false)
-    property Fact battVoltageDivider:           controller.getParameterFact(-1, "BAT#_V_DIV".replace        ("#", batteryIndex), false)
-    property Fact battAmpsPerVolt:              controller.getParameterFact(-1, "BAT#_A_PER_V".replace      ("#", batteryIndex), false)
+    property Fact battSource:                   controller.getParameterFact(-1, "BAT#_SOURCE".replace       ("#", _safeBatteryIndex))
+    property Fact battNumCells:                 controller.getParameterFact(-1, "BAT#_N_CELLS".replace      ("#", _safeBatteryIndex), false)
+    property Fact battHighVolt:                 controller.getParameterFact(-1, "BAT#_V_CHARGED".replace    ("#", _safeBatteryIndex), false)
+    property Fact battLowVolt:                  controller.getParameterFact(-1, "BAT#_V_EMPTY".replace      ("#", _safeBatteryIndex), false)
+    property Fact battVoltLoadDrop:             controller.getParameterFact(-1, "BAT#_V_LOAD_DROP".replace  ("#", _safeBatteryIndex), false)
+    property Fact battVoltageDivider:           controller.getParameterFact(-1, "BAT#_V_DIV".replace        ("#", _safeBatteryIndex), false)
+    property Fact battAmpsPerVolt:              controller.getParameterFact(-1, "BAT#_A_PER_V".replace      ("#", _safeBatteryIndex), false)
 
-    property bool battNumCellsAvailable:        controller.parameterExists(-1, "BAT#_N_CELLS".replace       ("#", batteryIndex))
-    property bool battHighVoltAvailable:        controller.parameterExists(-1, "BAT#_V_CHARGED".replace     ("#", batteryIndex))
-    property bool battLowVoltAvailable:         controller.parameterExists(-1, "BAT#_V_EMPTY".replace       ("#", batteryIndex))
-    property bool battVoltLoadDropAvailable:    controller.parameterExists(-1, "BAT#_V_LOAD_DROP".replace   ("#", batteryIndex))
-    property bool battVoltageDividerAvailable:  controller.parameterExists(-1, "BAT#_V_DIV".replace         ("#", batteryIndex))
-    property bool battAmpsPerVoltAvailable:     controller.parameterExists(-1, "BAT#_A_PER_V".replace       ("#", batteryIndex))
+    property bool battNumCellsAvailable:        controller.parameterExists(-1, "BAT#_N_CELLS".replace       ("#", _safeBatteryIndex))
+    property bool battHighVoltAvailable:        controller.parameterExists(-1, "BAT#_V_CHARGED".replace     ("#", _safeBatteryIndex))
+    property bool battLowVoltAvailable:         controller.parameterExists(-1, "BAT#_V_EMPTY".replace       ("#", _safeBatteryIndex))
+    property bool battVoltLoadDropAvailable:    controller.parameterExists(-1, "BAT#_V_LOAD_DROP".replace   ("#", _safeBatteryIndex))
+    property bool battVoltageDividerAvailable:  controller.parameterExists(-1, "BAT#_V_DIV".replace         ("#", _safeBatteryIndex))
+    property bool battAmpsPerVoltAvailable:     controller.parameterExists(-1, "BAT#_A_PER_V".replace       ("#", _safeBatteryIndex))
 }

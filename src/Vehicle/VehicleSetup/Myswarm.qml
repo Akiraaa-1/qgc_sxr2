@@ -140,9 +140,10 @@ Window {
         }
 
         if (!msgType) msgType = "info";
+        var displayMsg = translateSwarmMessage(msg);
         var timestamp = new Date().toLocaleTimeString(Qt.locale(), "HH:mm:ss");
         messageListModel.append({
-            "message": "[" + timestamp + "] " + msg,
+            "message": "[" + timestamp + "] " + displayMsg,
             "msgType": msgType
         });
         // 限制消息数量，最多保留100条
@@ -155,6 +156,78 @@ Window {
     signal message()
     signal update_other_airplane(int param, int isset, int grp)
 
+
+    function translateSwarmMessage(msg) {
+        if (!msg) {
+            return ""
+        }
+
+        let translated = msg.toString()
+
+        let match = translated.match(/^Vehicle (\d+) accepted a Group (\d+) sync request through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受第 " + match[2] + " 组同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted a swarm leader sync request through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受集群领机同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted a swarm follower sync request through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受集群从机同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted swarm offset sync requests through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受集群偏移量同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted an absolute swarm altitude sync request through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受集群绝对高度同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted a swarm assignment clear request through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已通过当前参数通道接受清除集群分配请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) parameter ([A-Z0-9_]+) was queued through the current parameter pipeline\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 的参数 " + match[2] + " 已加入当前参数通道队列，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) swarm parameter ([A-Z0-9_]+) was sent directly because the normal parameter cache is not ready or does not expose it yet\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "由于常规参数缓存尚未就绪或尚未暴露该参数，飞行器 " + match[1] + " 的集群参数 " + match[2] + " 已直接发送，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted a cluster group sync request from (\d+) to (\d+)\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已接受集群分组从 " + match[2] + " 到 " + match[3] + " 的同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted a cluster role sync request from (Leader|Follower) to (Leader|Follower)\. Vehicle-side confirmation is still pending\.$/)
+        if (match) {
+            const oldRole = match[2] === "Leader" ? "领机" : "从机"
+            const newRole = match[3] === "Leader" ? "领机" : "从机"
+            return "飞行器 " + match[1] + " 已接受集群角色从 " + oldRole + " 到 " + newRole + " 的同步请求，机载端确认仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) accepted cluster action (.+) for dispatch\. Vehicle-side completion is still pending\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 已接受集群动作“" + match[2] + "”的下发，机载端执行仍在等待中。"
+        }
+
+        match = translated.match(/^Vehicle (\d+) could not accept cluster action (.+)\.$/)
+        if (match) {
+            return "飞行器 " + match[1] + " 无法接受集群动作“" + match[2] + "”。"
+        }
+
+        return translated
+    }
 
     Mavlinktest2 { id: test_mavlink }
     Swarmsend { id: swarm_send }
@@ -205,7 +278,7 @@ Window {
         target: test_mavlink
         function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
             console.log("[Myswarm] 收到操作确认: " + message);
-            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
+            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, translateSwarmMessage(message));
 
             // 同时添加到交互信息框
             var msgType = (result === 0) ? "success" : "error";
@@ -224,7 +297,7 @@ Window {
         target: swarm_send
         function onSwarmOperationAckReceived(sysId, opType, result, oldValue, newValue, message) {
             console.log("[Myswarm] Swarmsend ack: " + message);
-            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, message);
+            swarmOpPopup.showPopup(sysId, opType, result, oldValue, newValue, translateSwarmMessage(message));
             addMessage(message, result === 0 ? "success" : "error");
         }
     }
@@ -4999,6 +5072,11 @@ Window {
                                             return
                                         }
 
+                                        if (!hasAssignedGroup(node)) {
+                                            addMessage("请先完成当前飞机的分组设定，再为飞机更改组号", "warning")
+                                            return
+                                        }
+
                                         node.group_id = targetGroup
                                         if (group_num < targetGroup) {
                                             group_num = targetGroup
@@ -6354,7 +6432,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "[ SYSTEM LOG ]"
+                        text: "[ 系统日志 ]"
                         font.pixelSize: 10
                         font.bold: true
                         font.family: "Monospace"
@@ -7701,10 +7779,7 @@ Window {
     function devide_screen(grp){//仅在独立分组时用
         if(group_num === 2){
             if((grp_has_pos(1) && grp_has_pos(2)) || (grp_has_pos(1) && grp_has_pos(4)) || (grp_has_pos(3) && grp_has_pos(2)) || (grp_has_pos(3) && grp_has_pos(4))) {
-                canv.visible = true
-                canv2.visible = true
-                canv3.visible = false
-                canv4.visible = false
+                refreshGroupDividerLines()
 
                 // 保持队形移动到位置2
                 var grpId2 = trans_pos_to_grp(2);
@@ -7715,10 +7790,7 @@ Window {
         }
 
         if(group_num === 4 || group_num === 3){
-            canv.visible = true
-            canv4.visible = true
-            canv2.visible = true
-            canv3.visible = true
+            refreshGroupDividerLines()
             if(grp_has_pos(1) === false) {
                 grp_pos_mp[grp] = 1
                 moveGroupKeepFormation(grp, 1)
@@ -7946,6 +8018,7 @@ Window {
 
         // 刷新高度调整框
         updateGroupCounts();
+        refreshGroupDividerLines();
         planArrChanged();
     }
 
@@ -7970,6 +8043,7 @@ Window {
                 }
             }
         }
+        refreshGroupDividerLines();
     }
 
     // 保持队形移动组到指定区域中心
@@ -8169,6 +8243,66 @@ Window {
 
     // 计算队形变换时的区域中心起始位置
     // 返回 {x: 起始X, y: 起始Y, areaWidth: 区域宽度, areaHeight: 区域高度}
+    function refreshGroupDividerLines() {
+        var showVertical = false
+        var showHorizontal = false
+
+        if (group_num === 2) {
+            var hasLeft = grp_has_pos(1) || grp_has_pos(3)
+            var hasRight = grp_has_pos(2) || grp_has_pos(4)
+            showVertical = hasLeft && hasRight
+        } else if (group_num >= 3) {
+            showVertical = true
+            showHorizontal = true
+        }
+
+        canv.visible = showVertical
+        canv2.visible = showVertical
+        canv3.visible = showHorizontal
+        canv4.visible = showHorizontal
+
+        if (showVertical) {
+            canv.requestPaint()
+            canv2.requestPaint()
+        }
+        if (showHorizontal) {
+            canv3.requestPaint()
+            canv4.requestPaint()
+        }
+    }
+
+    function isConfiguredGroup(groupId) {
+        if (groupId < 1 || groupId > 4) {
+            return false
+        }
+
+        if (grp_pos_mp[groupId] > 0) {
+            return true
+        }
+
+        if (hasset_map[groupId] === 1 && main_node_name.length >= groupId
+                && main_node_name[groupId - 1] !== 0 && main_node_name[groupId - 1] !== "") {
+            return true
+        }
+
+        for (var i = 0; i < plan_arr.length; i++) {
+            if (plan_arr[i].group_id === groupId) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    function hasAssignedGroup(node) {
+        if (!node) {
+            return false
+        }
+
+        var groupId = Number(node.group_id)
+        return groupId >= 1 && groupId <= 4
+    }
+
     function getFormationAreaCenter(groupId, formationWidth, formationHeight) {
         var areaLeft = 0, areaRight = 0, areaTop = 0, areaBottom = 0;
 

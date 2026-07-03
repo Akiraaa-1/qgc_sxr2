@@ -22,6 +22,23 @@ Rectangle {
     property bool _showHoverSpeed: _controllerVehicle ? (_controllerVehicle.multiRotor || _controllerVehicle.vtol) : false
     property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16
 
+    function _altitudeFrameExtraUnitsText(altFrame) {
+        switch (altFrame) {
+        case QGroundControl.AltitudeFrameRelative:
+            return qsTr("相对")
+        case QGroundControl.AltitudeFrameAbsolute:
+            return qsTr("AMSL")
+        case QGroundControl.AltitudeFrameCalcAboveTerrain:
+            return qsTr("AGLC")
+        case QGroundControl.AltitudeFrameTerrain:
+            return qsTr("AGL")
+        case QGroundControl.AltitudeFrameMixed:
+            return qsTr("混合")
+        default:
+            return ""
+        }
+    }
+
     width:  parent ? parent.width : 0
     height: mainColumn.height + ScreenTools.defaultFontPixelHeight
     color:  theme.panelColor
@@ -59,8 +76,8 @@ Rectangle {
 
         PlanLabelledButton {
             Layout.fillWidth: true
-            label: qsTr("Alt Frame")
-            buttonText: QGroundControl.altitudeFrameExtraUnits(_root.missionController.globalAltitudeFrame)
+            label: qsTr("高度框架")
+            buttonText: _root._altitudeFrameExtraUnitsText(_root.missionController.globalAltitudeFrame)
 
             onClicked: {
                 let removeModes = []
@@ -88,13 +105,13 @@ Rectangle {
 
         PlanFactTextFieldSlider {
             Layout.fillWidth: true
-            label: qsTr("Waypoints Altitude")
+            label: qsTr("航点高度")
             fact: QGroundControl.settingsManager.appSettings.defaultMissionItemAltitude
         }
 
         PlanFactTextFieldSlider {
             Layout.fillWidth: true
-            label: qsTr("Flight Speed")
+            label: qsTr("飞行速度")
             fact: _root._settingsItem ? _root._settingsItem.speedSection.flightSpeed : null
             showEnableCheckbox: true
             enableCheckBoxChecked: _root._settingsItem ? _root._settingsItem.speedSection.specifyFlightSpeed : false
@@ -111,7 +128,7 @@ Rectangle {
         PlanSectionHeader {
             id: vehicleSpeedsSectionHeader
             Layout.fillWidth: true
-            text: qsTr("Vehicle Speeds")
+            text: qsTr("飞行器速度")
             visible: _root._showVehicleSpeeds && (_root._showCruiseSpeed || _root._showHoverSpeed)
             checked: false
         }
@@ -129,12 +146,12 @@ Rectangle {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 font.pointSize: ScreenTools.smallFontPointSize
-                text: qsTr("The following speed values are used to calculate total mission time. They do not affect the flight speed for the mission.")
+                text: qsTr("以下速度值用于计算任务总时间，不会影响任务的实际飞行速度。")
                 color: theme.secondaryTextColor
             }
 
             QGCLabel {
-                text: qsTr("Cruise speed")
+                text: qsTr("巡航速度")
                 visible: _root._showCruiseSpeed
                 Layout.fillWidth: true
                 color: theme.secondaryTextColor
@@ -146,7 +163,7 @@ Rectangle {
             }
 
             QGCLabel {
-                text: qsTr("Hover speed")
+                text: qsTr("悬停速度")
                 visible: _root._showHoverSpeed
                 Layout.fillWidth: true
                 color: theme.secondaryTextColor

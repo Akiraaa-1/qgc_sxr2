@@ -143,11 +143,23 @@ TreeView {
     }
 
     // Subtitle text shown on group headers, varies by node type
+    function _groupTitle(rawTitle) {
+        switch (rawTitle) {
+        case "Plan Info":       return qsTr("计划信息")
+        case "Defaults":        return qsTr("默认设置")
+        case "Mission Items":   return qsTr("任务项")
+        case "GeoFence":        return qsTr("地理围栏")
+        case "Rally Points":    return qsTr("集结点")
+        case "Transform":       return qsTr("变换")
+        default:                return rawTitle
+        }
+    }
+
     function _groupSubtitle(nodeType) {
         switch (nodeType) {
         case "planFileGroup":   return planMasterController.currentPlanFileName === "" ? qsTr("<Untitled>") : planMasterController.currentPlanFileName
-        case "missionGroup":    return _missionController.visualItems ? (_missionController.visualItems.count - 1) + qsTr(" items") : ""
-        case "rallyGroup":      return _rallyPointController.points ? _rallyPointController.points.count + qsTr(" points") : ""
+        case "missionGroup":    return _missionController.visualItems ? qsTr("%1 项").arg(_missionController.visualItems.count - 1) : ""
+        case "rallyGroup":      return _rallyPointController.points ? qsTr("%1 点").arg(_rallyPointController.points.count) : ""
         default:                return ""
         }
     }
@@ -343,7 +355,7 @@ TreeView {
 
                     QGCLabel {
                         Layout.alignment: Qt.AlignBaseline
-                        text: delegateRoot.nodeObject ? delegateRoot.nodeObject.objectName : ""
+                        text: delegateRoot.nodeObject ? root._groupTitle(delegateRoot.nodeObject.objectName) : ""
                         font.bold: true
                         color: theme.textColor
                     }

@@ -79,7 +79,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       _transectPoints
+            path:       QGroundControl.mapDisplayCoordinates(_transectPoints)
             visible:    _currentItem && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -92,7 +92,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       _showPartialEntryExit ? [ _transectPoints[0], _transectPoints[1] ] : []
+            path:       _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[0], _transectPoints[1] ]) : []
             visible:    _showPartialEntryExit && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -103,7 +103,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       _showPartialEntryExit ? [ _transectPoints[_lastPointIndex - 1], _transectPoints[_lastPointIndex] ] : []
+            path:       _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[_lastPointIndex - 1], _transectPoints[_lastPointIndex] ]) : []
             visible:    _showPartialEntryExit && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -117,7 +117,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     _missionItem.coordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.coordinate)
             visible:        _missionItem.exitCoordinate.isValid && !_vertexDrag
             opacity:        _root.opacity
 
@@ -133,8 +133,8 @@ Item {
         id: entryArrow1Component
 
         MapLineArrow {
-            fromCoord:      _transectPoints[_firstTrueTransectIndex]
-            toCoord:        _transectPoints[_firstTrueTransectIndex + 1]
+            sourceFromCoord: _transectPoints[_firstTrueTransectIndex]
+            sourceToCoord:   _transectPoints[_firstTrueTransectIndex + 1]
             arrowPosition:  1
             visible:        _currentItem && !_vertexDrag
             opacity:        _root.opacity
@@ -145,8 +145,8 @@ Item {
         id: entryArrow2Component
 
         MapLineArrow {
-            fromCoord:      _transectPoints[nextTrueTransectIndex]
-            toCoord:        _transectPoints[nextTrueTransectIndex + 1]
+            sourceFromCoord: _transectPoints[nextTrueTransectIndex]
+            sourceToCoord:   _transectPoints[nextTrueTransectIndex + 1]
             arrowPosition:  1
             visible:        _currentItem && _transectCount > 3 && !_vertexDrag
             opacity:        _root.opacity
@@ -159,8 +159,8 @@ Item {
         id: exitArrow1Component
 
         MapLineArrow {
-            fromCoord:      _transectPoints[_lastTrueTransectIndex - 1]
-            toCoord:        _transectPoints[_lastTrueTransectIndex]
+            sourceFromCoord: _transectPoints[_lastTrueTransectIndex - 1]
+            sourceToCoord:   _transectPoints[_lastTrueTransectIndex]
             arrowPosition:  3
             visible:        _currentItem && !_vertexDrag
             opacity:        _root.opacity
@@ -171,8 +171,8 @@ Item {
         id: exitArrow2Component
 
         MapLineArrow {
-            fromCoord:      _transectPoints[prevTrueTransectIndex - 1]
-            toCoord:        _transectPoints[prevTrueTransectIndex]
+            sourceFromCoord: _transectPoints[prevTrueTransectIndex - 1]
+            sourceToCoord:   _transectPoints[prevTrueTransectIndex]
             arrowPosition:  13
             visible:        _currentItem && _transectCount > 3 && !_vertexDrag
             opacity:        _root.opacity
@@ -189,7 +189,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     _missionItem.exitCoordinate
+            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.exitCoordinate)
             visible:        _missionItem.exitCoordinate.isValid && !_vertexDrag
             opacity:        _root.opacity
 

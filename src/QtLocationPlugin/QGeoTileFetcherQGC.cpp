@@ -99,6 +99,10 @@ QNetworkRequest QGeoTileFetcherQGC::getNetworkRequest(int mapId, int x, int y, i
 
     QNetworkRequest request;
     request.setUrl(mapProvider->getTileURL(x, y, zoom));
+    qCDebug(QGeoTileFetcherQGCLog) << "Tile request"
+                                   << mapProvider->getMapName()
+                                   << "z/x/y" << zoom << x << y
+                                   << request.url();
     request.setPriority(QNetworkRequest::NormalPriority);
     request.setTransferTimeout(10000);
     // request.setOriginatingObject(this);

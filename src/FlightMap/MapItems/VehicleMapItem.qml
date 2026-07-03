@@ -10,6 +10,7 @@ import QGroundControl.Controls
 MapQuickItem {
     id: _root
 
+    property var    sourceCoordinate:     QtPositioning.coordinate()
     property var    vehicle                                                         /// Vehicle object, undefined for ADSB vehicle
     property var    map
     property double altitude:       Number.NaN                                      ///< NAN to not show
@@ -21,6 +22,7 @@ MapQuickItem {
 
     anchorPoint.x:  vehicleItem.width  / 2
     anchorPoint.y:  vehicleItem.height / 2
+    coordinate:     QGroundControl.mapDisplayCoordinate(sourceCoordinate)
     visible:        coordinate.isValid
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle

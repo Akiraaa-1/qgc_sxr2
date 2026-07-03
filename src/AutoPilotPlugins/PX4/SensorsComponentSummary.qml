@@ -30,29 +30,29 @@ Item {
         spacing: 0
 
         VehicleSummaryRow {
-            labelText: qsTr("Compass 0")
+            labelText: qsTr("磁罗盘 0")
             valueText: mag0IdFact ? (mag0IdFact.value === 0 ? qsTr("Setup required") : qsTr("Ready")) : ""
         }
 
         VehicleSummaryRow {
-            labelText:  qsTr("Compass 1")
+            labelText:  qsTr("磁罗盘 1")
             visible:    mag1IdFact.value !== 0
             valueText:  qsTr("Ready")
         }
 
         VehicleSummaryRow {
-            labelText:  qsTr("Compass 2")
+            labelText:  qsTr("磁罗盘 2")
             visible:    mag2IdFact.value !== 0
             valueText:  qsTr("Ready")
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Gyro")
+            labelText: qsTr("陀螺仪")
             valueText: gyro0IdFact ? (gyro0IdFact.value === 0 ? qsTr("Setup required") : qsTr("Ready")) : ""
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Accelerometer")
+            labelText: qsTr("加速度计")
             valueText: accel0IdFact ? (accel0IdFact.value === 0 ? qsTr("Setup required") : qsTr("Ready")) : ""
         }
     }

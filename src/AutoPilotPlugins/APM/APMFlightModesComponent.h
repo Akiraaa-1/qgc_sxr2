@@ -12,7 +12,7 @@ public:
     QStringList setupCompleteChangedTriggerList() const final { return QStringList(); }
 
     QString name() const final { return _name; }
-    QString description() const final { return tr("Configure transmitter switch assignments and flight mode selection."); }
+    QString description() const final { return tr("配置遥控器开关分配和飞行模式选择。"); }
     QString iconResource() const final { return QStringLiteral("/qmlimages/FlightModesComponentIcon.png"); }
     bool requiresSetup() const final { return true; }
     bool setupComplete() const final { return true; }

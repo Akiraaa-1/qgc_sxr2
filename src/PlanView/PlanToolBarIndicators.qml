@@ -36,8 +36,8 @@ RowLayout {
 
     function _downloadClicked() {
         if (_saveDirty) {
-            QGroundControl.showMessageDialog(root, qsTr("Download"),
-                                         qsTr("You have unsaved changes. Downloading from the Vehicle will lose these changes. Are you sure?"),
+            QGroundControl.showMessageDialog(root, qsTr("下载"),
+                                         qsTr("当前有未保存的更改。从飞行器下载会丢失这些更改，确定继续吗？"),
                                          Dialog.Yes | Dialog.Cancel,
                                          function() { _planMasterController.loadFromVehicle() })
         } else {
@@ -47,8 +47,8 @@ RowLayout {
 
     function _openButtonClicked() {
         if (_saveDirty || _uploadDirty) {
-            QGroundControl.showMessageDialog(root, qsTr("Open Plan"),
-                                        qsTr("You have unsaved/unsent changes. Loading a new Plan will lose these changes. Are you sure?"),
+            QGroundControl.showMessageDialog(root, qsTr("打开计划"),
+                                        qsTr("当前有未保存或未发送的更改。加载新的计划会丢失这些更改，确定继续吗？"),
                                         Dialog.Yes | Dialog.Cancel,
                                         function() { _planMasterController.loadFromSelectedFile() } )
         } else {
@@ -72,9 +72,9 @@ RowLayout {
             // First save with a typed name, or name was changed since last save
             let fullName = _planMasterController.currentPlanFileName + "." + _planMasterController.fileExtension
             let msg = _planMasterController.resolvedPlanFileExists()
-                ? qsTr("'%1' already exists. Overwrite?").arg(fullName)
-                : qsTr("Save as '%1'?").arg(fullName)
-            QGroundControl.showMessageDialog(root, qsTr("Save"), msg,
+                ? qsTr("'%1' 已存在。是否覆盖？").arg(fullName)
+                : qsTr("是否另存为 '%1'？").arg(fullName)
+            QGroundControl.showMessageDialog(root, qsTr("保存"), msg,
                 Dialog.Yes | Dialog.No,
                 function() { _planMasterController.saveWithCurrentName() })
         } else {
@@ -90,15 +90,15 @@ RowLayout {
     }
 
     function _storageClearButtonClicked() {
-        QGroundControl.showMessageDialog(root, qsTr("Clear"),
-                                     qsTr("Are you sure you want to remove all the items from the plan editor?"),
+        QGroundControl.showMessageDialog(root, qsTr("清除"),
+                                     qsTr("确定要从计划编辑器中移除所有项目吗？"),
                                      Dialog.Yes | Dialog.Cancel,
                                      function() { _planMasterController.removeAll(); })
     }
 
     function _vehicleClearButtonClicked() {
-        QGroundControl.showMessageDialog(root, qsTr("Clear"),
-                                     qsTr("Are you sure you want to remove the plan from the vehicle and the plan editor?"),
+        QGroundControl.showMessageDialog(root, qsTr("清除"),
+                                     qsTr("确定要从飞行器和计划编辑器中移除此计划吗？"),
                                      Dialog.Yes | Dialog.Cancel,
                                      function() {
                                         _planMasterController.removeAllFromVehicle()

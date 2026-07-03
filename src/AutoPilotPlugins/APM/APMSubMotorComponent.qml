@@ -148,8 +148,8 @@ SetupPage {
                 anchors.left:   parent.left
                 anchors.right:  parent.right
                 wrapMode:       Text.WordWrap
-                text:           qsTr("Moving the sliders will cause the motors to spin. Make sure the motors and propellers are clear from obstructions! The direction of the motor rotation is dependent on how the three phases of the motor are physically connected to the ESCs (if any two wires are swapped, the direction of rotation will flip). Because we cannot guarantee what order the phases are connected, the motor directions must be configured in software. When a slider is moved DOWN, the thruster should push air/water TOWARD the cable entering the housing. Click the checkbox to reverse the direction of the corresponding thruster.\n\n"
-                                     + "Blue Robotics thrusters are lubricated by water and are not designed to be run in air. Testing the thrusters in air is ok at low speeds for short periods of time. Extended operation of Blue Robotics in air may lead to overheating and permanent damage. Without water lubrication, Blue Robotics thrusters may also make some unpleasant noises when operated in air; this is normal.")
+                text:           qsTr("移动滑块会让电机转动。请确保电机和螺旋桨周围没有障碍物！电机旋转方向取决于电机三相与 ESC 的实际接线方式（如果任意两根线互换，旋转方向也会翻转）。由于无法保证三相接线顺序，电机方向必须在软件中配置。当滑块向下移动时，推进器应将空气/水朝着线缆进入壳体的方向推动。勾选复选框可反转对应推进器的方向。\n\n"
+                                     + "Blue Robotics 推进器依靠水润滑，不适合在空气中长时间运行。低速、短时在空气中测试是可以的，但长时间运行可能导致过热和永久损坏。由于没有水润滑，在空气中运行时也可能会出现一些不太悦耳的声音，这属于正常现象。")
             }
 
             Row {
@@ -192,7 +192,7 @@ SetupPage {
                     color:  qgcPal.warningText
                     text:   coolDownTimer.running
                                 ? qsTr("A 10 second coooldown is required before testing again, please stand by...")
-                                : qsTr("Slide this switch to arm the vehicle and enable the motor test (CAUTION!)")
+                                : qsTr("滑动此开关可解锁飞行器并启用电机测试（注意！）")
                 }
             } // Row
 

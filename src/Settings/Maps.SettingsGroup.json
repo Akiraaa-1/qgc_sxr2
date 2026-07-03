@@ -4,18 +4,18 @@
     "QGC.MetaData.Facts": [
         {
             "name": "maxCacheDiskSize",
-            "shortDesc": "Maximum disk space in megabytes for caching downloaded map tiles.",
+            "shortDesc": "用于缓存已下载地图瓦片的最大磁盘空间，单位为 MB。",
             "type": "Uint32",
             "units": "MB",
             "min": 1,
             "max": 262144,
             "default": 1024,
-            "label": "Max disk cache",
+            "label": "最大磁盘缓存",
             "keywords": "cache,disk size,tile cache"
         },
         {
             "name": "maxCacheMemorySize",
-            "shortDesc": "Maximum RAM in megabytes for caching map tiles in memory.",
+            "shortDesc": "用于在内存中缓存地图瓦片的最大 RAM，单位为 MB。",
             "type": "Uint32",
             "units": "MB",
             "min": 1,
@@ -23,7 +23,7 @@
             "default": 128,
             "mobileDefault": 16,
             "qgcRebootRequired": true,
-            "label": "Max memory cache",
+            "label": "最大内存缓存",
             "keywords": "cache,memory size,tile cache"
         }
     ]

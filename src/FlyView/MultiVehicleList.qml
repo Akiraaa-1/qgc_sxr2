@@ -66,6 +66,9 @@ Item {
     }
 
     function toggleSelect(vehicleId) {
+        if (vehicleId === undefined || vehicleId === null) {
+            return
+        }
         if (!vehicleSelected(vehicleId)) {
             selectVehicle(vehicleId)
         } else {
@@ -124,7 +127,7 @@ Item {
 
             QGCMouseArea {
                 anchors.fill:       parent
-                onClicked:          toggleSelect(_vehicle.id)
+                onClicked:          if (_vehicle) { toggleSelect(_vehicle.id) }
             }
 
             Column {

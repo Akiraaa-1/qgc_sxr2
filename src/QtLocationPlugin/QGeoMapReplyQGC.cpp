@@ -42,7 +42,11 @@ bool QGeoTiledMapReplyQGC::init()
     _initDataFromResources();
 
     (void) connect(this, &QGeoTiledMapReplyQGC::errorOccurred, this, [this](QGeoTiledMapReply::Error error, const QString &errorString) {
-        qCWarning(QGeoTiledMapReplyQGCLog) << error << errorString;
+        if (errorString == QStringLiteral("Network Not Available") || errorString == QStringLiteral("Bing Tile Above Zoom Level")) {
+            qCDebug(QGeoTiledMapReplyQGCLog) << error << errorString;
+        } else {
+            qCWarning(QGeoTiledMapReplyQGCLog) << error << errorString;
+        }
         setMapImageData(_badTile);
         setMapImageFormat(QStringLiteral("png"));
         setCached(false);
@@ -103,12 +107,22 @@ void QGeoTiledMapReplyQGC::_networkReplyFinished()
     }
 
     const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    qCDebug(QGeoTiledMapReplyQGCLog) << "Tile response"
+                                     << UrlFactory::getProviderTypeFromQtMapId(tileSpec().mapId())
+                                     << "z/x/y" << tileSpec().zoom() << tileSpec().x() << tileSpec().y()
+                                     << "status" << statusCode
+                                     << "content-type" << reply->header(QNetworkRequest::ContentTypeHeader).toString()
+                                     << reply->url();
     if (!QGCNetworkHelper::isHttpSuccess(statusCode)) {
         setError(QGeoTiledMapReply::CommunicationError, reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toString());
         return;
     }
 
     QByteArray image = reply->readAll();
+    qCDebug(QGeoTiledMapReplyQGCLog) << "Tile payload"
+                                     << UrlFactory::getProviderTypeFromQtMapId(tileSpec().mapId())
+                                     << "bytes" << image.size()
+                                     << "head" << image.left(96);
     if (image.isEmpty()) {
         setError(QGeoTiledMapReply::ParseError, tr("Image is Empty"));
         return;
@@ -121,7 +135,10 @@ void QGeoTiledMapReplyQGC::_networkReplyFinished()
     }
 
     if (mapProvider->isBingProvider() && (image == _bingNoTileImage)) {
-        setError(QGeoTiledMapReply::CommunicationError, tr("Bing Tile Above Zoom Level"));
+        setMapImageData(_badTile);
+        setMapImageFormat(QStringLiteral("png"));
+        setCached(false);
+        setFinished(true);
         return;
     }
 
@@ -154,6 +171,12 @@ void QGeoTiledMapReplyQGC::_networkReplyError(QNetworkReply::NetworkError error)
         if (!reply) {
             setError(QGeoTiledMapReply::CommunicationError, tr("Invalid Reply"));
         } else {
+            qCWarning(QGeoTiledMapReplyQGCLog) << "Tile network error"
+                                               << UrlFactory::getProviderTypeFromQtMapId(tileSpec().mapId())
+                                               << "z/x/y" << tileSpec().zoom() << tileSpec().x() << tileSpec().y()
+                                               << error
+                                               << reply->errorString()
+                                               << reply->url();
             setError(QGeoTiledMapReply::CommunicationError, reply->errorString());
         }
     } else {
@@ -196,7 +219,7 @@ void QGeoTiledMapReplyQGC::_cacheError(QGCMapTask::TaskType type, QStringView er
     Q_ASSERT(type == QGCMapTask::TaskType::taskFetchTile);
 
     if (!QGCNetworkHelper::isInternetAvailable()) {
-        setError(QGeoTiledMapReply::CommunicationError, tr("Network Not Available"));
+        setError(QGeoTiledMapReply::CommunicationError, QStringLiteral("Network Not Available"));
         return;
     }
 

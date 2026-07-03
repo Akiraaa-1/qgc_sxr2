@@ -9,6 +9,7 @@ import QGroundControl.PlanView
 MapQuickItem {
     id: _item
 
+    property var sourceCoordinate: QtPositioning.coordinate()
     property var missionItem
     property int sequenceNumber
 
@@ -16,6 +17,7 @@ MapQuickItem {
 
     anchorPoint.x:  sourceItem.anchorPointX
     anchorPoint.y:  sourceItem.anchorPointY
+    coordinate:     QGroundControl.mapDisplayCoordinate(sourceCoordinate)
 
     sourceItem:
         MissionItemIndexLabel {

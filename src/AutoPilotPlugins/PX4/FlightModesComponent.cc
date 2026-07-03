@@ -20,7 +20,7 @@ QString FlightModesComponent::name(void) const
 
 QString FlightModesComponent::description(void) const
 {
-    return tr("Configure transmitter switch assignments and flight mode selection.");
+    return tr("配置遥控器开关分配和飞行模式选择。");
 }
 
 QString FlightModesComponent::iconResource(void) const

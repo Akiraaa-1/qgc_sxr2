@@ -59,17 +59,17 @@ Item {
         spacing: 0
 
         VehicleSummaryRow {
-            labelText: qsTr("Geometry")
+            labelText: qsTr("几何布局")
             valueText: root._geometryText()
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Outputs")
+            labelText: qsTr("输出")
             valueText: root._outputsText()
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Status")
+            labelText: qsTr("状态")
             valueText: root._actuators
                 ? (root._actuators.hasUnsetRequiredFunctions ? qsTr("Setup required") : qsTr("Ready"))
                 : qsTr("Unavailable")
@@ -77,7 +77,7 @@ Item {
         }
 
         VehicleSummaryRow {
-            labelText: qsTr("Testing")
+            labelText: qsTr("测试中")
             valueText: root._testText()
         }
     }

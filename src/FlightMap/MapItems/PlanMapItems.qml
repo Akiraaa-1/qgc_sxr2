@@ -73,8 +73,8 @@ Item {
                 model: _root.directionArrowOpacity > 0.01 ? _missionController.directionArrows : 0
 
                 delegate: MapLineArrow {
-                    fromCoord:      object ? object.coordinate1 : undefined
-                    toCoord:        object ? object.coordinate2 : undefined
+                    sourceFromCoord: object ? object.coordinate1 : undefined
+                    sourceToCoord:   object ? object.coordinate2 : undefined
                     arrowPosition:  3
                     arrowColor:     _root.directionArrowColor
                     opacity:        _root.directionArrowOpacity

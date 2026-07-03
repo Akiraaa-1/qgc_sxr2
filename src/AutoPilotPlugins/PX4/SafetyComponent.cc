@@ -13,7 +13,7 @@ QString SafetyComponent::name(void) const
 
 QString SafetyComponent::description(void) const
 {
-    return tr("Configure failsafe actions, geofence, return to launch, and land mode settings.");
+    return tr("配置故障保护动作、地理围栏、返航以及降落模式设置。");
 }
 
 QString SafetyComponent::iconResource(void) const
