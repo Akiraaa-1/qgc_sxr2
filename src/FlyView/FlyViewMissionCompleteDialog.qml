@@ -14,6 +14,18 @@ Item {
     property var missionController
     property var geoFenceController
     property var rallyPointController
+    property var planMasterController
+
+    function removePlanFromVehicle() {
+        if (planMasterController && planMasterController.removeAllFromVehicle) {
+            planMasterController.removeAllFromVehicle()
+        } else {
+            QGroundControl.showMessageDialog(
+                missionCompleteDialogHelper,
+                qsTr("Remove Plan"),
+                qsTr("Plan controller is not available."))
+        }
+    }
 
     // The following code is used to track vehicle states for showing the mission complete dialog
     property var  _activeVehicle:                   QGroundControl.multiVehicleManager.activeVehicle
@@ -81,7 +93,7 @@ Item {
                     text:               qsTr("Remove plan from vehicle")
                     visible:            !_activeVehicle.communicationLost// && !_activeVehicle.apmFirmware  // ArduPilot has a bug somewhere with mission clear
                     onClicked: {
-                        _planController.removeAllFromVehicle()
+                        missionCompleteDialogHelper.removePlanFromVehicle()
                         missionCompleteDialog.close()
                     }
                 }

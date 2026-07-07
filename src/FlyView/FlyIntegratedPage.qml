@@ -49,6 +49,7 @@ Item {
     property bool _startMissionSliderVisible: false
     property bool _startMissionFeedbackVisible: false
     property bool _startMissionFeedbackIsError: false
+    property string _startMissionFeedbackTitle: ""
     property string _startMissionFeedbackText: ""
     property bool _startMissionUnavailableDialogVisible: false
     property string _startMissionUnavailableDialogText: ""
@@ -733,9 +734,7 @@ Item {
         const value = Number(fact.rawValue)
         return !isNaN(value) && value > 0
     }
-    function _clearClusterVehicleState(vehicle) {
-        Q_UNUSED(vehicle)
-    }
+    function _clearClusterVehicleState(vehicle) {}
     function _debugNumber(value) {
         const numericValue = Number(value)
         return isNaN(numericValue) ? "NaN" : numericValue.toFixed(2)
@@ -1933,17 +1932,17 @@ Item {
             break
         case "up":
             if (root._activeVehicle) {
-                root._activeVehicle.guidedModeChangeAltitude(2, false)
+                root._confirmMapStripAltitudeChange(2)
             }
             break
         case "down":
             if (root._activeVehicle) {
-                root._activeVehicle.guidedModeChangeAltitude(-2, false)
+                root._confirmMapStripAltitudeChange(-2)
             }
             break
         case "rtl":
             if (root._activeVehicle) {
-                guidedActionsController.confirmAction(guidedActionsController.actionRTL)
+                root._triggerGuidedPanelAction(guidedActionsController.actionRTL)
             }
             break
         case "play":
@@ -1978,11 +1977,40 @@ Item {
                 }
                 mapView._flyViewSettings.keepMapCenteredOnVehicle.rawValue = true
                 mapView._disableVehicleTracking = false
-                mapView.center = mapView._activeVehicleCoordinate
+                mapView.center = QGroundControl.mapDisplayCoordinate(mapView._activeVehicleCoordinate)
                 root._mapNavigationSelection = "locate"
             }
             break
         }
+    }
+    function _confirmMapStripAltitudeChange(altitudeChange) {
+        if (!root._activeVehicle) {
+            root._showMapStripUnavailable(altitudeChange > 0 ? "up" : "down", true)
+            return
+        }
+
+        const isClimb = altitudeChange > 0
+        const title = isClimb ? qsTr("上升") : qsTr("下降")
+        const absChange = Math.abs(altitudeChange)
+        QGroundControl.showMessageDialog(
+            root,
+            title,
+            isClimb
+                ? qsTr("确认让飞行器上升 %1 米？").arg(absChange)
+                : qsTr("确认让飞行器下降 %1 米？").arg(absChange),
+            Dialog.Yes | Dialog.Cancel,
+            function() {
+                if (!root._activeVehicle) {
+                    return
+                }
+                root._activeVehicle.guidedModeChangeAltitude(altitudeChange, false)
+                root._showStartMissionFeedback(
+                    isClimb
+                        ? qsTr("上升 %1 米指令已发送。").arg(absChange)
+                        : qsTr("下降 %1 米指令已发送。").arg(absChange),
+                    false,
+                    title)
+            })
     }
     function _showStartMissionSlider() {
         const actionCode = root._mapPrimaryActionCode()
@@ -2025,7 +2053,8 @@ Item {
         }
         guidedActionsController.executeAction(root._mapPrimarySliderAction, undefined, 0, false)
     }
-    function _showStartMissionFeedback(message, isError) {
+    function _showStartMissionFeedback(message, isError, title) {
+        root._startMissionFeedbackTitle = title === undefined || title === "" ? root._mapPrimaryActionDialogTitle() : title
         root._startMissionFeedbackText = message
         root._startMissionFeedbackIsError = !!isError
         root._startMissionFeedbackVisible = true
@@ -2042,6 +2071,87 @@ Item {
     function _hideStartMissionFeedback() {
         startMissionFeedbackTimer.stop()
         root._startMissionFeedbackVisible = false
+    }
+    function _mapStripActionTitle(key) {
+        switch (key) {
+        case "traffic":
+            return qsTr("态势")
+        case "list":
+            return qsTr("仪表")
+        case "orbit":
+            return qsTr("旋转地图")
+        case "lockOrbit":
+            return qsTr("锁定朝向")
+        case "up":
+            return qsTr("上升")
+        case "down":
+            return qsTr("下降")
+        case "rtl":
+            return qsTr("返航")
+        case "play":
+            return qsTr("继续任务")
+        case "pause":
+            return qsTr("暂停")
+        case "pan":
+            return qsTr("平移")
+        case "locate":
+            return qsTr("定位")
+        default:
+            return qsTr("操作不可用")
+        }
+    }
+    function _mapStripUnavailableMessage(key, requiresVehicle) {
+        if (requiresVehicle && !root._activeVehicle) {
+            return qsTr("当前没有连接飞行器。")
+        }
+        switch (key) {
+        case "locate":
+            return qsTr("当前飞行器还没有有效定位。")
+        case "rtl":
+            if (root._activeVehicle && !root._activeVehicle.armed) {
+                return qsTr("返航仅在飞行器已解锁后可用。")
+            }
+            if (root._activeVehicle && !root._activeVehicle.flying) {
+                return qsTr("返航仅在飞行器正在飞行时可用。")
+            }
+            if (root._activeVehicle && !root._activeVehicle.supports.guidedMode) {
+                return qsTr("当前飞控不支持引导返航。")
+            }
+            return qsTr("当前状态不允许执行返航。")
+        case "pause":
+            if (root._activeVehicle && !root._activeVehicle.armed) {
+                return qsTr("暂停仅在飞行器已解锁后可用。")
+            }
+            if (root._activeVehicle && !root._activeVehicle.flying) {
+                return qsTr("暂停仅在飞行器正在飞行时可用。")
+            }
+            if (root._activeVehicle && !root._activeVehicle.supports.pauseVehicle) {
+                return qsTr("当前飞控不支持暂停飞行器。")
+            }
+            return qsTr("当前飞行模式不允许暂停。")
+        case "play":
+            return qsTr("当前没有可继续的任务。")
+        case "up":
+        case "down":
+            if (root._activeVehicle && !root._activeVehicle.armed) {
+                return qsTr("高度调整仅在飞行器已解锁后可用。")
+            }
+            if (root._activeVehicle && !root._activeVehicle.flying) {
+                return qsTr("高度调整仅在飞行器正在飞行时可用。")
+            }
+            return qsTr("当前飞行模式不允许直接调整高度。")
+        default:
+            return qsTr("当前状态下无法执行此操作。")
+        }
+    }
+    function _showMapStripUnavailable(key, requiresVehicle) {
+        root._hideStartMissionUnavailableDialog()
+        root._hideStartMissionSlider()
+        root._hideStartMissionFeedback()
+        QGroundControl.showMessageDialog(
+            root,
+            root._mapStripActionTitle(key),
+            root._mapStripUnavailableMessage(key, requiresVehicle))
     }
     function _startMissionUnavailableMessage() {
         if (!root._activeVehicle) {
@@ -2186,7 +2296,28 @@ Item {
         if (key === "locate") {
             return root._vehicleHasPosition(root._activeVehicle)
         }
+        if (key === "rtl") {
+            return guidedActionsController.showRTL
+        }
+        if (key === "pause") {
+            return guidedActionsController.showPause
+        }
+        if (key === "play") {
+            return guidedActionsController.showContinueMission
+        }
+        if (key === "up" || key === "down") {
+            return guidedActionsController.showChangeAlt
+        }
         return !requiresVehicle || !!root._activeVehicle
+    }
+    function _profilePlaybackControlsEnabled() {
+        const vehicle = root._activeVehicle
+        const hasLiveTelemetry = !!(vehicle &&
+            (!isNaN(Number(root._vehicleActualAltitude)) ||
+             !isNaN(Number(root._profileLiveAltitude)) ||
+             !isNaN(Number(root._vehicleClimbRate)) ||
+             (vehicle.coordinate && vehicle.coordinate.isValid)))
+        return !hasLiveTelemetry && !(vehicle && (vehicle.flying || vehicle.armed))
     }
     function _isMapStripSelected(key) {
         if (key === "startMission") {
@@ -2872,7 +3003,7 @@ Item {
 
     GuidedValueSlider { id: guidedValueSlider; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; visible: false; z: QGroundControl.zOrderTopMost }
     GuidedActionsController { id: guidedActionsController; guidedValueSlider: guidedValueSlider; missionController: planControllerInternal.missionController }
-    FlyViewMissionCompleteDialog { geoFenceController: planControllerInternal.geoFenceController; missionController: planControllerInternal.missionController; rallyPointController: planControllerInternal.rallyPointController }
+    FlyViewMissionCompleteDialog { planMasterController: planControllerInternal; geoFenceController: planControllerInternal.geoFenceController; missionController: planControllerInternal.missionController; rallyPointController: planControllerInternal.rallyPointController }
     FlyViewPreFlightChecklistPopup { id: preFlightChecklistPopup }
 
     Connections {
@@ -5632,6 +5763,8 @@ Item {
                     planMasterController: planControllerInternal
                     rightPanelWidth: 0
                     toolInsets: toolInsets
+                    autoResumeVehicleTracking: false
+                    autoFitMissionOnLoad: false
                 }
 
                 Connections {
@@ -5656,6 +5789,7 @@ Item {
                     id: floatingMapStrip
                     anchors.left: floatingMapStripAnchor.left
                     y: floatingMapStripAnchor.y
+                    z: QGroundControl.zOrderTopMost + 3
                     readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 2.18
                     readonly property real _toggleButtonSize: ScreenTools.defaultFontPixelHeight * 1.36
                     readonly property real _innerMargin: ScreenTools.defaultFontPixelHeight * 0.16
@@ -5794,8 +5928,14 @@ Item {
                                 QGCMouseArea {
                                     id: stripMouseArea
                                     anchors.fill: parent
-                                    enabled: root._mapStripExpanded && parent._enabled
-                                    onClicked: root._triggerMapStripAction(modelData.key)
+                                    enabled: root._mapStripExpanded
+                                    onClicked: {
+                                        if (parent._enabled) {
+                                            root._triggerMapStripAction(modelData.key)
+                                        } else {
+                                            root._showMapStripUnavailable(modelData.key, modelData.requiresVehicle)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -5813,7 +5953,7 @@ Item {
                     radius: width * 0.45
                     border.color: Qt.rgba(1, 1, 1, 0.14)
                     border.width: 1
-                    z: QGroundControl.zOrderWidgets + 1
+                    z: QGroundControl.zOrderTopMost + 4
 
                     Text {
                         anchors.centerIn: parent
@@ -6717,7 +6857,7 @@ Item {
 
                         QGCLabel {
                             Layout.fillWidth: true
-                            text: root._mapPrimaryActionDialogTitle()
+                            text: root._startMissionFeedbackTitle
                             color: "#F8FAFC"
                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.74
                             font.bold: true
@@ -7021,11 +7161,13 @@ Item {
                                         ]
 
                                         delegate: Rectangle {
-            
+                                            readonly property bool _enabled: root._profilePlaybackControlsEnabled()
+
                                             Layout.preferredWidth: playbackButtonStrip.buttonWidth
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.92
                                             radius: ScreenTools.defaultFontPixelHeight * 0.06
-                                            color: "#202020"
+                                            color: playbackMouseArea.pressed && _enabled ? "#1A1C1F" : "#202020"
+                                            opacity: _enabled ? 1 : 0.42
                                             border.width: 1
                                             border.color: Qt.rgba(1, 1, 1, 0.06)
 
@@ -7041,7 +7183,9 @@ Item {
                                             }
 
                                             QGCMouseArea {
+                                                id: playbackMouseArea
                                                 anchors.fill: parent
+                                                enabled: parent._enabled
                                                 onClicked: {
                                                     switch (modelData.key) {
                                                     case "toStart":
@@ -7843,5 +7987,3 @@ Item {
 }
 }
 }
-
-

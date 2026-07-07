@@ -721,7 +721,7 @@ Item {
                 model: QGroundControl.multiVehicleManager.vehicles
                 delegate: VehicleMapItem {
                     vehicle: object
-                    coordinate: object.coordinate
+                    sourceCoordinate: object.coordinate
                     map: editorMap
                     size: ScreenTools.defaultFontPixelHeight * 3
                     z: QGroundControl.zOrderMapItems - 1

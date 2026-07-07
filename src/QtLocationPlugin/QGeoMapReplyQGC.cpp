@@ -218,7 +218,7 @@ void QGeoTiledMapReplyQGC::_cacheError(QGCMapTask::TaskType type, QStringView er
 
     Q_ASSERT(type == QGCMapTask::TaskType::taskFetchTile);
 
-    if (!QGCNetworkHelper::isInternetAvailable()) {
+    if (!QGCNetworkHelper::isNetworkAvailable()) {
         setError(QGeoTiledMapReply::CommunicationError, QStringLiteral("Network Not Available"));
         return;
     }

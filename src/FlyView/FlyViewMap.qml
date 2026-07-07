@@ -19,7 +19,7 @@ FlightMap {
     showGCSPositionMarker:      true
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
-    center:                     QGroundControl.flightMapPosition
+    center:                     QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
 
     property Item   pipView
     property Item   pipState:                   _pipState
@@ -34,6 +34,7 @@ FlightMap {
     property var    _geoFenceController:        planMasterController.geoFenceController
     property var    _rallyPointController:      planMasterController.rallyPointController
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
+    property var    _activeVehicleDisplayCoordinate: QGroundControl.mapDisplayCoordinate(_activeVehicleCoordinate)
     property real   _toolButtonTopMargin:       parent.height - mainWindow.height + (ScreenTools.defaultFontPixelHeight / 2)
     property real   _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     property var    _flyViewSettings:           QGroundControl.settingsManager.flyViewSettings
@@ -51,6 +52,8 @@ FlightMap {
     property bool   _disableVehicleTracking:    false
     property bool   _keepVehicleCentered:       pipMode ? true : false
     property bool   _saveZoomLevelSetting:      true
+    property bool   autoResumeVehicleTracking:  true
+    property bool   autoFitMissionOnLoad:       true
 
     SwarmFormationOverlayController {
         id: swarmFormationOverlay
@@ -80,7 +83,7 @@ FlightMap {
     onVisibleChanged: {
         if (visible) {
             // Synchronize center position with Plan View
-            center = QGroundControl.flightMapPosition
+            center = QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
         }
     }
 
@@ -90,12 +93,24 @@ FlightMap {
         }
     }
     onCenterChanged: {
-        QGroundControl.flightMapPosition = _root.center
+        QGroundControl.flightMapPosition = QGroundControl.mapSourceCoordinate(_root.center)
     }
 
     // We track whether the user has panned or not to correctly handle automatic map positioning
-    onMapPanStart:  _disableVehicleTracking = true
-    onMapPanStop:   panRecenterTimer.restart()
+    onMapPanStart: {
+        _disableVehicleTracking = true
+        panRecenterTimer.stop()
+    }
+    onMapPanStop: {
+        if (autoResumeVehicleTracking) {
+            panRecenterTimer.restart()
+        }
+    }
+    onAutoResumeVehicleTrackingChanged: {
+        if (!autoResumeVehicleTracking) {
+            panRecenterTimer.stop()
+        }
+    }
 
     function pointInRect(point, rect) {
         return point.x > rect.x &&
@@ -188,7 +203,7 @@ FlightMap {
     }
 
     function recenterNeeded() {
-        var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false /* clipToViewport */)
+        var vehiclePoint = _root.fromCoordinate(_activeVehicleDisplayCoordinate, false /* clipToViewport */)
         var centerRect = _insetCenterRect()
         //return !pointInRect(vehiclePoint,insetRect)
 
@@ -221,11 +236,11 @@ FlightMap {
         // We let FlightMap handle first vehicle position
         if (!_keepMapCenteredOnVehicle && firstVehiclePositionReceived && _activeVehicleCoordinate.isValid && !_disableVehicleTracking) {
             if (_keepVehicleCentered) {
-                _root.center = _activeVehicleCoordinate
+                _root.center = _activeVehicleDisplayCoordinate
             } else {
                 if (firstVehiclePositionReceived && recenterNeeded()) {
                     // Move the map such that the vehicle is centered within the inset area
-                    var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false /* clipToViewport */)
+                    var vehiclePoint = _root.fromCoordinate(_activeVehicleDisplayCoordinate, false /* clipToViewport */)
                     var centerInsetRect = _insetCenterRect()
                     var centerInsetPoint = Qt.point(centerInsetRect.x + centerInsetRect.width / 2, centerInsetRect.y + centerInsetRect.height / 2)
                     var centerOffset = Qt.point((_root.width / 2) - centerInsetPoint.x, (_root.height / 2) - centerInsetPoint.y)
@@ -239,7 +254,7 @@ FlightMap {
 
     on_ActiveVehicleCoordinateChanged: {
         if (_keepMapCenteredOnVehicle && _activeVehicleCoordinate.isValid && !_disableVehicleTracking) {
-            _root.center = _activeVehicleCoordinate
+            _root.center = _activeVehicleDisplayCoordinate
         }
     }
 
@@ -273,7 +288,7 @@ FlightMap {
         ignoreUnknownSignals:   true
         function onNewItemsFromVehicle() {
             var visualItems = _missionController.visualItems
-            if (visualItems && visualItems.count !== 1) {
+            if (autoFitMissionOnLoad && visualItems && visualItems.count !== 1) {
                 mapFitFunctions.fitMapViewportToMissionItems()
                 firstVehiclePositionReceived = true
             }

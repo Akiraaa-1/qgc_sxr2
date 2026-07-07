@@ -45,7 +45,7 @@ Map {
     function _possiblyCenterToVehiclePosition() {
         if (!firstVehiclePositionReceived && allowVehicleLocationCenter && _activeVehicleCoordinate.isValid) {
             firstVehiclePositionReceived = true
-            center = _activeVehicleCoordinate
+            center = QGroundControl.mapDisplayCoordinate(_activeVehicleCoordinate)
             zoomLevel = QGroundControl.flightMapInitialZoom
         }
     }
@@ -76,7 +76,7 @@ Map {
             //-- Only center on gsc if we have no vehicle (and we are supposed to do so)
             var _activeVehicleCoordinate = _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
             if(QGroundControl.settingsManager.flyViewSettings.keepMapCenteredOnVehicle.rawValue || !_activeVehicleCoordinate.isValid)
-                center = gcsPosition
+                center = QGroundControl.mapDisplayCoordinate(gcsPosition)
         }
     }
 
@@ -231,7 +231,7 @@ Map {
         anchorPoint.x:  sourceItem.width / 2
         anchorPoint.y:  sourceItem.height / 2
         visible:        showGCSPositionMarker && gcsPosition.isValid && !planView
-        coordinate:     gcsPosition
+        coordinate:     QGroundControl.mapDisplayCoordinate(gcsPosition)
 
         sourceItem: Image {
             id:             mapItemImage
