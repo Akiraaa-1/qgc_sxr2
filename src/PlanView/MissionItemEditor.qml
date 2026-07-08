@@ -13,6 +13,7 @@ import QGroundControl.PlanView
 Rectangle {
     required property var    missionItem         ///< MissionItem associated with this editor
     required property var    map                 ///< Map control
+    property real            uiScale: 1.0
 
     signal clicked
     signal remove
@@ -32,14 +33,14 @@ Rectangle {
     property bool   _currentItem:               missionItem.isCurrentItem
     property color  _outerTextColor:            _currentItem ? theme.textColor : theme.secondaryTextColor
     property bool   _noMissionItemsAdded:       _missionController.visualItems ? _missionController.visualItems.count <= 1 : true
-    property real   _sectionSpacer:             ScreenTools.defaultFontPixelWidth / 2  // spacing between section headings
+    property real   _sectionSpacer:             ScreenTools.defaultFontPixelWidth * uiScale / 2  // spacing between section headings
     property bool   _singleComplexItem:         _missionController.complexMissionItemNames.length === 1
     property bool   _readyForSave:              missionItem.readyForSaveState === VisualMissionItem.ReadyForSave
 
-    readonly property real  _editFieldWidth:    Math.min(width - _innerMargin * 2, ScreenTools.defaultFontPixelWidth * 12)
-    readonly property real  _margin:            ScreenTools.defaultFontPixelWidth / 2
-    readonly property real  _innerMargin:       2
-    readonly property real  _radius:            ScreenTools.defaultFontPixelWidth / 2
+    readonly property real  _editFieldWidth:    Math.min(width - _innerMargin * 2, ScreenTools.defaultFontPixelWidth * 12 * uiScale)
+    readonly property real  _margin:            ScreenTools.defaultFontPixelWidth * uiScale / 2
+    readonly property real  _innerMargin:       Math.max(2, 2 * uiScale)
+    readonly property real  _radius:            ScreenTools.defaultFontPixelWidth * uiScale / 2
     readonly property real  _hamburgerSize:     commandPicker.height * 0.75
     readonly property real  _trashSize:         commandPicker.height * 0.75
     readonly property bool  _waypointsOnlyMode: QGroundControl.corePlugin.options.missionWaypointsOnly
@@ -56,7 +57,8 @@ Rectangle {
         if (missionItem.isCurrentItem) {
             editorLoader.setSource(missionItem.editorQml, {
                 missionItem:    _root.missionItem,
-                availableWidth: Qt.binding(() => _root._editorAvailableWidth)
+                availableWidth: Qt.binding(() => _root._editorAvailableWidth),
+                uiScale:        _root.uiScale
             })
         } else {
             editorLoader.setSource("")
@@ -133,7 +135,7 @@ Rectangle {
                 //: Indicator in Plan view to show mission item is not ready for save/send
                 text:               qsTr("?")
                 color:              qgcPal.warningText
-                font.pointSize:     ScreenTools.smallFontPointSize
+                font.pointSize:     ScreenTools.smallFontPointSize * _root.uiScale
             }
         }
 
@@ -159,7 +161,7 @@ Rectangle {
         Rectangle {
             id:                     commandPicker
             anchors.verticalCenter: parent.verticalCenter
-            height:                 ScreenTools.implicitComboBoxHeight
+            height:                 ScreenTools.implicitComboBoxHeight * _root.uiScale
             width:                  innerLayout.implicitWidth + (_margin * 2)
             visible:                !commandLabel.visible
             color:                  commandPickerMouseArea.pressed ? theme.panelPressedColor : (commandPickerMouseArea.containsMouse ? theme.panelHoverColor : theme.inputColor)
@@ -177,15 +179,16 @@ Rectangle {
                 anchors.rightMargin:    _margin
                 spacing:                _padding
 
-                property real _padding: ScreenTools.comboBoxPadding
+                property real _padding: ScreenTools.comboBoxPadding * _root.uiScale
 
                 QGCLabel {
                     text:   missionItem.commandName
                     color:  theme.textColor
+                    font.pixelSize: ScreenTools.defaultFontPixelHeight * _root.uiScale
                 }
 
                 QGCColoredImage {
-                    height:             ScreenTools.defaultFontPixelWidth
+                    height:             ScreenTools.defaultFontPixelWidth * _root.uiScale
                     width:              height
                     fillMode:           Image.PreserveAspectFit
                     smooth:             true
@@ -230,6 +233,7 @@ Rectangle {
             verticalAlignment:      Text.AlignVCenter
             text:                   missionItem.commandName
             color:                  _outerTextColor
+            font.pixelSize:         ScreenTools.defaultFontPixelHeight * _root.uiScale
         }
     }
 
@@ -321,6 +325,7 @@ Rectangle {
                         text:       qsTr("Item #%1").arg(missionItem.sequenceNumber)
                         enabled:    false
                         color:      theme.disabledTextColor
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * _root.uiScale
                     }
                 }
             }

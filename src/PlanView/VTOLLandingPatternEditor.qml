@@ -20,6 +20,7 @@ Rectangle {
 
     required property var missionItem
     required property real availableWidth
+    property real uiScale: 1.0
 
     property var    _masterControler:           missionItem.masterController
     property var    _missionController:         _masterControler.missionController
@@ -202,7 +203,7 @@ Rectangle {
                 anchors.right:          parent.right
                 wrapMode:               Text.WordWrap
                 color:                  qgcPal.warningText
-                font.pointSize:         ScreenTools.smallFontPointSize
+                font.pointSize:         ScreenTools.smallFontPointSize * _root.uiScale
                 text:                   qsTr("* Actual flight path will vary.")
             }
 
@@ -211,7 +212,7 @@ Rectangle {
                 anchors.right:          parent.right
                 wrapMode:               Text.WordWrap
                 color:                  qgcPal.warningText
-                font.pointSize:         ScreenTools.smallFontPointSize
+                font.pointSize:         ScreenTools.smallFontPointSize * _root.uiScale
                 text:                   qsTr("* Avoid tailwind on approach to land.")
             }
 
@@ -220,7 +221,7 @@ Rectangle {
                 anchors.right:          parent.right
                 wrapMode:               Text.WordWrap
                 color:                  qgcPal.warningText
-                font.pointSize:         ScreenTools.smallFontPointSize
+                font.pointSize:         ScreenTools.smallFontPointSize * _root.uiScale
                 text:                   qsTr("* Ensure landing distance is enough to complete transition.")
             }
         }

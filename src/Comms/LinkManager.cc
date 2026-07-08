@@ -73,6 +73,44 @@ void LinkManager::init()
     }
 }
 
+void LinkManager::setAutoConnectPaused(bool paused)
+{
+    if (paused == _autoConnectPaused) {
+        return;
+    }
+
+    _autoConnectPaused = paused;
+    emit autoConnectPausedChanged();
+}
+
+void LinkManager::setCommunicationErrorDisplayPaused(bool paused)
+{
+    if (paused == _communicationErrorDisplayPaused) {
+        return;
+    }
+
+    _communicationErrorDisplayPaused = paused;
+    emit communicationErrorDisplayPausedChanged();
+}
+
+void LinkManager::clearDeferredCommunicationError()
+{
+    _deferredCommunicationErrorTitle.clear();
+    _deferredCommunicationError.clear();
+}
+
+void LinkManager::showDeferredCommunicationError()
+{
+    if (_deferredCommunicationError.isEmpty()) {
+        return;
+    }
+
+    const QString title = _deferredCommunicationErrorTitle;
+    const QString error = _deferredCommunicationError;
+    clearDeferredCommunicationError();
+    qgcApp()->showAppMessage(error, title);
+}
+
 QList<SharedLinkInterfacePtr> LinkManager::links()
 {
     QMutexLocker locker(&_linksMutex);
@@ -164,6 +202,12 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 
 void LinkManager::_communicationError(const QString &title, const QString &error)
 {
+    if (_communicationErrorDisplayPaused) {
+        _deferredCommunicationErrorTitle = title;
+        _deferredCommunicationError = error;
+        return;
+    }
+
     qgcApp()->showAppMessage(error, title);
 }
 
@@ -431,6 +475,10 @@ void LinkManager::_updateAutoConnectLinks()
         return;
     }
 
+    if (_autoConnectPaused) {
+        return;
+    }
+
     _addUDPAutoConnectLink();
     _addMAVLinkForwardingLink();
 
@@ -615,7 +663,7 @@ SharedLinkConfigurationPtr LinkManager::addConfiguration(LinkConfiguration *conf
 void LinkManager::startAutoConnectedLinks()
 {
     for (SharedLinkConfigurationPtr &sharedConfig : _rgLinkConfigs) {
-        if (sharedConfig->isAutoConnect()) {
+        if (sharedConfig->isAutoConnect() && !_autoConnectPaused) {
             createConnectedLink(sharedConfig);
         }
     }

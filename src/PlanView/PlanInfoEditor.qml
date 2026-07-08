@@ -13,6 +13,7 @@ Rectangle {
     required property var missionController
     required property var editorMap
 
+    property real uiScale: 1.0
     property var _controllerVehicle: planMasterController.controllerVehicle
     property var _visualItems: missionController.visualItems
     property bool _noMissionItemsAdded: _visualItems ? _visualItems.count <= 1 : true
@@ -21,7 +22,7 @@ Rectangle {
     property bool _multipleVehicleTypes: !QGroundControl.singleVehicleSupport
     property bool _allowFWVehicleTypeSelection: _noMissionItemsAdded && !globals.activeVehicle
     property bool _waypointsOnlyMode: QGroundControl.corePlugin.options.missionWaypointsOnly
-    property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16
+    property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16 * uiScale
 
     function _vehicleTypeText(vehicleType) {
         switch (vehicleType) {
@@ -165,7 +166,7 @@ Rectangle {
         QGCLabel {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            font.pointSize: ScreenTools.smallFontPointSize
+            font.pointSize: ScreenTools.smallFontPointSize * _root.uiScale
             text: qsTr("实际位置/高度由飞行器在飞行时设置。")
             horizontalAlignment: Text.AlignHCenter
             visible: plannedHomePositionSection.checked

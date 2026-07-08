@@ -17,10 +17,11 @@ TreeView {
     reuseItems: false
     pointerNavigationEnabled: false
     selectionBehavior: TableView.SelectionDisabled
-    rowSpacing: 2
+    rowSpacing: Math.max(1, Math.round(2 * uiScale))
 
     required property var editorMap
     required property var planMasterController
+    property real uiScale: 1.0
 
     signal editingLayerChangeRequested(int layer)
 
@@ -31,7 +32,7 @@ TreeView {
     property var _missionController: planMasterController.missionController
     property var _geoFenceController: planMasterController.geoFenceController
     property var _rallyPointController: planMasterController.rallyPointController
-    property real _contentRightInset: ScreenTools.defaultFontPixelWidth * 0.8
+    property real _contentRightInset: ScreenTools.defaultFontPixelWidth * 0.8 * uiScale
 
     // Helper: convert a persistent model index to the current visual row
     function _rowFor(modelIndex) { return root.rowAtIndex(modelIndex) }
@@ -228,14 +229,16 @@ TreeView {
                         width:                  Qt.binding(() => delegateRoot.width),
                         planMasterController:   root.planMasterController,
                         missionController:      root._missionController,
-                        editorMap:              root.editorMap
+                        editorMap:              root.editorMap,
+                        uiScale:                root.uiScale
                     })
                     break
                 case "defaultsInfo":
                     setSource(delegateRoot._qrcBase + "MissionDefaultsEditor.qml", {
                         width:                  Qt.binding(() => delegateRoot.width),
                         missionController:      root._missionController,
-                        planMasterController:   root.planMasterController
+                        planMasterController:   root.planMasterController,
+                        uiScale:                root.uiScale
                     })
                     break
                 case "missionItem":
@@ -243,7 +246,8 @@ TreeView {
                         setSource(delegateRoot._qrcBase + "MissionItemEditor.qml", {
                             width:          Qt.binding(() => delegateRoot.width),
                             map:            root.editorMap,
-                            missionItem:    delegateRoot.nodeObject
+                            missionItem:    delegateRoot.nodeObject,
+                            uiScale:        root.uiScale
                         })
                     }
                     break
@@ -260,7 +264,8 @@ TreeView {
                     if (delegateRoot.nodeObject) {
                         setSource(delegateRoot._qrcBase + "RallyPointEditorHeader.qml", {
                             width:      Qt.binding(() => delegateRoot.width),
-                            controller: root._rallyPointController
+                            controller: root._rallyPointController,
+                            uiScale:    root.uiScale
                         })
                     }
                     break
@@ -276,7 +281,8 @@ TreeView {
                 case "transformEditor":
                     setSource(delegateRoot._qrcBase + "TransformEditor.qml", {
                         width:              Qt.binding(() => delegateRoot.width),
-                        missionController:  root._missionController
+                        missionController:  root._missionController,
+                        uiScale:            root.uiScale
                     })
                     break
                 }
@@ -328,7 +334,7 @@ TreeView {
 
             PlanPanel {
                 width:  delegateRoot.width
-                height: ScreenTools.implicitComboBoxHeight + ScreenTools.defaultFontPixelWidth
+                height: (ScreenTools.implicitComboBoxHeight + ScreenTools.defaultFontPixelWidth) * root.uiScale
                 panelColor: theme.panelColor
                 hoverColor: theme.panelHoverColor
                 pressedColor: theme.panelPressedColor
@@ -338,15 +344,15 @@ TreeView {
 
                 RowLayout {
                     id: groupHeaderRow
-                    spacing: ScreenTools.defaultFontPixelWidth * 0.5
+                    spacing: ScreenTools.defaultFontPixelWidth * 0.5 * root.uiScale
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    anchors.margins: ScreenTools.defaultFontPixelWidth * 0.5
+                    anchors.margins: ScreenTools.defaultFontPixelWidth * 0.5 * root.uiScale
 
                     QGCColoredImage {
                         Layout.alignment: Qt.AlignVCenter
-                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.75
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.75 * root.uiScale
                         Layout.preferredHeight: Layout.preferredWidth
                         source: "/InstrumentValueIcons/cheveron-right.svg"
                         color: theme.secondaryTextColor
@@ -356,6 +362,7 @@ TreeView {
                     QGCLabel {
                         Layout.alignment: Qt.AlignBaseline
                         text: delegateRoot.nodeObject ? root._groupTitle(delegateRoot.nodeObject.objectName) : ""
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
                         font.bold: true
                         color: theme.textColor
                     }
@@ -365,7 +372,7 @@ TreeView {
                         Layout.fillWidth: true
                         text: root._groupSubtitle(delegateRoot.nodeType)
                         elide: Text.ElideRight
-                        font.pointSize: ScreenTools.smallFontPointSize
+                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.76 * root.uiScale
                         color: theme.secondaryTextColor
                     }
                 }

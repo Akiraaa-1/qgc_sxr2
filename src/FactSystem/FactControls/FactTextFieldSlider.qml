@@ -41,6 +41,14 @@ Rectangle {
     property color  sliderHandleBorderColor: qgcPal.buttonBorder
     property color  sliderLabelColor:    qgcPal.text
     property real   controlRadius:      ScreenTools.defaultBorderRadius
+    property real   labelPointSize:     ScreenTools.defaultFontPointSize
+    property real   textFieldPointSize: ScreenTools.defaultFontPointSize
+    property real   checkBoxPointSize:  ScreenTools.defaultFontPointSize
+    property real   sliderLabelPointSize: ScreenTools.smallFontPointSize
+    property real   sliderBarHeight:    ScreenTools.defaultFontPixelHeight / 3
+    property real   sliderHandleDiameter: ScreenTools.defaultFontPixelHeight
+    property bool   sliderReserveBoundaryLabelSpace: false
+    property real   sliderBoundaryLabelGap: 0
     property int    stateAnimationDuration: 200
 
     signal enableCheckboxClicked
@@ -100,6 +108,7 @@ Rectangle {
                 text:               control.label
                 visible:            control.showEnableCheckbox
                 textColor:          control.checkBoxTextColor
+                textFontPointSize:  control.checkBoxPointSize
                 boxBackgroundColor: control.checkBoxBoxColor
                 boxBorderColor:     control.checkBoxBorderColor
                 checkColor:         control.checkBoxCheckColor
@@ -116,10 +125,12 @@ Rectangle {
                 fact:               control.fact
                 enabled:            !control.showEnableCheckbox || enableCheckbox.checked
                 labelColor:         control.labelColor
+                labelPointSize:     control.labelPointSize
                 textFieldBackgroundColor: control.textFieldBackgroundColor
                 textFieldBorderColor: control.textFieldBorderColor
                 textFieldFocusBorderColor: control.textFieldFocusBorderColor
                 textFieldColor:     control.textFieldColor
+                textField.font.pointSize: control.textFieldPointSize
                 textFieldShowFocusGlow: control.textFieldShowFocusGlow
             }
         }
@@ -147,6 +158,11 @@ Rectangle {
                 handleColor:        control.sliderHandleColor
                 handleBorderColor:  control.sliderHandleBorderColor
                 labelColor:         control.sliderLabelColor
+                labelPointSize:     control.sliderLabelPointSize
+                barHeight:          control.sliderBarHeight
+                handleDiameter:     control.sliderHandleDiameter
+                reserveBoundaryLabelSpace: control.sliderReserveBoundaryLabelSpace
+                boundaryLabelGap:   control.sliderBoundaryLabelGap
 
                 onMoved: {
                     if (control._loadComplete) {

@@ -7,6 +7,9 @@ import QGroundControl.PlanView
 FactComboBox {
     PlanEditorTheme { id: theme }
 
+    property real uiScale: 1.0
+
+    font.pointSize: ScreenTools.defaultFontPointSize * uiScale
     backgroundColor: hovered ? theme.panelHoverColor : theme.inputColor
     borderColor: theme.borderColor
     focusBorderColor: theme.accentColor

@@ -11,6 +11,8 @@ Rectangle {
 
     required property var missionController
 
+    property real uiScale: 1.0
+
     width:  parent ? parent.width : 0
     height: mainColumn.height + (_margins * 2)
     color:  theme.panelColor
@@ -18,9 +20,9 @@ Rectangle {
     border.width: 1
     border.color: theme.borderColor
 
-    property real _margins:        ScreenTools.defaultFontPixelWidth / 2
-    property real _textFieldWidth: ScreenTools.defaultFontPixelWidth * 20
-    property real _labelWidth:     ScreenTools.defaultFontPixelWidth * 14
+    property real _margins:        ScreenTools.defaultFontPixelWidth * uiScale / 2
+    property real _textFieldWidth: ScreenTools.defaultFontPixelWidth * 20 * uiScale
+    property real _labelWidth:     ScreenTools.defaultFontPixelWidth * 14 * uiScale
     property bool _hasHome:        missionController ? missionController.plannedHomePosition.isValid : false
 
     PlanEditorTheme { id: theme }
@@ -102,7 +104,7 @@ Rectangle {
                 Layout.fillWidth:    true
                 Layout.maximumWidth: _labelWidth + _textFieldWidth
                 wrapMode:            Text.WordWrap
-                font.pointSize:      ScreenTools.smallFontPointSize
+                font.pointSize:      ScreenTools.smallFontPointSize * _root.uiScale
                 text:                qsTr("Note: Home altitude is not modified.")
                 color:               theme.secondaryTextColor
             }
@@ -143,7 +145,7 @@ Rectangle {
             QGCLabel {
                 Layout.fillWidth: true
                 wrapMode:         Text.WordWrap
-                font.pointSize:   ScreenTools.smallFontPointSize
+                font.pointSize:   ScreenTools.smallFontPointSize * _root.uiScale
                 text:             qsTr("Home position must be set to reposition the mission.")
                 visible:          !_hasHome
                 color:            theme.secondaryTextColor
@@ -295,7 +297,7 @@ Rectangle {
             QGCLabel {
                 Layout.fillWidth: true
                 wrapMode:         Text.WordWrap
-                font.pointSize:   ScreenTools.smallFontPointSize
+                font.pointSize:   ScreenTools.smallFontPointSize * _root.uiScale
                 text:             qsTr("Home position must be set to rotate the mission.")
                 visible:          !_hasHome
             }
@@ -322,7 +324,7 @@ Rectangle {
                 Layout.fillWidth:    true
                 Layout.maximumWidth: _labelWidth + _textFieldWidth
                 wrapMode:            Text.WordWrap
-                font.pointSize:      ScreenTools.smallFontPointSize
+                font.pointSize:      ScreenTools.smallFontPointSize * _root.uiScale
                 text:                qsTr("Note: Complex items are rotated by moving their reference coordinate: their geometry and orientation are not changed.")
             }
 

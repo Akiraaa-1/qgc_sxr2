@@ -21,6 +21,7 @@ Rectangle {
 
     required property var missionItem
     required property real availableWidth
+    property real uiScale: 1.0
 
     property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
     property real   _fieldWidth:                ScreenTools.defaultFontPixelWidth * 10.5
@@ -89,7 +90,7 @@ Rectangle {
                     Layout.fillWidth:   true
                     text:           qsTr("Note: Polygon respresents structure surface not vehicle flight path.")
                     wrapMode:       Text.WordWrap
-                    font.pointSize: ScreenTools.smallFontPointSize
+                    font.pointSize: ScreenTools.smallFontPointSize * root.uiScale
                     color:          theme.secondaryTextColor
                 }
 

@@ -42,6 +42,8 @@ class LinkManager : public QObject
     Q_PROPERTY(QmlObjectListModel *linkConfigurations READ _qmlLinkConfigurations CONSTANT)
     Q_PROPERTY(QStringList linkTypeStrings READ linkTypeStrings CONSTANT)
     Q_PROPERTY(bool mavlinkSupportForwardingEnabled READ mavlinkSupportForwardingEnabled NOTIFY mavlinkSupportForwardingEnabledChanged)
+    Q_PROPERTY(bool autoConnectPaused READ autoConnectPaused WRITE setAutoConnectPaused NOTIFY autoConnectPausedChanged)
+    Q_PROPERTY(bool communicationErrorDisplayPaused READ communicationErrorDisplayPaused WRITE setCommunicationErrorDisplayPaused NOTIFY communicationErrorDisplayPausedChanged)
 
 public:
     explicit LinkManager(QObject *parent = nullptr);
@@ -68,6 +70,12 @@ public:
     QList<SharedLinkInterfacePtr> links();
     QStringList linkTypeStrings() const;
     bool mavlinkSupportForwardingEnabled() const { return _mavlinkSupportForwardingEnabled; }
+    bool autoConnectPaused() const { return _autoConnectPaused; }
+    void setAutoConnectPaused(bool paused);
+    bool communicationErrorDisplayPaused() const { return _communicationErrorDisplayPaused; }
+    void setCommunicationErrorDisplayPaused(bool paused);
+    Q_INVOKABLE void clearDeferredCommunicationError();
+    Q_INVOKABLE void showDeferredCommunicationError();
 
     void loadLinkConfigurationList();
     void saveLinkConfigurationList();
@@ -114,6 +122,8 @@ public:
 signals:
     void mavlinkSupportForwardingEnabledChanged();
     void isBluetoothAvailableChanged();
+    void autoConnectPausedChanged();
+    void communicationErrorDisplayPausedChanged();
 
 private slots:
     void _linkDisconnected();
@@ -137,8 +147,12 @@ private:
     bool _configurationsLoaded = false;             ///< true: Link configurations have been loaded
     bool _connectionsSuspended = false;             ///< true: all new connections should not be allowed
     bool _mavlinkSupportForwardingEnabled = false;
+    bool _autoConnectPaused = false;                ///< true: temporarily suppress background auto-connect only
+    bool _communicationErrorDisplayPaused = false;
     uint32_t _mavlinkChannelsUsedBitMask = 1;
     QString _connectionsSuspendedReason;            ///< User visible reason for suspension
+    QString _deferredCommunicationErrorTitle;
+    QString _deferredCommunicationError;
 
     QMutex _linksMutex;                             ///< Protects _rgLinks access from multiple threads
     QList<SharedLinkInterfacePtr> _rgLinks;

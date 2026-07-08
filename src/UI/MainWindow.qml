@@ -75,6 +75,8 @@ ApplicationWindow {
     property bool               _configureReadOnlyMode:     false
     property int                _lastVisitedWorkspaceTab:   _planTabIndex
     property bool               _hadConnectedVehicleSession:false
+    property bool               _vehicleDisconnectNoticeShown:false
+    property string             _pendingDisconnectedVehicleId:""
 
     //-------------------------------------------------------------------------
     //-- Global Scope Variables
@@ -100,6 +102,14 @@ ApplicationWindow {
 
     /// Default color palette used throughout the UI
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
+
+    Timer {
+        id: vehicleDisconnectNoticeTimer
+        interval: 900
+        repeat: false
+
+        onTriggered: mainWindow._showVehicleDisconnectedIfStillOffline()
+    }
 
     //-------------------------------------------------------------------------
     //-- Actions
@@ -346,6 +356,38 @@ ApplicationWindow {
         _showStartPage = true
         toolDrawer.visible = false
         _updateEmbeddedPageState()
+    }
+
+    function _clearVehicleDisconnectNotice() {
+        _pendingDisconnectedVehicleId = ""
+        vehicleDisconnectNoticeTimer.stop()
+        _vehicleDisconnectNoticeShown = false
+    }
+
+    function _handleVehicleDisconnected(vehicleId) {
+        if (_vehicleDisconnectNoticeShown || (!_hadConnectedVehicleSession && _hasAnyConnectedVehicle())) {
+            return
+        }
+
+        _pendingDisconnectedVehicleId = vehicleId !== undefined && vehicleId !== null ? ("" + vehicleId) : ""
+        vehicleDisconnectNoticeTimer.restart()
+    }
+
+    function _showVehicleDisconnectedIfStillOffline() {
+        if (_vehicleDisconnectNoticeShown || _hasAnyConnectedVehicle()) {
+            _pendingDisconnectedVehicleId = ""
+            return
+        }
+
+        _vehicleDisconnectNoticeShown = true
+        _returnToStartPage()
+
+        const vehicleIdText = _pendingDisconnectedVehicleId
+        _pendingDisconnectedVehicleId = ""
+        const message = vehicleIdText === ""
+            ? qsTr("飞行器连接已断开。")
+            : qsTr("飞行器 %1 连接已断开。").arg(vehicleIdText)
+        QGroundControl.showMessageDialog(mainWindow, qsTr("连接断开"), message)
     }
 
     function _updateEmbeddedPageState() {
@@ -693,11 +735,22 @@ ApplicationWindow {
             radius:                 0
             border.color:           "transparent"
             border.width:           0
+            readonly property real _availableWidth: Math.max(1, width - (ScreenTools.defaultFontPixelHeight * 0.4))
+            readonly property bool _compactNavigation: _availableWidth < ScreenTools.defaultFontPixelWidth * 122
+            readonly property real _navScale: _compactNavigation ? 0.82 : 1.0
+            readonly property real _outerSpacing: ScreenTools.defaultFontPixelWidth * (_compactNavigation ? 0.35 : 0.75)
+            readonly property real _utilityButtonWidth: ScreenTools.defaultFontPixelWidth * (_compactNavigation ? 6.2 : 8.0)
+            readonly property real _utilityTextSize: Math.max(11, Math.min(ScreenTools.defaultFontPixelHeight * 0.82, _utilityButtonWidth * 0.25))
+            readonly property real _returnButtonWidth: ScreenTools.defaultFontPixelWidth * (_compactNavigation ? 9.8 : 12.8)
+            readonly property real _returnTextSize: Math.max(11, Math.min(ScreenTools.defaultFontPixelHeight * 0.84, _returnButtonWidth * 0.2))
+            readonly property real _navButtonHeight: ScreenTools.defaultFontPixelHeight * (_compactNavigation ? 2.0 : 2.2)
+            readonly property real _navIconSize: ScreenTools.defaultFontPixelHeight * (_compactNavigation ? 0.78 : 0.85)
+            readonly property real _navTextSize: Math.max(11, Math.min(ScreenTools.defaultFontPixelHeight * 0.84, _navButtonHeight * 0.52))
 
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: ScreenTools.defaultFontPixelHeight * 0.2
-                spacing:            ScreenTools.defaultFontPixelWidth * 0.75
+                spacing:            topNavigationBar._outerSpacing
 
                 Item {
                     Layout.alignment:       Qt.AlignVCenter
@@ -729,35 +782,20 @@ ApplicationWindow {
                         }
 
                         Rectangle {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 8
+                            Layout.preferredWidth:  topNavigationBar._utilityButtonWidth
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1
                             radius:                 ScreenTools.defaultFontPixelHeight * 0.3
                             color:                  "transparent"
 
                             QGCLabel {
                                 anchors.centerIn:   parent
-                                text:               qsTr("文件")
-                                color:              integratedMainView._navTextColor
-                                opacity:            0.78
-                            }
-
-                            QGCMouseArea {
-                                anchors.fill: parent
-                                onClicked: mainWindow.showSettingsTool()
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 8
-                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1
-                            radius:                 ScreenTools.defaultFontPixelHeight * 0.3
-                            color:                  "transparent"
-
-                            QGCLabel {
-                                anchors.centerIn:   parent
+                                width:              parent.width - (ScreenTools.defaultFontPixelWidth * 0.5)
                                 text:               qsTr("设置")
                                 color:              integratedMainView._navTextColor
                                 opacity:            0.78
+                                font.pixelSize:     topNavigationBar._utilityTextSize
+                                horizontalAlignment: Text.AlignHCenter
+                                elide:              Text.ElideRight
                             }
 
                             QGCMouseArea {
@@ -769,13 +807,15 @@ ApplicationWindow {
                 }
 
                 Item {
-                    Layout.fillWidth: true
-                }
-
-                Item {
                     Layout.alignment:       Qt.AlignHCenter
+                    Layout.fillWidth:       true
+                    Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 22
                     Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 102
                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.4
+                    readonly property int _tabCount: mainWindow._analyzeEnabled ? 6 : 5
+                    readonly property real _tabSpacing: ScreenTools.defaultFontPixelWidth * (topNavigationBar._compactNavigation ? 0.32 : 0.95)
+                    readonly property real _availableTabWidth: Math.max(1, width - ((_tabCount - 1) * _tabSpacing))
+                    readonly property real _tabWidth: Math.max(ScreenTools.defaultFontPixelWidth * 10.5, Math.min(ScreenTools.defaultFontPixelWidth * 24, _availableTabWidth / _tabCount))
 
                     TabBar {
                         id:             mainViewTabBar
@@ -791,22 +831,23 @@ ApplicationWindow {
                     }
 
                     Row {
+                        id:                 navigationTabRow
                         anchors.centerIn:   parent
-                        spacing:            ScreenTools.defaultFontPixelWidth * 0.95
+                        width:              Math.min(implicitWidth, parent.width)
+                        spacing:            parent._tabSpacing
 
                         Repeater {
                             model: {
-                                const uniformTabWidth = ScreenTools.defaultFontPixelWidth * 24
                                 const tabs = [
-                                    { label: qsTr("Plan"), icon: "/qmlimages/Plan.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _planTabIndex, offlineAvailable: true },
-                                    { label: qsTr("Fly"), icon: "/qmlimages/PaperPlane.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _flyTabIndex, offlineAvailable: false },
-                                    { label: qsTr("Summary"), icon: "/qmlimages/VehicleSummaryIcon.png", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _summaryTabIndex, offlineAvailable: true },
-                                    { label: qsTr("Configure"), icon: "/InstrumentValueIcons/cog.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _configureTabIndex, offlineAvailable: true }
+                                    { label: qsTr("Plan"), icon: "/qmlimages/Plan.svg", tabIndex: _planTabIndex, offlineAvailable: true },
+                                    { label: qsTr("Fly"), icon: "/qmlimages/PaperPlane.svg", tabIndex: _flyTabIndex, offlineAvailable: false },
+                                    { label: qsTr("Summary"), icon: "/qmlimages/VehicleSummaryIcon.png", tabIndex: _summaryTabIndex, offlineAvailable: true },
+                                    { label: qsTr("Configure"), icon: "/InstrumentValueIcons/cog.svg", tabIndex: _configureTabIndex, offlineAvailable: true }
                                 ]
                                 if (mainWindow._analyzeEnabled) {
-                                    tabs.push({ label: qsTr("Analyze"), icon: "/qmlimages/Analyze.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _analyzeTabIndex, offlineAvailable: false })
+                                    tabs.push({ label: qsTr("Analyze"), icon: "/qmlimages/Analyze.svg", tabIndex: _analyzeTabIndex, offlineAvailable: false })
                                 }
-                                tabs.push({ label: qsTr("Console"), icon: "/qmlimages/MAVLinkConsoleIcon.svg", width: uniformTabWidth, iconSize: ScreenTools.defaultFontPixelHeight * 0.85, tabIndex: _mavlinkConsoleTabIndex, offlineAvailable: false })
+                                tabs.push({ label: qsTr("Console"), icon: "/qmlimages/MAVLinkConsoleIcon.svg", tabIndex: _mavlinkConsoleTabIndex, offlineAvailable: false })
                                 return tabs
                             }
 
@@ -815,20 +856,24 @@ ApplicationWindow {
                                 readonly property bool selected: mainViewTabBar.currentIndex === modelData.tabIndex
                                 readonly property bool enabledForState: mainWindow._hasAnyConnectedVehicle() || !!modelData.offlineAvailable
 
-                                width:          modelData.width
-                                height:         ScreenTools.defaultFontPixelHeight * 2.2
+                                width:          navigationTabRow.parent._tabWidth
+                                height:         topNavigationBar._navButtonHeight
                                 radius:         ScreenTools.defaultFontPixelHeight * 0.22
                                 color:          selected ? integratedMainView._tabSelectedBg : "transparent"
                                 border.color:   selected ? integratedMainView._tabSelectedBorder : "transparent"
                                 border.width:   selected ? 1 : 0
 
-                                Row {
+                                RowLayout {
+                                    id:                 navigationTabContent
                                     anchors.centerIn:   parent
-                                    spacing:            ScreenTools.defaultFontPixelWidth * 0.35
+                                    width:              Math.min(implicitWidth, parent.width - (ScreenTools.defaultFontPixelWidth * (topNavigationBar._compactNavigation ? 0.7 : 1.5)))
+                                    height:             parent.height
+                                    spacing:            ScreenTools.defaultFontPixelWidth * (topNavigationBar._compactNavigation ? 0.22 : 0.35)
 
                                     Item {
-                                        width:      modelData.iconSize
-                                        height:     modelData.iconSize
+                                        Layout.alignment:       Qt.AlignVCenter
+                                        Layout.preferredWidth:  topNavigationBar._navIconSize
+                                        Layout.preferredHeight: topNavigationBar._navIconSize
 
                                         QGCColoredImage {
                                             anchors.fill:       parent
@@ -840,10 +885,20 @@ ApplicationWindow {
                                     }
 
                                     QGCLabel {
+                                        Layout.alignment:       Qt.AlignVCenter
+                                        Layout.preferredWidth:  Math.min(
+                                                                    implicitWidth,
+                                                                    Math.max(0, navigationTabContent.width - topNavigationBar._navIconSize - navigationTabContent.spacing)
+                                                                )
+                                        Layout.maximumWidth:    Layout.preferredWidth
                                         text:               modelData.label
                                         color:              integratedMainView._navTextColor
                                         opacity:            !enabledForState ? 0.32 : (selected ? 1 : 0.72)
+                                        font.pixelSize:     topNavigationBar._navTextSize
                                         font.weight:        selected ? Font.DemiBold : Font.Normal
+                                        horizontalAlignment: Text.AlignLeft
+                                        verticalAlignment:  Text.AlignVCenter
+                                        elide:              Text.ElideRight
                                     }
                                 }
 
@@ -858,10 +913,6 @@ ApplicationWindow {
                             }
                         }
                     }
-                }
-
-                Item {
-                    Layout.fillWidth: true
                 }
 
                 Item {
@@ -880,7 +931,7 @@ ApplicationWindow {
                         Rectangle {
                             id: returnToStartButton
                             visible: !mainWindow._showStartPage
-                            width: visible ? (ScreenTools.defaultFontPixelWidth * 12.8) : 0
+                            width: visible ? topNavigationBar._returnButtonWidth : 0
                             height: ScreenTools.defaultFontPixelHeight * 2.1
                             radius: ScreenTools.defaultFontPixelHeight * 0.3
                             color: returnToStartMouseArea.pressed
@@ -904,6 +955,7 @@ ApplicationWindow {
                                 QGCLabel {
                                     text: qsTr("开始")
                                     color: integratedMainView._navTextColor
+                                    font.pixelSize: topNavigationBar._returnTextSize
                                     font.weight: Font.DemiBold
                                 }
                             }
@@ -1608,8 +1660,8 @@ ApplicationWindow {
                             }
                             if (guidedController.showContinueMission) {
                                 guidedController.confirmAction(guidedController.actionContinueMission)
-                            } else if (guidedController.showStartMission) {
-                                guidedController.confirmAction(guidedController.actionStartMission)
+                            } else if (flyPageContent && flyPageContent._startMissionEntryVisible) {
+                                flyPageContent._showStartMissionSlider()
                             }
                             break
                         case "pause":
@@ -2155,6 +2207,7 @@ ApplicationWindow {
                         visible: fallbackFlyMapHost.visible &&
                                  !!flyPageContent &&
                                  !!flyPageContent.guidedController &&
+                                 flyPageContent._startMissionEntryVisible &&
                                  !flyPageContent.guidedController._vehicleFlying &&
                                  !flyPageContent.guidedController._missionActive &&
                                  !flyPageContent._startMissionSliderVisible &&
@@ -2183,9 +2236,7 @@ ApplicationWindow {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: flyPageContent.guidedController.showStartMission
-                                    ? flyPageContent.guidedController.startMissionMessage
-                                    : qsTr("按下“开始”以检查任务是否可以开始。")
+                                text: flyPageContent.guidedController.startMissionMessage
                                 color: "#E5E7EB"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
                                 horizontalAlignment: Text.AlignHCenter
@@ -3241,20 +3292,28 @@ ApplicationWindow {
                     readonly property real _fontRightLogMessage: 0.82
                     readonly property real _fontRightButtonScale: 0.82
                     readonly property var _linkManager: QGroundControl.linkManager
+                    readonly property var _autoConnectSettings: QGroundControl.settingsManager.autoConnectSettings
                     readonly property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
                     readonly property string _startPageAutoConnectConfigName: "Start Page Auto Connect"
                     property bool _serialPortAvailable: false
-                    readonly property bool _canConnect: _isConnected
-                                                           || (_availableLinkNames.length > 0)
-                                                           || (_serialPortAvailable
-                                                               && _selectedSerialPortIndex >= 0
-                                                               && _selectedSerialPortIndex < _serialPortNames.length)
+                    readonly property bool _udpConnectAvailable: !!(_autoConnectSettings
+                                                                    && _autoConnectSettings.autoConnectUDP
+                                                                    && _autoConnectSettings.autoConnectUDP.rawValue)
+                    readonly property bool _canConnect: !_connectionInProgress
+                                                           && (_isConnected
+                                                               || (_availableLinkNames.length > 0)
+                                                               || _udpConnectAvailable
+                                                               || (_serialPortAvailable
+                                                                   && _selectedSerialPortIndex >= 0
+                                                                   && _selectedSerialPortIndex < _serialPortNames.length))
                     property var _availableLinkConfigs: []
                     property var _availableLinkNames: []
                     property var _serialPortNames: []
                     property var _serialPortDisplayNames: []
                     property var _vehicleConnectionStateMap: ({})
                     property var _temporaryStartSerialConfig: null
+                    property var _temporaryStartUdpConfig: null
+                    property var _connectingConfig: null
                     property int _selectedLinkIndex: -1
                     property int _selectedSerialPortIndex: -1
                     property int _selectedBaudRate: 57600
@@ -3266,6 +3325,16 @@ ApplicationWindow {
                     property bool _autoConnectOnBoot: false
                     property int _connectedVehicleCount: 0
                     property bool _isConnected: false
+                    readonly property string _connectionStateIdle: "idle"
+                    readonly property string _connectionStateConnecting: "connecting"
+                    readonly property string _connectionStateFinishing: "finishing"
+                    property string _manualConnectionState: _connectionStateIdle
+                    readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateFinishing
+                    property real _connectionProgress: 0
+                    property int _connectionElapsedMs: 0
+                    readonly property int _connectionTimeoutMs: 6000
+                    property bool _pendingWorkspaceEntry: false
+                    property bool _manualConnectionArmed: false
                     property string _statusText: qsTr("Select a link and connect the vehicle")
                     property string _recentConnectionText: qsTr("Recent connection: No successful connection yet")
 
@@ -3289,6 +3358,103 @@ ApplicationWindow {
                         while (startEventLogModel.count > 120) {
                             startEventLogModel.remove(startEventLogModel.count - 1)
                         }
+                    }
+
+                    function _setStartPageAutoConnectPaused(paused) {
+                        if (_linkManager && _linkManager.autoConnectPaused !== undefined) {
+                            _linkManager.autoConnectPaused = paused
+                        }
+                    }
+
+                    function _beginConnectionProgress(config) {
+                        if (_linkManager) {
+                            _linkManager.clearDeferredCommunicationError()
+                            _linkManager.communicationErrorDisplayPaused = true
+                        }
+                        _connectionElapsedMs = 0
+                        _connectionProgress = 0.08
+                        _manualConnectionState = _connectionStateConnecting
+                        _pendingWorkspaceEntry = false
+                        _manualConnectionArmed = true
+                        _connectingConfig = config
+                        startConnectionCompleteTimer.stop()
+                        _statusText = qsTr("Connecting to vehicle...")
+                        _recentConnectionText = _statusText
+                    }
+
+                    function _cancelConnectionAttempt() {
+                        const config = _connectingConfig
+                        _connectingConfig = null
+
+                        if (!config) {
+                            return
+                        }
+
+                        if (config.link) {
+                            config.link.disconnect()
+                        }
+                    }
+
+                    function _finishConnectionProgress(success) {
+                        if (success) {
+                            mainWindow._clearVehicleDisconnectNotice()
+                            mainWindow._hadConnectedVehicleSession = true
+                            _connectionProgress = 1.0
+                            _pendingWorkspaceEntry = true
+                            _manualConnectionState = _connectionStateFinishing
+                            startConnectionCompleteTimer.restart()
+                            return
+                        }
+                        _cancelConnectionAttempt()
+                        _manualConnectionState = _connectionStateIdle
+                        _pendingWorkspaceEntry = false
+                        _manualConnectionArmed = false
+                        startConnectionCompleteTimer.stop()
+                        if (_linkManager) {
+                            _linkManager.communicationErrorDisplayPaused = false
+                        }
+                    }
+
+                    function _timeoutConnectionProgress() {
+                        _cancelConnectionAttempt()
+                        _manualConnectionState = _connectionStateIdle
+                        _pendingWorkspaceEntry = false
+                        _manualConnectionArmed = false
+                        _connectionProgress = 0
+                        _connectionElapsedMs = 0
+                        _connectingConfig = null
+                        startConnectionCompleteTimer.stop()
+                    }
+
+                    function _resetConnectionUiState(clearDeferredErrors = true) {
+                        startConnectionCompleteTimer.stop()
+                        _manualConnectionState = _connectionStateIdle
+                        _pendingWorkspaceEntry = false
+                        _manualConnectionArmed = false
+                        _connectionProgress = 0
+                        _connectionElapsedMs = 0
+                        _connectingConfig = null
+                        if (_linkManager) {
+                            _linkManager.communicationErrorDisplayPaused = false
+                            if (clearDeferredErrors) {
+                                _linkManager.clearDeferredCommunicationError()
+                            }
+                        }
+                    }
+
+                    function _handleDisconnectDuringManualConnection(vehicleId) {
+                        if (_manualConnectionState === _connectionStateConnecting) {
+                            return true
+                        }
+
+                        if (_manualConnectionState !== _connectionStateFinishing) {
+                            return false
+                        }
+
+                        _resetConnectionUiState()
+                        _syncConnectionState(false)
+                        mainWindow._handleVehicleDisconnected(vehicleId)
+                        return true
                     }
 
                     function _refreshLinks() {
@@ -3381,7 +3547,41 @@ ApplicationWindow {
                         startPageLinkDialogFactory.open({ editingConfig: editingConfig, originalConfig: null })
                     }
 
-                    function _refreshSerialSelection(forceRefresh = false) {
+                    function _serialPortScore(portName, displayName) {
+                        const portText = (portName + " " + displayName).toLowerCase()
+
+                        if (portText.indexOf("ttyacm") !== -1 || portText.indexOf("usbmodem") !== -1) {
+                            return 100
+                        }
+                        if (portText.indexOf("ttyusb") !== -1 || portText.indexOf("usbserial") !== -1) {
+                            return 90
+                        }
+                        if (portText.indexOf("com") === 0 || portText.indexOf(" com") !== -1) {
+                            return 80
+                        }
+                        if (portText.indexOf("ttys") !== -1) {
+                            return 10
+                        }
+
+                        return 50
+                    }
+
+                    function _bestSerialPortIndex(minimumScore = -1) {
+                        let bestIndex = -1
+                        let bestScore = -1
+
+                        for (let i = 0; i < _serialPortNames.length; i++) {
+                            const score = _serialPortScore(_serialPortNames[i], i < _serialPortDisplayNames.length ? _serialPortDisplayNames[i] : "")
+                            if (score > bestScore) {
+                                bestIndex = i
+                                bestScore = score
+                            }
+                        }
+
+                        return bestScore >= minimumScore ? bestIndex : -1
+                    }
+
+                    function _refreshSerialSelection(forceRefresh = false, preferredPortName = "", preferredDisplayName = "", chooseBestAvailable = false) {
                         if (forceRefresh && _linkManager && ScreenTools.isSerialAvailable) {
                             _linkManager.refreshSerialPorts()
                         }
@@ -3398,7 +3598,86 @@ ApplicationWindow {
                             return
                         }
 
-                        _selectedSerialPortIndex = Math.max(0, Math.min(_selectedSerialPortIndex, serialPorts.length - 1))
+                        const preferredPortIndex = preferredPortName !== "" ? _serialPortNames.indexOf(preferredPortName) : -1
+                        const preferredDisplayIndex = preferredDisplayName !== "" ? _serialPortDisplayNames.indexOf(preferredDisplayName) : -1
+                        if (preferredPortIndex >= 0) {
+                            _selectedSerialPortIndex = preferredPortIndex
+                        } else if (preferredDisplayIndex >= 0) {
+                            _selectedSerialPortIndex = preferredDisplayIndex
+                        } else if (chooseBestAvailable) {
+                            _selectedSerialPortIndex = _bestSerialPortIndex()
+                        } else {
+                            _selectedSerialPortIndex = Math.max(0, Math.min(_selectedSerialPortIndex, serialPorts.length - 1))
+                        }
+                    }
+
+                    function _selectBestDetectedSerialPort() {
+                        const bestIndex = _bestSerialPortIndex(80)
+                        if (bestIndex < 0) {
+                            return false
+                        }
+
+                        const currentScore = _selectedSerialPortIndex >= 0 && _selectedSerialPortIndex < _serialPortNames.length
+                            ? _serialPortScore(_serialPortNames[_selectedSerialPortIndex], _selectedSerialPortIndex < _serialPortDisplayNames.length ? _serialPortDisplayNames[_selectedSerialPortIndex] : "")
+                            : -1
+                        const bestScore = _serialPortScore(_serialPortNames[bestIndex], bestIndex < _serialPortDisplayNames.length ? _serialPortDisplayNames[bestIndex] : "")
+                        if (bestIndex === _selectedSerialPortIndex || (currentScore >= 0 && bestScore <= currentScore)) {
+                            return false
+                        }
+
+                        _selectedSerialPortIndex = bestIndex
+                        return true
+                    }
+
+                    function _refreshSerialSelectionAfterConnectionFailure() {
+                        const previousPortName = _selectedSerialPortName()
+                        const previousDisplayName = _selectedSerialPortDisplayName()
+                        _refreshSerialSelection(true)
+                        _selectBestDetectedSerialPort()
+
+                        const currentPortName = _selectedSerialPortName()
+                        const currentDisplayName = _selectedSerialPortDisplayName()
+                        if (currentPortName === "") {
+                            _appendEvent(qsTr("No serial ports detected after refresh"))
+                            return false
+                        }
+
+                        if (currentPortName !== previousPortName || currentDisplayName !== previousDisplayName) {
+                            _appendEvent(qsTr("Serial port refreshed: %1").arg(currentDisplayName))
+                            _statusText = qsTr("Serial port changed to %1. Click Connect Vehicle again").arg(currentDisplayName)
+                            _recentConnectionText = _statusText
+                            return true
+                        } else {
+                            _appendEvent(qsTr("Serial port list refreshed"))
+                        }
+
+                        return false
+                    }
+
+                    function _refreshSerialSelectionFromDetection(logChanges = false, forceRefresh = true) {
+                        if (_connectionInProgress || _isConnected) {
+                            return false
+                        }
+
+                        const previousPortName = _selectedSerialPortName()
+                        const previousDisplayName = _selectedSerialPortDisplayName()
+                        _refreshSerialSelection(forceRefresh)
+                        _selectBestDetectedSerialPort()
+
+                        const currentPortName = _selectedSerialPortName()
+                        const currentDisplayName = _selectedSerialPortDisplayName()
+                        if (currentPortName === "") {
+                            return false
+                        }
+
+                        const changed = currentPortName !== previousPortName || currentDisplayName !== previousDisplayName
+                        if (changed && logChanges) {
+                            _appendEvent(qsTr("Detected serial port: %1").arg(currentDisplayName))
+                            _statusText = qsTr("Detected serial port %1. Ready to connect").arg(currentDisplayName)
+                            _recentConnectionText = _statusText
+                        }
+
+                        return changed
                     }
 
                     function _selectedSerialPortName() {
@@ -3415,6 +3694,21 @@ ApplicationWindow {
                         }
 
                         return _serialPortDisplayNames[_selectedSerialPortIndex]
+                    }
+
+                    function _selectedSerialPortScore() {
+                        if (_selectedSerialPortIndex < 0 || _selectedSerialPortIndex >= _serialPortNames.length) {
+                            return -1
+                        }
+
+                        return _serialPortScore(_serialPortNames[_selectedSerialPortIndex], _selectedSerialPortIndex < _serialPortDisplayNames.length ? _serialPortDisplayNames[_selectedSerialPortIndex] : "")
+                    }
+
+                    function _udpListenPort() {
+                        const port = _autoConnectSettings && _autoConnectSettings.udpListenPort
+                            ? Number(_autoConnectSettings.udpListenPort.rawValue)
+                            : 14550
+                        return isNaN(port) || port <= 0 ? 14550 : port
                     }
 
                     function _findSavedConfigByName(name) {
@@ -3496,15 +3790,8 @@ ApplicationWindow {
                     }
 
                     function _applyStartPagePersistentSettings(connectionConfig) {
-                        if (_autoConnectOnBoot) {
-                            if (_persistStartPageAutoConnectConfig(connectionConfig)) {
-                                _appendEvent(qsTr("Auto connect on boot enabled"))
-                            } else {
-                                _appendEvent(qsTr("Auto connect on boot could not be saved for this connection"))
-                            }
-                        } else {
-                            _removeStartPageAutoConnectConfig()
-                        }
+                        _autoConnectOnBoot = false
+                        _removeStartPageAutoConnectConfig()
                     }
 
                     function _temporarySerialConfig() {
@@ -3512,7 +3799,11 @@ ApplicationWindow {
                             return null
                         }
 
-                        _refreshSerialSelection()
+                        _refreshSerialSelectionFromDetection(false)
+
+                        const previousPortName = _selectedSerialPortName()
+                        const previousDisplayName = _selectedSerialPortDisplayName()
+                        _refreshSerialSelection(true, previousPortName, previousDisplayName)
 
                         const portName = _selectedSerialPortName()
                         if (portName === "") {
@@ -3520,17 +3811,21 @@ ApplicationWindow {
                         }
 
                         let config = _temporaryStartSerialConfig
-                        if (!config) {
-                            config = _linkManager.createConfiguration(LinkConfiguration.TypeSerial, qsTr("Start Page Serial Link"))
-                            if (!config) {
-                                return null
-                            }
-
-                            config.dynamic = true
-                            _linkManager.endCreateConfiguration(config)
-                            _temporaryStartSerialConfig = config
+                        if (config && config.link) {
+                            _statusText = qsTr("Previous serial link is closing. Please try again in a moment")
+                            _recentConnectionText = _statusText
+                            config.link.disconnect()
+                            return null
                         }
 
+                        if (!config) {
+                            config = _linkManager.createConfiguration(LinkConfiguration.TypeSerial, qsTr("Start Page Serial Link"))
+                        }
+                        if (!config) {
+                            return null
+                        }
+
+                        config.dynamic = true
                         config.name = qsTr("Start Page Serial (%1)").arg(_selectedSerialPortDisplayName())
                         config.portName = portName
                         config.baud = _selectedBaudRate
@@ -3540,6 +3835,43 @@ ApplicationWindow {
                         config.parity = _selectedParity
                         config.mavlinkVersion = _selectedMavlinkVersion
                         config.autoConnect = _autoConnectOnBoot
+                        if (!_temporaryStartSerialConfig) {
+                            _linkManager.endCreateConfiguration(config)
+                            _temporaryStartSerialConfig = config
+                        }
+
+                        return config
+                    }
+
+                    function _temporaryUdpConfig() {
+                        if (!_linkManager || !_udpConnectAvailable) {
+                            return null
+                        }
+
+                        let config = _temporaryStartUdpConfig
+                        if (config && config.link) {
+                            _statusText = qsTr("Previous UDP link is closing. Please try again in a moment")
+                            _recentConnectionText = _statusText
+                            config.link.disconnect()
+                            return null
+                        }
+
+                        if (!config) {
+                            config = _linkManager.createConfiguration(LinkConfiguration.TypeUdp, qsTr("Start Page UDP Link"))
+                        }
+                        if (!config) {
+                            return null
+                        }
+
+                        config.dynamic = true
+                        config.name = qsTr("Start Page UDP (%1)").arg(_udpListenPort())
+                        config.autoConnect = true
+                        config.localPort = _udpListenPort()
+                        config.mavlinkVersion = _selectedMavlinkVersion
+                        if (!_temporaryStartUdpConfig) {
+                            _linkManager.endCreateConfiguration(config)
+                            _temporaryStartUdpConfig = config
+                        }
 
                         return config
                     }
@@ -3583,7 +3915,7 @@ ApplicationWindow {
                                     if (isConnected) {
                                         _appendEvent(qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText)))
                                     }
-                                } else if (previousState !== isConnected) {
+                                } else if (previousState !== isConnected && (isConnected || (!_connectionInProgress && !_pendingWorkspaceEntry))) {
                                     _appendEvent(
                                         isConnected
                                             ? qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText))
@@ -3595,7 +3927,7 @@ ApplicationWindow {
 
                         if (logChanges) {
                             for (const vehicleIdText in _vehicleConnectionStateMap) {
-                                if (_vehicleConnectionStateMap[vehicleIdText] && nextStates[vehicleIdText] === undefined) {
+                                if (_vehicleConnectionStateMap[vehicleIdText] && nextStates[vehicleIdText] === undefined && !_connectionInProgress && !_pendingWorkspaceEntry) {
                                     _appendEvent(qsTr("%1 disconnected").arg(_vehicleLabel(vehicleIdText)))
                                 }
                             }
@@ -3606,6 +3938,8 @@ ApplicationWindow {
                         _isConnected = connectedCount > 0
 
                         if (_isConnected) {
+                            mainWindow._hadConnectedVehicleSession = true
+                            mainWindow._clearVehicleDisconnectNotice()
                             if (_activeVehicle && _activeVehicle.id !== undefined && _activeVehicle.id !== null) {
                                 _statusText = qsTr("Vehicle %1 connected. Review settings, then click Connect Vehicle to enter").arg(_activeVehicle.id)
                                 _recentConnectionText = qsTr("Recent connection: Vehicle %1 connected").arg(_activeVehicle.id)
@@ -3618,6 +3952,19 @@ ApplicationWindow {
                             }
                         } else {
                             _statusText = qsTr("Select a link and connect the vehicle")
+                            if (!_connectionInProgress && !_pendingWorkspaceEntry) {
+                                _recentConnectionText = qsTr("No connected vehicle")
+                                _pendingWorkspaceEntry = false
+                                startConnectionCompleteTimer.stop()
+                            }
+                        }
+
+                        if (_isConnected && (_connectionInProgress || _manualConnectionArmed)) {
+                            _finishConnectionProgress(true)
+                            if (mainWindow._showStartPage) {
+                                _appendEvent(qsTr("Vehicle connected"))
+                            }
+                            return
                         }
 
                         const wasShowingStartPage = mainWindow._showStartPage
@@ -3641,6 +3988,7 @@ ApplicationWindow {
                         _syncConnectionState(false)
 
                         if (_isConnected) {
+                            mainWindow._hadConnectedVehicleSession = true
                             if (enterWorkspace) {
                                 _appendEvent(qsTr("Entering main workspace"))
                                 mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
@@ -3650,22 +3998,37 @@ ApplicationWindow {
                             return
                         }
 
+                        if (_manualConnectionArmed && _connectingConfig && _connectingConfig.link) {
+                            _beginConnectionProgress(_connectingConfig)
+                            _appendEvent(qsTr("Waiting for existing connection attempt..."))
+                            return
+                        }
+
                         let cfg = null
                         let selectedLinkConfig = null
                         if (_selectedLinkIndex >= 0 && _selectedLinkIndex < _availableLinkConfigs.length) {
                             selectedLinkConfig = _availableLinkConfigs[_selectedLinkIndex]
                         }
 
-                        if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
+                        if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp) {
+                            cfg = _temporaryUdpConfig()
+                        } else if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
                             cfg = selectedLinkConfig
                         } else {
-                            cfg = _temporarySerialConfig()
-                            if (!cfg) {
+                            const preferUdp = _udpConnectAvailable && _selectedSerialPortScore() < 80
+                            if (_serialPortAvailable && !preferUdp) {
+                                cfg = _temporarySerialConfig()
+                            }
+                            if (!cfg && _udpConnectAvailable) {
+                                cfg = _temporaryUdpConfig()
+                            }
+                            if (!cfg && !_serialPortAvailable) {
                                 cfg = selectedLinkConfig
                             }
                         }
 
                         if (!cfg) {
+                            _refreshSerialSelectionAfterConnectionFailure()
                             _appendEvent(qsTr("No available links or serial ports"))
                             return
                         }
@@ -3674,6 +4037,7 @@ ApplicationWindow {
                             cfg.mavlinkVersion = _selectedMavlinkVersion
                         }
                         _applyStartPagePersistentSettings(cfg)
+                        _beginConnectionProgress(cfg)
                         _appendEvent((enterWorkspace ? qsTr("Connecting using %1 ...") : qsTr("Testing %1 ...")).arg(cfg.name))
                         _linkManager.createConnectedLink(cfg)
                     }
@@ -3687,18 +4051,108 @@ ApplicationWindow {
                         id: startEventLogModel
                     }
 
+                    Timer {
+                        id: startSerialDetectionTimer
+                        interval: 1200
+                        repeat: true
+                        running: startPageOverlay.visible
+                                 && !startPageOverlay._connectionInProgress
+                                 && !startPageOverlay._isConnected
+
+                        onTriggered: startPageOverlay._refreshSerialSelectionFromDetection(true)
+                    }
+
+                    Timer {
+                        id: startConnectionProgressTimer
+                        interval: 250
+                        repeat: true
+                        running: startPageOverlay._connectionInProgress
+
+                        onTriggered: {
+                            if (startPageOverlay._pendingWorkspaceEntry) {
+                                return
+                            }
+
+                            startPageOverlay._connectionElapsedMs += interval
+                            if (startPageOverlay._connectionElapsedMs >= startPageOverlay._connectionTimeoutMs) {
+                                const wasUdpConnection = startPageOverlay._connectingConfig
+                                    && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
+                                startPageOverlay._timeoutConnectionProgress()
+                                startPageOverlay._appendEvent(qsTr("Vehicle connection timed out"))
+                                const portChanged = wasUdpConnection ? false : startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
+                                if (startPageOverlay._recentConnectionText === qsTr("Connecting to vehicle...")) {
+                                    startPageOverlay._statusText = wasUdpConnection
+                                        ? qsTr("UDP connection timed out. Start PX4 simulation and try again")
+                                        : qsTr("Connection timed out. Check the port and try again")
+                                    startPageOverlay._recentConnectionText = startPageOverlay._statusText
+                                }
+                                if (startPageOverlay._linkManager) {
+                                    if (portChanged) {
+                                        startPageOverlay._linkManager.clearDeferredCommunicationError()
+                                    } else {
+                                        startPageOverlay._linkManager.showDeferredCommunicationError()
+                                    }
+                                }
+                                return
+                            }
+
+                            const progressRange = 0.84
+                            startPageOverlay._connectionProgress = Math.min(0.92, 0.08 + (startPageOverlay._connectionElapsedMs / startPageOverlay._connectionTimeoutMs) * progressRange)
+                        }
+                    }
+
+                    Timer {
+                        id: startConnectionCompleteTimer
+                        interval: 450
+                        repeat: false
+
+                        onTriggered: {
+                            if (!startPageOverlay._pendingWorkspaceEntry) {
+                                return
+                            }
+
+                            if (!mainWindow._hasAnyConnectedVehicle()) {
+                                startPageOverlay._resetConnectionUiState()
+                                mainWindow._handleVehicleDisconnected("")
+                                return
+                            }
+
+                            startPageOverlay._manualConnectionState = startPageOverlay._connectionStateIdle
+                            startPageOverlay._manualConnectionArmed = false
+                            startPageOverlay._connectingConfig = null
+                            if (mainWindow._showStartPage) {
+                                startPageOverlay._appendEvent(qsTr("Entering main workspace"))
+                                mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
+                            }
+                            if (startPageOverlay._linkManager) {
+                                startPageOverlay._linkManager.communicationErrorDisplayPaused = false
+                                startPageOverlay._linkManager.showDeferredCommunicationError()
+                            }
+                            startPageOverlay._pendingWorkspaceEntry = false
+                        }
+                    }
+
                     Component.onCompleted: {
+                        _setStartPageAutoConnectPaused(visible)
                         _refreshLinks()
-                        _autoConnectOnBoot = _findSavedConfigByName(_startPageAutoConnectConfigName) !== null
+                        _autoConnectOnBoot = false
+                        _removeStartPageAutoConnectConfig()
                         _appendEvent(qsTr("Start page initialized"))
+                        _refreshSerialSelectionFromDetection(false)
                         _syncConnectionState(false)
                     }
 
                     onVisibleChanged: {
+                        _setStartPageAutoConnectPaused(visible)
                         if (visible) {
                             _refreshLinks()
-                            _autoConnectOnBoot = _findSavedConfigByName(_startPageAutoConnectConfigName) !== null
+                            _autoConnectOnBoot = false
+                            _removeStartPageAutoConnectConfig()
+                            _refreshSerialSelectionFromDetection(false)
                             _syncConnectionState(false)
+                        } else if (_linkManager && !_pendingWorkspaceEntry) {
+                            _linkManager.clearDeferredCommunicationError()
+                            _linkManager.communicationErrorDisplayPaused = false
                         }
                     }
 
@@ -3707,11 +4161,11 @@ ApplicationWindow {
                         ignoreUnknownSignals: true
 
                         function onCommPortsChanged() {
-                            startPageOverlay._refreshSerialSelection()
+                            startPageOverlay._refreshSerialSelectionFromDetection(true, false)
                         }
 
                         function onCommPortStringsChanged() {
-                            startPageOverlay._refreshSerialSelection()
+                            startPageOverlay._refreshSerialSelectionFromDetection(true, false)
                         }
                     }
 
@@ -3719,13 +4173,23 @@ ApplicationWindow {
                         target: QGroundControl.multiVehicleManager
                         ignoreUnknownSignals: true
                         function onActiveVehicleChanged(activeVehicle) {
+                            if (!activeVehicle && startPageOverlay._manualConnectionState === startPageOverlay._connectionStateConnecting) {
+                                return
+                            }
                             startPageOverlay._syncConnectionState()
                         }
                         function onVehicleAdded(vehicle) {
+                            mainWindow._clearVehicleDisconnectNotice()
                             startPageOverlay._syncConnectionState()
                         }
                         function onVehicleRemoved(vehicle) {
+                            const vehicleId = vehicle && vehicle.id !== undefined && vehicle.id !== null ? vehicle.id : ""
+                            if (startPageOverlay._handleDisconnectDuringManualConnection(vehicleId)) {
+                                return
+                            }
+                            startPageOverlay._resetConnectionUiState()
                             startPageOverlay._syncConnectionState()
+                            mainWindow._handleVehicleDisconnected(vehicleId)
                         }
                     }
 
@@ -3738,8 +4202,22 @@ ApplicationWindow {
                             target: object && object.vehicleLinkManager ? object.vehicleLinkManager : null
                             ignoreUnknownSignals: true
 
-                            function onCommunicationLostChanged() {
+                            function onCommunicationLostChanged(communicationLost) {
+                                if (communicationLost) {
+                                    const vehicleId = object && object.id !== undefined && object.id !== null ? object.id : ""
+                                    if (startPageOverlay._handleDisconnectDuringManualConnection(vehicleId)) {
+                                        return
+                                    }
+                                }
+
                                 startPageOverlay._syncConnectionState()
+                                if (communicationLost) {
+                                    const vehicleId = object && object.id !== undefined && object.id !== null ? object.id : ""
+                                    startPageOverlay._resetConnectionUiState()
+                                    mainWindow._handleVehicleDisconnected(vehicleId)
+                                } else {
+                                    mainWindow._clearVehicleDisconnectNotice()
+                                }
                             }
                         }
                     }
@@ -4193,6 +4671,7 @@ ApplicationWindow {
                                             }
                                             QGCCheckBox {
                                                 Layout.fillWidth: true
+                                                visible: false
                                                 text: qsTr("启动时自动连接")
                                                 textFontPointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
@@ -4201,12 +4680,10 @@ ApplicationWindow {
                                                 checkColor: startPageOverlay._focusColor
                                                 hoverColor: startPageOverlay._focusColor
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                checked: startPageOverlay._autoConnectOnBoot
+                                                checked: false
                                                 onToggled: {
-                                                    startPageOverlay._autoConnectOnBoot = checked
-                                                    if (!checked && !startPageOverlay._isConnected) {
-                                                        startPageOverlay._removeStartPageAutoConnectConfig()
-                                                    }
+                                                    startPageOverlay._autoConnectOnBoot = false
+                                                    startPageOverlay._removeStartPageAutoConnectConfig()
                                                 }
                                             }
                                         }
@@ -4287,36 +4764,77 @@ ApplicationWindow {
                                                 }
                                             }
                                         }
-                                        Item { Layout.fillHeight: true; Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 3.6 }
-                                        QGCLabel { Layout.fillWidth: true; text: startPageOverlay._recentConnectionText; color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
-                                        RowLayout {
+                                        Item {
+                                            Layout.fillHeight: true
+                                            Layout.minimumHeight: 0
+                                        }
+
+                                        ColumnLayout {
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
-                                            spacing: ScreenTools.defaultFontPixelWidth * 0.55
-                                            QGCButton {
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 5.0
+                                            Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 4.6
+                                            spacing: ScreenTools.defaultFontPixelHeight * 0.35
+
+                                            QGCLabel {
                                                 Layout.fillWidth: true
-                                                text: qsTr("连接飞行器")
-                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                enabled: startPageOverlay._canConnect
-                                                showBorder: true
-                                                backRadius: startPageOverlay._uiRadius
-                                                borderColor: startPageOverlay._borderColor
-                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._primaryBtnPressed : (hovered ? startPageOverlay._primaryBtnHover : startPageOverlay._primaryBtn))
-                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onClicked: startPageOverlay._connectSelected()
+                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.0
+                                                text: startPageOverlay._recentConnectionText
+                                                color: startPageOverlay._secondaryText
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta
+                                                elide: Text.ElideRight
                                             }
-                                            QGCButton {
+
+                                            Rectangle {
                                                 Layout.fillWidth: true
-                                                text: qsTr("离线访问")
-                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                showBorder: true
-                                                backRadius: startPageOverlay._uiRadius
-                                                borderColor: startPageOverlay._borderColor
-                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
-                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onClicked: startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
+                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.34
+                                                opacity: startPageOverlay._connectionInProgress ? 1 : 0
+                                                radius: height / 2
+                                                color: startPageOverlay._inputBg
+                                                border.width: 1
+                                                border.color: startPageOverlay._borderColor
+
+                                                Rectangle {
+                                                    anchors.left: parent.left
+                                                    anchors.top: parent.top
+                                                    anchors.bottom: parent.bottom
+                                                    anchors.margins: 1
+                                                    width: Math.max(height, (parent.width - 2) * startPageOverlay._connectionProgress)
+                                                    radius: height / 2
+                                                    color: startPageOverlay._focusColor
+                                                }
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                                spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+                                                QGCButton {
+                                                    Layout.fillWidth: true
+                                                    text: startPageOverlay._connectionInProgress ? qsTr("连接中...") : (startPageOverlay._isConnected ? qsTr("进入工作区") : qsTr("连接飞行器"))
+                                                    pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                    enabled: startPageOverlay._canConnect
+                                                    showBorder: true
+                                                    backRadius: startPageOverlay._uiRadius
+                                                    borderColor: startPageOverlay._borderColor
+                                                    backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._primaryBtnPressed : (hovered ? startPageOverlay._primaryBtnHover : startPageOverlay._primaryBtn))
+                                                    textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                    stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                    onClicked: startPageOverlay._connectSelected()
+                                                }
+                                                QGCButton {
+                                                    Layout.fillWidth: true
+                                                    text: qsTr("离线访问")
+                                                    pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                    enabled: !startPageOverlay._connectionInProgress
+                                                    showBorder: true
+                                                    backRadius: startPageOverlay._uiRadius
+                                                    borderColor: startPageOverlay._borderColor
+                                                    backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                    textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                    stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                    onClicked: startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
+                                                }
                                             }
                                         }
                                     }
@@ -4847,8 +5365,3 @@ ApplicationWindow {
     }
 
 }
-
-
-
-
-

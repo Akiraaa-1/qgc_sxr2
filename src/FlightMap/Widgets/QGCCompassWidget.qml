@@ -16,6 +16,7 @@ Rectangle {
     property real size:                         _defaultSize
     property var  vehicle:                      null
     property bool usedByMultipleVehicleList:    false
+    property bool showHeadingText:              true
 
     property real _defaultSize:                 usedByMultipleVehicleList ? ScreenTools.defaultFontPixelHeight * 3 : ScreenTools.defaultFontPixelHeight * 10
     property real _sizeRatio:                   (usedByMultipleVehicleList || ScreenTools.isTinyScreen) ? (size / _defaultSize) * 0.5 : size / _defaultSize
@@ -124,7 +125,7 @@ Rectangle {
     QGCLabel {
         anchors.horizontalCenter:   parent.horizontalCenter
         y:                          size * 0.74
-        text:                       vehicle && !usedByMultipleVehicleList ? _heading.toFixed(0) + "°" : ""
+        text:                       vehicle && !usedByMultipleVehicleList && showHeadingText ? _heading.toFixed(0) + "°" : ""
         horizontalAlignment:        Text.AlignHCenter
     }
 }

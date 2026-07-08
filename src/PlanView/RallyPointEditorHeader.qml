@@ -14,9 +14,10 @@ Rectangle {
     border.color: theme.borderColor
 
     property var controller ///< RallyPointController
+    property real uiScale: 1.0
 
-    readonly property real  _margin: ScreenTools.defaultFontPixelWidth / 2
-    readonly property real  _radius: ScreenTools.defaultFontPixelWidth / 2
+    readonly property real  _margin: ScreenTools.defaultFontPixelWidth * uiScale / 2
+    readonly property real  _radius: ScreenTools.defaultFontPixelWidth * uiScale / 2
 
     PlanEditorTheme { id: theme }
 
@@ -48,7 +49,7 @@ Rectangle {
             anchors.left:       parent.left
             anchors.right:      parent.right
             wrapMode:           Text.WordWrap
-            font.pointSize:     ScreenTools.smallFontPointSize
+            font.pointSize:     ScreenTools.smallFontPointSize * outerEditorRect.uiScale
             text:               qsTr("Rally Points provide alternate landing points when performing a Return to Launch (RTL).")
             color:              theme.secondaryTextColor
         }

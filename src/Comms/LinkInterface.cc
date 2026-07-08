@@ -152,6 +152,6 @@ void LinkInterface::reportMavlinkV1Traffic()
                                    "%2 is configured for MAVLink v2 on this link. "
                                    "Please ensure your vehicle is configured to use MAVLink v2, or switch this link to MAVLink 1.")
                                     .arg(linkName).arg(qgcApp()->applicationName());
-        qgcApp()->showAppMessage(message);
+        emit communicationError(QString(), message);
     }
 }

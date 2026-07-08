@@ -20,7 +20,12 @@ Item {
     readonly property int   _decimalPlaces: 8
     readonly property real  _margin: ScreenTools.defaultFontPixelHeight * 0.5
     readonly property real  _toolsMargin: ScreenTools.defaultFontPixelWidth * 0.75
-    readonly property real  _sidePanelWidth: width * 0.25
+    readonly property real  _sidePanelWidth: Math.max(ScreenTools.defaultFontPixelWidth * 30,
+                                                       Math.min(width * 0.25, ScreenTools.defaultFontPixelWidth * 46))
+    readonly property real  _planPanelTargetFontPx: Math.max(ScreenTools.defaultFontPixelHeight * 0.82,
+                                                              Math.min(ScreenTools.defaultFontPixelHeight * 1.04,
+                                                                       Math.max(12, Math.min(15, _sidePanelWidth * 0.038))))
+    readonly property real  _planPanelUiScale: Math.max(0.82, Math.min(1.18, _planPanelTargetFontPx / ScreenTools.defaultFontPixelHeight))
     readonly property real  _maxMissionSegmentLengthM: 50000
     readonly property color _selectedMissionGlowColor: Qt.rgba(0.52, 0.43, 0.96, 0.26)
     readonly property color _selectedMissionBandColor: Qt.rgba(0.56, 0.47, 0.92, 0.76)
@@ -906,6 +911,7 @@ Item {
             anchors.left: parent.left
             width: _sidePanelWidth
             dockLeft: true
+            uiScale: _planPanelUiScale
             planMasterController: _planMasterController
             editorMap: editorMap
             onEditingLayerChangeRequested: (layer) => _editingLayer = layer
@@ -1171,6 +1177,7 @@ Item {
                 Layout.fillWidth: true
                 height: ScreenTools.defaultFontPixelHeight * 7
                 missionController: _missionController
+                uiScale: _planPanelUiScale
                 visible: terrainButton.checked
                 onSetCurrentSeqNum: _missionController.setCurrentPlanViewSeqNum(seqNum, true)
             }

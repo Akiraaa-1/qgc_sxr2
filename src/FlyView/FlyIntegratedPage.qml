@@ -54,7 +54,12 @@ Item {
     property bool _startMissionUnavailableDialogVisible: false
     property string _startMissionUnavailableDialogText: ""
     property int _mapPrimarySliderAction: 0
+    property int _pendingStartMissionAttempts: 0
+    property int _pendingStartMissionSequence: -1
     property bool _useExternalStartMissionUi: false
+    readonly property bool _startMissionEntryVisible: !!guidedActionsController &&
+                                                      root._missionReadyForStart()
+    readonly property int _startMissionExecuteMaxAttempts: 12
     property bool _instrumentPanelVisible: false
     readonly property real _profilePanelTargetHeight: Math.max(ScreenTools.defaultFontPixelHeight * 12.8, height * 0.3)
     property real _profilePanelExpandedHeight: _profilePanelTargetHeight
@@ -131,13 +136,16 @@ Item {
     readonly property real _radius: ScreenTools.defaultFontPixelHeight * 0.35
     readonly property real _vehicleStatusExtraHeight: ScreenTools.realPixelDensity * 15
     readonly property real _leftPaneMinWidth: ScreenTools.defaultFontPixelWidth * 20
+    readonly property real _leftPaneMaxWidth: ScreenTools.defaultFontPixelWidth * 42
     readonly property real _rightPaneMinWidth: ScreenTools.defaultFontPixelWidth * 24
     readonly property real _leftPaneWidth: {
         const totalWidth = Number(width)
         if (isNaN(totalWidth) || totalWidth <= 0) {
             return ScreenTools.defaultFontPixelWidth * 24
         }
-        const desiredWidth = Math.max(ScreenTools.defaultFontPixelWidth * 24, totalWidth * 0.25)
+        const desiredWidth = Math.max(
+            ScreenTools.defaultFontPixelWidth * 24,
+            Math.min(totalWidth * 0.23, _leftPaneMaxWidth))
         const maxAllowedWidth = Math.max(_leftPaneMinWidth, totalWidth - _margin - _rightPaneMinWidth)
         return Math.max(_leftPaneMinWidth, Math.min(desiredWidth, maxAllowedWidth))
     }
@@ -166,6 +174,57 @@ Item {
         return Math.max(_profilePanelMinExpandedHeight, Math.min(_profilePanelMaxExpandedHeight, safeValue))
     }
     function _hasFactValue(fact) { return fact && !isNaN(Number(fact.rawValue)) }
+    function _hasStartMissionItems() {
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        return !!(missionController && missionController.containsItems)
+    }
+    function _missionPlanSyncInProgress() {
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        return !!((planControllerInternal && planControllerInternal.syncInProgress) ||
+                  (missionController && missionController.syncInProgress))
+    }
+    function _missionPlanDirtyForUpload() {
+        return !!(planControllerInternal && planControllerInternal.dirtyForUpload)
+    }
+    function _missionReadyForStart() {
+        return !!(root._activeVehicle &&
+                  root._hasStartMissionItems() &&
+                  !root._missionPlanSyncInProgress() &&
+                  !root._missionPlanDirtyForUpload())
+    }
+    function _firstStartMissionSequence() {
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        const visualItems = missionController ? missionController.visualItems : null
+        if (!visualItems || visualItems.count <= 1) {
+            return -1
+        }
+
+        for (let i = 1; i < visualItems.count; i++) {
+            const item = visualItems.get(i)
+            if (item && item.sequenceNumber !== undefined && item.sequenceNumber !== null) {
+                const sequence = Number(item.sequenceNumber)
+                if (!isNaN(sequence) && sequence >= 0) {
+                    return sequence
+                }
+            }
+        }
+
+        return -1
+    }
+    function _pendingStartMissionSequenceReady() {
+        if (root._pendingStartMissionSequence < 0) {
+            return true
+        }
+
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        const currentMissionIndex = missionController ? Number(missionController.currentMissionIndex) : NaN
+        return !isNaN(currentMissionIndex) && currentMissionIndex === root._pendingStartMissionSequence
+    }
+    function _clearPendingStartMission() {
+        root._pendingStartMissionAttempts = 0
+        root._pendingStartMissionSequence = -1
+        startMissionExecuteTimer.stop()
+    }
     function _isGuidedPanelActionAvailable(action) {
         if (!root._activeVehicle || !guidedActionsController) {
             return false
@@ -2037,6 +2096,7 @@ Item {
             return
         }
         root._hideStartMissionSlider()
+        const actionToExecute = root._mapPrimarySliderAction
         switch (root._mapPrimarySliderAction) {
         case guidedActionsController.actionArm:
             root._showStartMissionFeedback(qsTr("解锁指令已发送。起飞前请确认飞行器状态。"), false)
@@ -2048,10 +2108,21 @@ Item {
             root._showStartMissionFeedback(qsTr("继续任务指令已发送。起飞前请确认飞行器状态。"), false)
             break
         default:
-            root._showStartMissionFeedback(qsTr("开始任务指令已发送。起飞前请确认飞行器状态。"), false)
             break
         }
-        guidedActionsController.executeAction(root._mapPrimarySliderAction, undefined, 0, false)
+
+        if (actionToExecute === guidedActionsController.actionStartMission) {
+            const firstSequence = root._firstStartMissionSequence()
+            if (root._activeVehicle && firstSequence >= 0) {
+                root._pendingStartMissionAttempts = 0
+                root._pendingStartMissionSequence = firstSequence
+                root._activeVehicle.setCurrentMissionSequence(firstSequence)
+                startMissionExecuteTimer.restart()
+                return
+            }
+        }
+
+        guidedActionsController.executeAction(actionToExecute, undefined, 0, false)
     }
     function _showStartMissionFeedback(message, isError, title) {
         root._startMissionFeedbackTitle = title === undefined || title === "" ? root._mapPrimaryActionDialogTitle() : title
@@ -2180,6 +2251,12 @@ Item {
             if (!guidedActionsController._missionAvailable) {
                 return qsTr("当前没有可开始的任务。")
             }
+            if (root._missionPlanSyncInProgress()) {
+                return qsTr("航线正在上传或同步中，请等待完成后再开始任务。")
+            }
+            if (root._missionPlanDirtyForUpload()) {
+                return qsTr("航线还有未上传的修改，请先上传航线后再开始任务。")
+            }
             if (guidedActionsController._missionActive) {
                 return qsTr("任务已经处于活动状态。")
             }
@@ -2208,15 +2285,7 @@ Item {
         if (!guidedActionsController || !root._activeVehicle) {
             return "startMission"
         }
-        if (!guidedActionsController._vehicleArmed) {
-            if (guidedActionsController.showArm) {
-                return "arm"
-            }
-            if (guidedActionsController.showForceArm) {
-                return "forceArm"
-            }
-        }
-        if (guidedActionsController.showStartMission) {
+        if (root._startMissionEntryVisible) {
             return "startMission"
         }
         if (guidedActionsController.showContinueMission) {
@@ -2257,7 +2326,7 @@ Item {
         case guidedActionsController.actionContinueMission:
             return guidedActionsController.showContinueMission
         default:
-            return guidedActionsController.showStartMission
+            return guidedActionsController.showStartMission && root._missionReadyForStart()
         }
     }
     function _mapPrimaryActionMessage() {
@@ -2291,7 +2360,7 @@ Item {
     }
     function _isMapStripActionEnabled(key, requiresVehicle) {
         if (key === "startMission") {
-            return true
+            return root._startMissionEntryVisible
         }
         if (key === "locate") {
             return root._vehicleHasPosition(root._activeVehicle)
@@ -3002,7 +3071,7 @@ Item {
     }
 
     GuidedValueSlider { id: guidedValueSlider; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; visible: false; z: QGroundControl.zOrderTopMost }
-    GuidedActionsController { id: guidedActionsController; guidedValueSlider: guidedValueSlider; missionController: planControllerInternal.missionController }
+    GuidedActionsController { id: guidedActionsController; guidedValueSlider: guidedValueSlider; missionController: planControllerInternal.missionController; suppressAutomaticMissionPopups: true }
     FlyViewMissionCompleteDialog { planMasterController: planControllerInternal; geoFenceController: planControllerInternal.geoFenceController; missionController: planControllerInternal.missionController; rallyPointController: planControllerInternal.rallyPointController }
     FlyViewPreFlightChecklistPopup { id: preFlightChecklistPopup }
 
@@ -3023,6 +3092,34 @@ Item {
         interval: 2600
         repeat: false
         onTriggered: root._hideStartMissionFeedback()
+    }
+
+    Timer {
+        id: startMissionExecuteTimer
+        interval: 250
+        repeat: true
+        onTriggered: {
+            if (!root._activeVehicle || !guidedActionsController) {
+                root._clearPendingStartMission()
+                root._showStartMissionUnavailableDialog()
+                return
+            }
+
+            if (root._missionReadyForStart() &&
+                    guidedActionsController.showStartMission &&
+                    (root._pendingStartMissionAttempts >= 4 || root._pendingStartMissionSequenceReady())) {
+                root._clearPendingStartMission()
+                guidedActionsController.executeAction(guidedActionsController.actionStartMission, undefined, 0, false)
+                root._showStartMissionFeedback(qsTr("开始任务指令已发送。起飞前请确认飞行器状态。"), false)
+                return
+            }
+
+            root._pendingStartMissionAttempts++
+            if (root._pendingStartMissionAttempts >= root._startMissionExecuteMaxAttempts) {
+                root._clearPendingStartMission()
+                root._showStartMissionUnavailableDialog()
+            }
+        }
     }
 
     Timer {
@@ -3244,7 +3341,7 @@ Item {
                     return root._leftPaneWidth
                 }
                 const maxAllowedWidth = Math.max(root._leftPaneMinWidth, parentWidth - root._margin - root._rightPaneMinWidth)
-                return Math.max(root._leftPaneMinWidth, Math.min(root._leftPaneWidth, maxAllowedWidth))
+                return Math.max(root._leftPaneMinWidth, Math.min(root._leftPaneWidth, root._leftPaneMaxWidth, maxAllowedWidth))
             }
             height: parent ? parent.height : 0
             color: qgcPal.windowShadeDark
@@ -6264,7 +6361,13 @@ Item {
                     anchors.left: floatingMapStrip.right
                     anchors.leftMargin: root._margin * 0.9
                     anchors.top: floatingMapStripAnchor.top
-                    width: Math.min(parent.width * 0.46, ScreenTools.defaultFontPixelWidth * 56)
+                    width: Math.min(
+                        Math.max(ScreenTools.defaultFontPixelWidth * 32, parent.width * 0.42),
+                        Math.min(
+                            ScreenTools.defaultFontPixelWidth * 56,
+                            Math.max(ScreenTools.defaultFontPixelWidth * 24, parent.width - floatingMapStrip.width - (root._margin * 2.4))
+                        )
+                    )
                     height: Math.min(parent.height - (root._margin * 2), ScreenTools.defaultFontPixelHeight * 31)
                     visible: root._instrumentPanelVisible
                     color: Qt.rgba(0.12, 0.12, 0.13, 0.96)
@@ -6291,13 +6394,22 @@ Item {
                     readonly property bool hasAirspeed: root._hasFactValue(airSpeedFact)
                     readonly property real airSpeedValue: hasAirspeed ? Math.max(0, Number(airSpeedFact.rawValue)) : 0
                     readonly property real airSpeedNeedleRotation: Math.max(-125, Math.min(125, (airSpeedValue / 20) * 250 - 125))
-                    readonly property real _dialTitleSpacing: ScreenTools.defaultFontPixelHeight * 0.05
-                    readonly property real _dialTopPull: ScreenTools.defaultFontPixelHeight * 0.12
+                    readonly property real _layoutScale: Math.max(0.78, Math.min(1.04, Math.min(width / (ScreenTools.defaultFontPixelWidth * 56), height / (ScreenTools.defaultFontPixelHeight * 31))))
+                    readonly property real _panelMargin: ScreenTools.defaultFontPixelHeight * 0.34 * _layoutScale
+                    readonly property real _rowSpacing: ScreenTools.defaultFontPixelHeight * 0.24 * _layoutScale
+                    readonly property real _columnSpacing: ScreenTools.defaultFontPixelWidth * 0.24 * _layoutScale
+                    readonly property real _cardMargin: ScreenTools.defaultFontPixelHeight * 0.26 * _layoutScale
+                    readonly property real _headerFontSize: Math.max(10, Math.min(ScreenTools.defaultFontPixelHeight * 0.72, width * 0.04))
+                    readonly property real _labelFontSize: Math.max(9, Math.min(ScreenTools.defaultFontPixelHeight * 0.68, width * 0.038))
+                    readonly property real _valueFontSize: Math.max(10, Math.min(ScreenTools.defaultFontPixelHeight * 0.74, width * 0.044))
+                    readonly property real _dialValueFontSize: Math.max(10, Math.min(ScreenTools.defaultFontPixelHeight * 0.96, width * 0.052))
+                    readonly property real _dialTitleSpacing: ScreenTools.defaultFontPixelHeight * 0.05 * _layoutScale
+                    readonly property real _dialTopPull: ScreenTools.defaultFontPixelHeight * 0.12 * _layoutScale
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.34
-                        spacing: ScreenTools.defaultFontPixelHeight * 0.24
+                        anchors.margins: instrumentPanel._panelMargin
+                        spacing: instrumentPanel._rowSpacing
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -6307,7 +6419,8 @@ Item {
                                 text: qsTr("仪表")
                                 color: "#ECECEC"
                                 font.weight: Font.DemiBold
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                font.pixelSize: instrumentPanel._headerFontSize
+                                elide: Text.ElideRight
                             }
 
                             Item { Layout.fillWidth: true }
@@ -6324,30 +6437,34 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.5
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.24
+                            spacing: instrumentPanel._columnSpacing
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
-                                    spacing: ScreenTools.defaultFontPixelWidth * 0.22
+                                    anchors.margins: instrumentPanel._cardMargin
+                                    spacing: instrumentPanel._columnSpacing * 0.9
 
                                     QGCLabel {
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
                                         color: "#D8D9DA"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
+                                        font.pixelSize: instrumentPanel._labelFontSize
+                                        elide: Text.ElideRight
                                         text: qsTr("飞行时间")
                                     }
 
                                     QGCLabel {
                                         color: "#EFEFEF"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.74
+                                        font.pixelSize: instrumentPanel._valueFontSize
                                         font.weight: Font.DemiBold
+                                        horizontalAlignment: Text.AlignRight
                                         text: root._formatElapsedTime(instrumentPanel.flightTimeFact)
                                     }
                                 }
@@ -6355,19 +6472,22 @@ Item {
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
-                                    spacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                    anchors.margins: instrumentPanel._cardMargin
+                                    spacing: instrumentPanel._columnSpacing * 0.75
 
                                     QGCLabel {
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
                                         color: "#D8D9DA"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
+                                        font.pixelSize: instrumentPanel._labelFontSize
+                                        elide: Text.ElideRight
                                         text: qsTr("电池")
                                     }
 
@@ -6387,8 +6507,9 @@ Item {
                                                ? (Number(instrumentPanel.batteryFact.rawValue) <= 20 ? "#E35F63"
                                                   : (Number(instrumentPanel.batteryFact.rawValue) <= 40 ? "#D0B34D" : "#2DC46D"))
                                                : "#E0E0E0"
-                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.74
+                                        font.pixelSize: instrumentPanel._valueFontSize
                                         font.weight: Font.DemiBold
+                                        horizontalAlignment: Text.AlignRight
                                         text: root._formatFactValue(instrumentPanel.batteryFact, true, "--")
                                     }
                                 }
@@ -6398,20 +6519,21 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.24
+                            spacing: instrumentPanel._columnSpacing
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("姿态"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("姿态"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6429,26 +6551,52 @@ Item {
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("航向"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("航向"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
 
-                                        QGCCompassWidget {
-                                            anchors.centerIn: parent
-                                            size: Math.min(parent.width, parent.height) * 0.84
-                                            vehicle: instrumentPanel._vehicle
+                                        Item {
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.top: parent.top
+                                            anchors.bottom: integratedHeadingValueLabel.top
+                                            anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.08
+
+                                            QGCCompassWidget {
+                                                anchors.centerIn: parent
+                                                size: Math.min(parent.width, parent.height) * 0.84
+                                                vehicle: instrumentPanel._vehicle
+                                                showHeadingText: false
+                                            }
+                                        }
+
+                                        QGCLabel {
+                                            id: integratedHeadingValueLabel
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            anchors.bottom: parent.bottom
+                                            width: parent.width
+                                            height: ScreenTools.defaultFontPixelHeight * 1.05
+                                            color: "#F1F1F1"
+                                            font.pixelSize: instrumentPanel._dialValueFontSize * 0.82
+                                            fontSizeMode: Text.Fit
+                                            minimumPixelSize: 8
+                                            font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                            text: root._hasFactValue(instrumentPanel.headingFact) ? (Number(instrumentPanel.headingFact.rawValue).toFixed(0) + "\u00B0") : "--"
                                         }
                                     }
                                 }
@@ -6458,20 +6606,21 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.24
+                            spacing: instrumentPanel._columnSpacing
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("高度"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("高度"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6491,9 +6640,15 @@ Item {
 
                                         QGCLabel {
                                             anchors.centerIn: altitudeDial
+                                            width: altitudeDial.width * 0.78
+                                            height: altitudeDial.height * 0.32
                                             color: "#F1F1F1"
-                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 1.02
+                                            font.pixelSize: instrumentPanel._dialValueFontSize
+                                            fontSizeMode: Text.Fit
+                                            minimumPixelSize: 8
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: root._formatFactValue(instrumentPanel.altitudeFact, true, "--")
                                         }
                                     }
@@ -6502,16 +6657,17 @@ Item {
 
                             Rectangle {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("空速"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("空速"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6579,9 +6735,15 @@ Item {
 
                                         QGCLabel {
                                             anchors.centerIn: airSpeedDial
+                                            width: airSpeedDial.width * 0.76
+                                            height: airSpeedDial.height * 0.3
                                             color: "#F1F1F1"
-                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.96
+                                            font.pixelSize: instrumentPanel._dialValueFontSize
+                                            fontSizeMode: Text.Fit
+                                            minimumPixelSize: 8
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: root._formatFactValue(instrumentPanel.airSpeedFact, true, "--")
                                         }
                                     }
@@ -6592,21 +6754,22 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.24
+                            spacing: instrumentPanel._columnSpacing
 
                             Rectangle {
                                 id: turnCoordinatorCard
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("转弯协调仪"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("转弯协调仪"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6646,9 +6809,15 @@ Item {
                                         QGCLabel {
                                             anchors.horizontalCenter: turnDial.horizontalCenter
                                             anchors.bottom: parent.bottom
+                                            width: parent.width
+                                            height: ScreenTools.defaultFontPixelHeight * 1.05
                                             color: "#F1F1F1"
-                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.88
+                                            font.pixelSize: instrumentPanel._dialValueFontSize * 0.92
+                                            fontSizeMode: Text.Fit
+                                            minimumPixelSize: 8
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: instrumentPanel.hasTurnValue ? root._formatSignedValue(instrumentPanel.turnValue, 0, "\u00B0") : "--"
                                         }
                                     }
@@ -6658,16 +6827,17 @@ Item {
                             Rectangle {
                                 id: verticalSpeedCard
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 Layout.fillHeight: true
                                 color: Qt.rgba(1, 1, 1, 0.06)
                                 radius: ScreenTools.defaultFontPixelHeight * 0.08
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.26
+                                    anchors.margins: instrumentPanel._cardMargin
                                     spacing: instrumentPanel._dialTitleSpacing
 
-                                    QGCLabel { color: "#D8D9DA"; text: qsTr("垂直速度"); font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68 }
+                                    QGCLabel { Layout.fillWidth: true; Layout.minimumWidth: 0; color: "#D8D9DA"; text: qsTr("垂直速度"); font.pixelSize: instrumentPanel._labelFontSize; elide: Text.ElideRight }
 
                                     Item {
                                         Layout.topMargin: -instrumentPanel._dialTopPull
@@ -6706,9 +6876,15 @@ Item {
 
                                         QGCLabel {
                                             anchors.centerIn: verticalSpeedDial
+                                            width: verticalSpeedDial.width * 0.76
+                                            height: verticalSpeedDial.height * 0.3
                                             color: "#F1F1F1"
-                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.88
+                                            font.pixelSize: instrumentPanel._dialValueFontSize * 0.92
+                                            fontSizeMode: Text.Fit
+                                            minimumPixelSize: 8
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                             text: root._formatFactValue(instrumentPanel.climbRateFact, true, "--")
                                         }
                                     }
@@ -7222,7 +7398,7 @@ Item {
 
                             Rectangle {
                                 id: startMissionMapButton
-                                visible: !root._useExternalStartMissionUi
+                                visible: !root._useExternalStartMissionUi && root._startMissionEntryVisible
                                 Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 2.9
                                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.9
                                 Layout.minimumWidth: ScreenTools.defaultFontPixelHeight * 2.9

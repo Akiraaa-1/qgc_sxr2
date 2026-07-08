@@ -20,6 +20,7 @@ Rectangle {
 
     required property var missionItem
     required property real availableWidth
+    property real uiScale: 1.0
 
     property bool   transectAreaDefinitionComplete: true
     property string transectAreaDefinitionHelp:     _internalError

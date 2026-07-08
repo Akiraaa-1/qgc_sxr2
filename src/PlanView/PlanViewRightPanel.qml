@@ -9,14 +9,15 @@ Item {
     required property var editorMap
     required property var planMasterController
     property bool dockLeft: false
+    property real uiScale: 1.0
 
     signal editingLayerChangeRequested(int layer)
 
     id: root
 
     property var  _missionController: planMasterController.missionController
-    property real _toolsMargin:       ScreenTools.defaultFontPixelWidth * 0.75
-    property real _panelRadius:       8
+    property real _toolsMargin:       ScreenTools.defaultFontPixelWidth * 0.75 * uiScale
+    property real _panelRadius:       8 * uiScale
 
     PlanEditorTheme { id: theme }
 
@@ -70,7 +71,7 @@ Item {
 
         Rectangle {
             id:             toggleButtonRect
-            width:          ScreenTools.defaultFontPixelWidth * 2.25
+            width:          ScreenTools.defaultFontPixelWidth * 2.25 * root.uiScale
             height:         width * 3
             radius:         _panelRadius
             color:          toggleArea.pressed ? theme.panelPressedColor : (toggleArea.containsMouse ? theme.panelHoverColor : theme.panelColor)
@@ -130,6 +131,7 @@ Item {
             anchors.fill:           parent
             editorMap:              root.editorMap
             planMasterController:   root.planMasterController
+            uiScale:                root.uiScale
             onEditingLayerChangeRequested: (layer) => root.editingLayerChangeRequested(layer)
         }
     }

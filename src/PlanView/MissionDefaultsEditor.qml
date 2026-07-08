@@ -13,6 +13,7 @@ Rectangle {
     required property var missionController
     required property var planMasterController
 
+    property real uiScale: 1.0
     property var _controllerVehicle: planMasterController.controllerVehicle
     property var _visualItems: missionController.visualItems
     property bool _noMissionItemsAdded: _visualItems ? _visualItems.count <= 1 : true
@@ -20,7 +21,7 @@ Rectangle {
     property bool _showVehicleSpeeds: false
     property bool _showCruiseSpeed: _controllerVehicle ? !_controllerVehicle.multiRotor : false
     property bool _showHoverSpeed: _controllerVehicle ? (_controllerVehicle.multiRotor || _controllerVehicle.vtol) : false
-    property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16
+    property real _fieldWidth: ScreenTools.defaultFontPixelWidth * 16 * uiScale
 
     function _altitudeFrameExtraUnitsText(altFrame) {
         switch (altFrame) {
@@ -145,7 +146,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                font.pointSize: ScreenTools.smallFontPointSize
+                font.pointSize: ScreenTools.smallFontPointSize * _root.uiScale
                 text: qsTr("以下速度值用于计算任务总时间，不会影响任务的实际飞行速度。")
                 color: theme.secondaryTextColor
             }

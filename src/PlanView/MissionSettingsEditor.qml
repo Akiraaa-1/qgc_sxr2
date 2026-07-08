@@ -16,6 +16,7 @@ Rectangle {
 
     required property var missionItem
     required property real availableWidth
+    property real uiScale: 1.0
 
     property var _masterController: missionItem.masterController
     property var _controllerVehicle: _masterController.controllerVehicle
@@ -23,7 +24,7 @@ Rectangle {
     property bool _showCameraSection: _waypointsOnlyMode || QGroundControl.corePlugin.showAdvancedUI
     property bool _simpleMissionStart: QGroundControl.corePlugin.options.showSimpleMissionStart
 
-    readonly property real _margin: ScreenTools.defaultFontPixelWidth / 2
+    readonly property real _margin: ScreenTools.defaultFontPixelWidth * uiScale / 2
 
     QGCPalette { id: qgcPal }
 
@@ -33,7 +34,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: ScreenTools.defaultFontPixelHeight / 2
+        spacing: ScreenTools.defaultFontPixelHeight * root.uiScale / 2
 
         Column {
             Layout.fillWidth: true
@@ -45,6 +46,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 missionItem: root.missionItem
+                uiScale: root.uiScale
                 visible: _showCameraSection
                 showSectionHeader: false
 
@@ -57,7 +59,7 @@ Rectangle {
                 text: qsTr("以上相机命令将在任务开始时立即生效。")
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
-                font.pointSize: ScreenTools.smallFontPointSize
+                font.pointSize: ScreenTools.smallFontPointSize * root.uiScale
                 visible: _showCameraSection && cameraSection.checked
             }
         }

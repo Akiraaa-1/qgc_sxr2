@@ -11,6 +11,8 @@ QGC_LOGGING_CATEGORY(SerialLinkLog, "Comms.SerialLink")
 namespace {
     constexpr int CONNECT_TIMEOUT_MS = 1000;
     constexpr int DISCONNECT_TIMEOUT_MS = 3000;
+    constexpr int PORT_RETRY_INTERVAL_MS = 1000;
+    constexpr int PORT_RETRY_TIMEOUT_MS = 5000;
 }
 
 /*===========================================================================*/
@@ -224,8 +226,19 @@ void SerialWorker::setupPort()
 
 void SerialWorker::connectToPort()
 {
+    _connectRequested = true;
+    _portRetryElapsedMSecs = 0;
+    _connectToPort();
+}
+
+void SerialWorker::_connectToPort()
+{
     if (isConnected()) {
         qCWarning(SerialLinkLog) << "Already connected to" << _port->portName();
+        return;
+    }
+
+    if (!_connectRequested) {
         return;
     }
 
@@ -233,7 +246,14 @@ void SerialWorker::connectToPort()
 
     const QGCSerialPortInfo portInfo(*_port);
     if (portInfo.isBootloader()) {
-        qCWarning(SerialLinkLog) << "Not connecting to bootloader" << _port->portName();
+        if (_portRetryElapsedMSecs < PORT_RETRY_TIMEOUT_MS) {
+            qCWarning(SerialLinkLog) << "Waiting for bootloader to finish" << _port->portName();
+            _portRetryElapsedMSecs += PORT_RETRY_INTERVAL_MS;
+            QTimer::singleShot(PORT_RETRY_INTERVAL_MS, this, &SerialWorker::_connectToPort);
+            return;
+        }
+
+        qCWarning(SerialLinkLog) << "Not connecting to bootloader after retry timeout" << _port->portName();
         emit errorOccurred(tr("Not connecting to a bootloader"));
         _onPortDisconnected();
         return;
@@ -244,6 +264,13 @@ void SerialWorker::connectToPort()
     qCDebug(SerialLinkLog) << "Attempting to open port" << _port->portName();
     if (!_port->open(QIODevice::ReadWrite)) {
         qCWarning(SerialLinkLog) << "Opening port" << _port->portName() << "failed:" << _port->errorString();
+
+        if (_connectRequested && (_port->error() == QSerialPort::DeviceNotFoundError) && (_portRetryElapsedMSecs < PORT_RETRY_TIMEOUT_MS)) {
+            qCWarning(SerialLinkLog) << "Waiting for serial device node to appear" << _port->portName();
+            _portRetryElapsedMSecs += PORT_RETRY_INTERVAL_MS;
+            QTimer::singleShot(PORT_RETRY_INTERVAL_MS, this, &SerialWorker::_connectToPort);
+            return;
+        }
 
         // If auto-connect is enabled, we don't want to emit an error for PermissionError from devices already in use
         if (!_errorEmitted && (!_serialConfig->isAutoConnect() || _port->error() != QSerialPort::PermissionError)) {
@@ -256,11 +283,15 @@ void SerialWorker::connectToPort()
         return;
     }
 
+    _portRetryElapsedMSecs = 0;
     _onPortConnected();
 }
 
 void SerialWorker::disconnectFromPort()
 {
+    _connectRequested = false;
+    _portRetryElapsedMSecs = 0;
+
     if (!isConnected()) {
         qCDebug(SerialLinkLog) << "Already disconnected from port:" << _port->portName();
         return;
@@ -327,6 +358,9 @@ void SerialWorker::_onPortConnected()
 void SerialWorker::_onPortDisconnected()
 {
     qCDebug(SerialLinkLog) << "Port disconnected:" << _port->portName();
+
+    _connectRequested = false;
+    _portRetryElapsedMSecs = 0;
 
     if (_timer) {
         _timer->stop();
@@ -452,8 +486,10 @@ bool SerialLink::_connect()
 
 void SerialLink::disconnect()
 {
-    if (isConnected()) {
-        (void) QMetaObject::invokeMethod(_worker, "disconnectFromPort", Qt::QueuedConnection);
+    const bool connected = isConnected();
+    (void) QMetaObject::invokeMethod(_worker, "disconnectFromPort", Qt::QueuedConnection);
+    if (!connected) {
+        _onDisconnected();
     }
 }
 

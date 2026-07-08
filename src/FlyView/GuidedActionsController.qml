@@ -19,6 +19,7 @@ Item {
     property var guidedValueSlider
     property var fwdFlightGotoMapCircle
     property var orbitMapCircle
+    property bool suppressAutomaticMissionPopups: false
 
     readonly property string emergencyStopTitle:            qsTr("EMERGENCY STOP")
     readonly property string armTitle:                      qsTr("Arm")
@@ -270,6 +271,7 @@ Item {
         }
         _outputState()
         if (showStartMission &&
+            !suppressAutomaticMissionPopups &&
             _flyViewSettings.enableAutomaticMissionPopups.rawValue) {
             confirmAction(actionStartMission)
         }
@@ -280,6 +282,7 @@ Item {
         }
         _outputState()
         if (showContinueMission &&
+            !suppressAutomaticMissionPopups &&
             _flyViewSettings.enableAutomaticMissionPopups.rawValue) {
             confirmAction(actionContinueMission)
         }

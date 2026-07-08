@@ -125,6 +125,7 @@ public slots:
     void writeData(const QByteArray &data);
 
 private slots:
+    void _connectToPort();
     void _onPortConnected();
     void _onPortDisconnected();
     void _onPortReadyRead();
@@ -137,6 +138,8 @@ private:
     QSerialPort *_port = nullptr;
     QTimer *_timer = nullptr;
     bool _errorEmitted = false;
+    bool _connectRequested = false;
+    int _portRetryElapsedMSecs = 0;
 };
 
 /*===========================================================================*/

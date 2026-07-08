@@ -80,7 +80,7 @@ void QGeoTiledMapReplyQGC::_initDataFromResources()
     }
 
     if (_badTile.isEmpty()) {
-        QFile file(":/res/images/notile.png");
+        QFile file(":/res/notile.png");
         if (file.open(QFile::ReadOnly)) {
             _badTile = file.readAll();
             file.close();

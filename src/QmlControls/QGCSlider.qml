@@ -8,17 +8,26 @@ Slider {
     property bool zeroCentered: false ///< Value indicator starts display from zero instead of min value
     property bool displayValue: false ///< true: Show value on handle
     property bool showBoundaryValues: false ///< true: Show min/max values at slider ends
+    property bool reserveBoundaryLabelSpace: false ///< true: keep handle/track above boundary labels
+    property real boundaryLabelGap: 0
 
     id: control
-    implicitHeight: ScreenTools.implicitSliderHeight + (showBoundaryValues ? minLabel.contentHeight : 0)
+    implicitHeight: ScreenTools.implicitSliderHeight
+                    + (showBoundaryValues ? Math.max(minLabel.contentHeight, maxLabel.contentHeight) : 0)
+                    + (showBoundaryValues && reserveBoundaryLabelSpace ? boundaryLabelGap : 0)
     leftPadding: 0
     rightPadding: 0
     topPadding: 0
-    bottomPadding: 0
+    bottomPadding: showBoundaryValues && reserveBoundaryLabelSpace
+                   ? Math.max(minLabel.contentHeight, maxLabel.contentHeight) + boundaryLabelGap
+                   : 0
     wheelEnabled: false
 
     property real _implicitBarLength: Math.round(ScreenTools.defaultFontPixelWidth * 20)
-    property real _barHeight: Math.round(ScreenTools.defaultFontPixelHeight / 3)
+    property real barHeight: ScreenTools.defaultFontPixelHeight / 3
+    property real handleDiameter: ScreenTools.defaultFontPixelHeight
+    property real labelPointSize: ScreenTools.smallFontPointSize
+    property real _barHeight: Math.round(barHeight)
     property color trackColor: qgcPal.button
     property color trackBorderColor: qgcPal.buttonText
     property color handleColor: qgcPal.button
@@ -54,14 +63,14 @@ Slider {
         border.width: 1
         radius: _radius
 
-        property real _radius: ScreenTools.defaultFontPixelHeight / 2
+        property real _radius: control.handleDiameter / 2
 
         Label {
             text: control.value.toFixed(control.to <= 1 ? 1 : 0)
             visible: control.displayValue
             anchors.centerIn: parent
             font.family: ScreenTools.normalFontFamily
-            font.pointSize: ScreenTools.smallFontPointSize
+            font.pointSize: control.labelPointSize
             color: control.labelColor
         }
     }
@@ -72,7 +81,7 @@ Slider {
         anchors.leftMargin: control.leftPadding
         anchors.bottom: parent.bottom
         text: control.from.toFixed(1)
-        font.pointSize: ScreenTools.smallFontPointSize
+        font.pointSize: control.labelPointSize
         color: control.labelColor
         visible: control.showBoundaryValues
     }
@@ -83,7 +92,7 @@ Slider {
         anchors.rightMargin: control.rightPadding
         anchors.bottom: parent.bottom
         text: control.to.toFixed(1)
-        font.pointSize: ScreenTools.smallFontPointSize
+        font.pointSize: control.labelPointSize
         color: control.labelColor
         visible: control.showBoundaryValues
     }

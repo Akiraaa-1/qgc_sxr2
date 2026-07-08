@@ -12,10 +12,11 @@ Rectangle {
     clip:       true
 
     property var missionController
+    property real uiScale: 1.0
 
     signal setCurrentSeqNum(int seqNum)
 
-    property real _margins:                 ScreenTools.defaultFontPixelWidth / 2
+    property real _margins:                 ScreenTools.defaultFontPixelWidth * uiScale / 2
     property var  _visualItems:             missionController.visualItems
     property real _altRange:                _maxAMSLAltitude - _minAMSLAltitude
     property real _indicatorSpacing:        5
@@ -30,7 +31,7 @@ Rectangle {
         id:                     titleLabel
         anchors.top:            parent.bottom
         width:                  parent.height
-        font.pointSize:         ScreenTools.smallFontPointSize
+        font.pointSize:         ScreenTools.smallFontPointSize * root.uiScale
         text:                   qsTr("Height AMSL (%1)").arg(_unitsConversion.appSettingsVerticalDistanceUnitsString)
         horizontalAlignment:    Text.AlignHCenter
         rotation:               -90

@@ -11,6 +11,7 @@ import QGroundControl.PlanView
 Rectangle {
     required property var missionItem
     required property real availableWidth
+    property real uiScale: 1.0
 
     id: root
     width: availableWidth
@@ -22,13 +23,13 @@ Rectangle {
 
 
     property bool _specifiesAltitude: missionItem.specifiesAltitude
-    property real _margin: ScreenTools.defaultFontPixelHeight / 2
-    property real _altRectMargin: ScreenTools.defaultFontPixelWidth / 2
+    property real _margin: ScreenTools.defaultFontPixelHeight * uiScale / 2
+    property real _altRectMargin: ScreenTools.defaultFontPixelWidth * uiScale / 2
     property var _controllerVehicle: missionItem.masterController.controllerVehicle
     property int _globalAltFrame: missionItem.masterController.missionController.globalAltitudeFrame
     property bool _globalAltFrameIsMixed: _globalAltFrame == QGroundControl.AltitudeFrameMixed
-    property real _radius: ScreenTools.defaultFontPixelWidth / 2
-    property real _fieldSpacing: ScreenTools.defaultFontPixelHeight / 2
+    property real _radius: ScreenTools.defaultFontPixelWidth * uiScale / 2
+    property real _fieldSpacing: ScreenTools.defaultFontPixelHeight * uiScale / 2
 
     PlanEditorTheme { id: theme }
 
@@ -63,6 +64,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
                 color: theme.secondaryTextColor
+                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
             }
 
             QGCLabel {
@@ -71,6 +73,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
                 color: theme.secondaryTextColor
+                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
             }
 
             PlanButton {
@@ -91,6 +94,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: missionItem.isTakeoffItem && !missionItem.launchCoordinate.isValid
                 color: theme.secondaryTextColor
+                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
             }
         }
 
@@ -165,6 +169,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: qsTr("高度框架")
                             color: theme.secondaryTextColor
+                            font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
                         }
 
                         AltFrameCombo {
@@ -179,6 +184,7 @@ Rectangle {
                         Layout.fillWidth: true
                         label: qsTr("高度%1").arg(_extraLabelText())
                         fact: missionItem.altitude
+                        uiScale: root.uiScale
 
                         function _extraLabelText() {
                             return qsTr(" (%1)").arg(QGroundControl.altitudeFrameExtraUnits(missionItem.altitudeFrame))
@@ -186,7 +192,7 @@ Rectangle {
                     }
 
                     QGCLabel {
-                        font.pointSize: ScreenTools.smallFontPointSize
+                        font.pointSize: ScreenTools.smallFontPointSize * root.uiScale
                         text: qsTr("实际发送的 AMSL 高度：%1 %2").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
                         visible: missionItem.altitudeFrame === QGroundControl.AltitudeFrameCalcAboveTerrain
                         color: theme.secondaryTextColor
@@ -205,7 +211,7 @@ Rectangle {
                             spacing: 0
 
                             QGCLabel {
-                                font.pointSize: ScreenTools.smallFontPointSize
+                                font.pointSize: ScreenTools.smallFontPointSize * root.uiScale
                                 text: object.name
                                 visible: object.name !== ""
                                 color: theme.secondaryTextColor
@@ -216,6 +222,7 @@ Rectangle {
                                 indexModel: false
                                 model: object.enumStrings
                                 fact: object
+                                uiScale: root.uiScale
                             }
                         }
                     }
@@ -229,6 +236,7 @@ Rectangle {
                         label: object.name
                         fact: object
                         enabled: !object.readOnly
+                        uiScale: root.uiScale
                     }
                 }
 
@@ -241,6 +249,7 @@ Rectangle {
                         fact: object
                         showEnableCheckbox: true
                         enableCheckBoxChecked: !isNaN(object.rawValue)
+                        uiScale: root.uiScale
 
                         onEnableCheckboxClicked: object.rawValue = enableCheckBoxChecked ? 0 : NaN
                     }
@@ -253,6 +262,7 @@ Rectangle {
                     showEnableCheckbox: true
                     enableCheckBoxChecked: missionItem.speedSection.specifyFlightSpeed
                     visible: missionItem.speedSection.available
+                    uiScale: root.uiScale
 
                     onEnableCheckboxClicked: missionItem.speedSection.specifyFlightSpeed = enableCheckBoxChecked
                 }
@@ -262,6 +272,7 @@ Rectangle {
                 Layout.fillWidth: true
                 showSectionHeader: false
                 missionItem: root.missionItem
+                uiScale: root.uiScale
                 visible: tabBar.currentIndex === 1
 
                 Component.onCompleted: checked = missionItem.cameraSection.settingsSpecified
@@ -284,7 +295,7 @@ Rectangle {
                             spacing: 0
 
                             QGCLabel {
-                                font.pointSize: ScreenTools.smallFontPointSize
+                                font.pointSize: ScreenTools.smallFontPointSize * root.uiScale
                                 text: object.name
                                 visible: object.name !== ""
                                 color: theme.secondaryTextColor
@@ -295,6 +306,7 @@ Rectangle {
                                 indexModel: false
                                 model: object.enumStrings
                                 fact: object
+                                uiScale: root.uiScale
                             }
                         }
                     }
@@ -308,6 +320,7 @@ Rectangle {
                         label: object.name
                         fact: object
                         enabled: !object.readOnly
+                        uiScale: root.uiScale
                     }
                 }
 
@@ -320,6 +333,7 @@ Rectangle {
                         fact: object
                         showEnableCheckbox: true
                         enableCheckBoxChecked: !isNaN(object.rawValue)
+                        uiScale: root.uiScale
 
                         onEnableCheckboxClicked: object.rawValue = enableCheckBoxChecked ? 0 : NaN
                     }
