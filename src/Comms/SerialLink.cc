@@ -1,6 +1,7 @@
 #include "SerialLink.h"
 #include "QGCLoggingCategory.h"
 #include "QGCSerialPortInfo.h"
+#include <QtCore/QFileInfo>
 #include <QtCore/QSettings>
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
@@ -173,7 +174,8 @@ QString SerialConfiguration::cleanPortDisplayName(const QString &name)
         }
     }
 
-    return QString();
+    const QFileInfo portFile(name);
+    return portFile.fileName().isEmpty() ? name : portFile.fileName();
 }
 
 /*===========================================================================*/

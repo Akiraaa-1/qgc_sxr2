@@ -27,6 +27,8 @@
 #endif
 
 #include <QtCore/QApplicationStatic>
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 #include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(LinkManagerLog, "Comms.LinkManager")
@@ -701,6 +703,32 @@ bool LinkManager::isLinkUSBDirect(const LinkInterface *link)
 
 #ifndef QGC_NO_SERIAL_LINK // Serial Only Functions
 
+#ifdef Q_OS_LINUX
+static void appendLinuxSerialDeviceNodes(QStringList &ports, QStringList &displayPorts)
+{
+    static const QStringList deviceNameFilters = {
+        QStringLiteral("ttyACM*"),
+        QStringLiteral("ttyUSB*"),
+        QStringLiteral("ttyAMA*"),
+        QStringLiteral("ttyTHS*"),
+        QStringLiteral("ttyXRUSB*"),
+        QStringLiteral("rfcomm*"),
+    };
+
+    const QDir devDir(QStringLiteral("/dev"));
+    const QFileInfoList deviceNodes = devDir.entryInfoList(deviceNameFilters, QDir::Files | QDir::System | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo &deviceNode : deviceNodes) {
+        const QString port = deviceNode.absoluteFilePath();
+        if (ports.contains(port)) {
+            continue;
+        }
+
+        ports += port;
+        displayPorts += deviceNode.fileName();
+    }
+}
+#endif
+
 void LinkManager::_filterCompositePorts(QList<QGCSerialPortInfo> &portList)
 {
     typedef QPair<quint16, quint16> VidPidPair_t;
@@ -900,9 +928,17 @@ void LinkManager::_updateSerialPorts()
     const QList<QGCSerialPortInfo> portList = QGCSerialPortInfo::availablePorts();
     for (const QGCSerialPortInfo &info: portList) {
         const QString port = info.systemLocation().trimmed();
+        if (port.isEmpty()) {
+            continue;
+        }
+
         _commPortList += port;
         _commPortDisplayList += SerialConfiguration::cleanPortDisplayName(port);
     }
+
+#ifdef Q_OS_LINUX
+    appendLinuxSerialDeviceNodes(_commPortList, _commPortDisplayList);
+#endif
 
     if (_commPortList != previousPortList) {
         emit commPortsChanged();
