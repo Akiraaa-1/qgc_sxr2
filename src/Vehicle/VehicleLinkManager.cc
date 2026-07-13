@@ -74,7 +74,7 @@ void VehicleLinkManager::_commRegainedOnLink(LinkInterface *link)
     // Try to switch to another link
     QString primarySwitchMessage;
     if (_updatePrimaryLink()) {
-        primarySwitchMessage = tr("%1Switching communication to new primary link").arg(_vehicle->_vehicleIdSpeech());
+        primarySwitchMessage = tr("%1正在切换通信到新的主链路").arg(_vehicle->_vehicleIdSpeech());
     }
 
     if (!commRegainedMessage.isEmpty()) {
@@ -145,7 +145,7 @@ void VehicleLinkManager::_commLostCheck()
     }
 
     if (_updatePrimaryLink()) {
-        QString msg = tr("%1Switching communication to secondary link.").arg(_vehicle->_vehicleIdSpeech());
+        QString msg = tr("%1正在切换通信到备用链路。").arg(_vehicle->_vehicleIdSpeech());
         AudioOutput::instance()->say(msg.toLower());
         qgcApp()->showAppMessage(msg);
     }

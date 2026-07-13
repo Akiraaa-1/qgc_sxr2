@@ -121,42 +121,12 @@ Item {
 
             if (_planMasterController.syncInProgress) {
                 _toolStripUploadInProgress = true
-                uploadStartWatchdog.stop()
                 return
             }
 
             if (_toolStripUploadInProgress) {
                 _toolStripUploadInProgress = false
-                _toolStripUploadRequested = false
-
-                if (!_planMasterController.dirtyForUpload) {
-                    _openUploadStatusPanel(_uploadStatusSource,
-                                           qsTr("Send To Vehicle"),
-                                           qsTr("上传完成。"),
-                                           null,
-                                           qsTr("Ok"),
-                                           false,
-                                           1600)
-                } else {
-                    _openUploadStatusPanel(_uploadStatusSource,
-                                           qsTr("Send To Vehicle"),
-                                           qsTr("上传未完成。请查看飞行器消息了解详情。"))
-                }
-            }
-        }
-    }
-
-    Timer {
-        id: uploadStartWatchdog
-        interval: 1500
-        repeat: false
-        onTriggered: {
-            if (_toolStripUploadRequested && !_planMasterController.syncInProgress) {
-                _toolStripUploadRequested = false
-                _toolStripUploadInProgress = false
-                _openUploadStatusPanel(_uploadStatusSource,
-                                       qsTr("Send To Vehicle"),
-                                       qsTr("无法开始上传。请检查飞行器连接状态后重试。"))
+                Qt.callLater(_finishToolStripUpload)
             }
         }
     }
@@ -205,8 +175,14 @@ Item {
         }
     }
 
-    function _openPatternPanel(source) {
+    function _clearMapToolState() {
+        _addWaypointOnClick = false
+        _addROIOnClick = false
         _closePatternPanel()
+    }
+
+    function _openPatternPanel(source) {
+        _clearMapToolState()
 
         if (!source) {
             return
@@ -263,8 +239,75 @@ Item {
         })
     }
 
-    function _triggerToolStripUpload(source) {
-        _closeUploadStatusPanel()
+    function _finishToolStripUpload() {
+        if (!_toolStripUploadRequested) {
+            return
+        }
+        if (_planMasterController.syncInProgress) {
+            return
+        }
+
+        _toolStripUploadRequested = false
+
+        if (!_planMasterController.dirtyForUpload) {
+            _openUploadStatusPanel(_uploadStatusSource,
+                                   qsTr("Send To Vehicle"),
+                                   qsTr("上传完成。"),
+                                   null,
+                                   qsTr("Ok"),
+                                   false,
+                                   1600)
+        } else {
+            _openUploadStatusPanel(_uploadStatusSource,
+                                   qsTr("Send To Vehicle"),
+                                   qsTr("上传未完成。请查看飞行器消息了解详情。"))
+        }
+    }
+
+    function _zeroDistanceComplexMissionItems() {
+        const invalidItems = []
+        const visualItems = _missionController ? _missionController.visualItems : null
+        if (!visualItems) {
+            return invalidItems
+        }
+
+        for (let i = 1; i < visualItems.count; i++) {
+            const item = visualItems.get(i)
+            if (!item || item.isSimpleItem || item.isSingleItem || item.complexDistance === undefined) {
+                continue
+            }
+
+            const distance = Number(item.complexDistance)
+            if (!isNaN(distance) && distance <= 1) {
+                const name = item.commandName && item.commandName !== "" ? item.commandName : (item.patternName || qsTr("复杂任务"))
+                invalidItems.push(qsTr("%1（序号 %2，距离 %3 m）").arg(name).arg(item.sequenceNumber).arg(distance.toFixed(1)))
+            }
+        }
+
+        return invalidItems
+    }
+
+    function _warnZeroDistanceComplexMissionItems(source) {
+        const invalidItems = _zeroDistanceComplexMissionItems()
+        if (invalidItems.length === 0) {
+            return false
+        }
+
+        _openUploadStatusPanel(
+            source || _uploadStatusSource,
+            qsTr("无法上传航线"),
+            qsTr("计划中存在距离为 0 的测区/复杂任务项，飞控可能拒绝任务并自动进入保持模式。\n\n请删除或重新绘制以下项目后再上传：\n%1")
+                .arg(invalidItems.join("\n")),
+            null,
+            qsTr("确定"))
+        return true
+    }
+
+    function _sendToolStripUpload(source, forceUpload) {
+        _uploadStatusSource = source
+        if (_warnZeroDistanceComplexMissionItems(source)) {
+            return
+        }
 
         switch (_planMasterController.readyForSaveState()) {
         case VisualMissionItem.NotReadyForSaveData:
@@ -279,7 +322,8 @@ Item {
             return
         }
 
-        switch (_missionController.sendToVehiclePreCheck()) {
+        const preCheckState = forceUpload ? MissionController.SendToVehiclePreCheckStateOk : _missionController.sendToVehiclePreCheck()
+        switch (preCheckState) {
         case MissionController.SendToVehiclePreCheckStateOk:
             _toolStripUploadRequested = true
             _toolStripUploadInProgress = false
@@ -290,8 +334,13 @@ Item {
                                    null,
                                    qsTr("Ok"),
                                    true)
-            uploadStartWatchdog.restart()
             _planMasterController.sendToVehicle()
+            if (!_planMasterController.syncInProgress) {
+                _toolStripUploadRequested = false
+                _openUploadStatusPanel(_uploadStatusSource,
+                                       qsTr("Send To Vehicle"),
+                                       qsTr("无法开始上传。请检查飞行器连接状态后重试。"))
+            }
             return
         case MissionController.SendToVehiclePreCheckStateNoActiveVehicle:
             _openUploadStatusPanel(source,
@@ -307,12 +356,68 @@ Item {
             _openUploadStatusPanel(source,
                                    qsTr("计划上传"),
                                    qsTr("此计划创建时使用的固件或机型与当前上传目标不一致，可能导致错误或异常行为。\n\n建议按当前固件和机型重新创建计划。\n\n点击“OK”仍然上传。"),
-                                   function() { _planMasterController.sendToVehicle() })
+                                   function() { _sendToolStripUpload(source, true) })
             return
         }
     }
 
+    function _triggerToolStripUpload(source) {
+        _clearMapToolState()
+        _closeUploadStatusPanel()
+        editorMap.forceActiveFocus()
+        Qt.callLater(function() { _sendToolStripUpload(source) })
+    }
+
+    function _triggerToolStripOpen() {
+        _clearMapToolState()
+
+        if (_planMasterController.dirtyForSave || _planMasterController.dirtyForUpload) {
+            QGroundControl.showMessageDialog(
+                _root,
+                qsTr("打开计划"),
+                qsTr("当前有未保存或未发送的更改。加载新的计划会丢失这些更改，确定继续吗？"),
+                Dialog.Yes | Dialog.Cancel,
+                function() { _planMasterController.loadFromSelectedFile() }
+            )
+            return
+        }
+
+        _planMasterController.loadFromSelectedFile()
+    }
+
+    function _triggerToolStripSave() {
+        _clearMapToolState()
+
+        if (_planMasterController.currentPlanFileName === "") {
+            if (_planMasterController.currentPlanFile === "") {
+                _planMasterController.saveToSelectedFile()
+            } else {
+                _planMasterController.saveToCurrent()
+            }
+            return
+        }
+
+        if (_planMasterController.currentPlanFile === "" || _planMasterController.planFileRenamed) {
+            const fullName = _planMasterController.currentPlanFileName + "." + _planMasterController.fileExtension
+            const msg = _planMasterController.resolvedPlanFileExists()
+                ? qsTr("'%1' 已存在。是否覆盖？").arg(fullName)
+                : qsTr("是否另存为 '%1'？").arg(fullName)
+            QGroundControl.showMessageDialog(
+                _root,
+                qsTr("保存"),
+                msg,
+                Dialog.Yes | Dialog.No,
+                function() { _planMasterController.saveWithCurrentName() }
+            )
+            return
+        }
+
+        _planMasterController.saveToCurrent()
+    }
+
     function _triggerToolStripClear() {
+        _clearMapToolState()
+
         if (_planMasterController.syncInProgress || !_planMasterController.containsItems) {
             return
         }
@@ -374,6 +479,9 @@ Item {
 
         function upload() {
             if (!checkReadyForSaveUpload(false /* save */)) {
+                return
+            }
+            if (_warnZeroDistanceComplexMissionItems(null)) {
                 return
             }
             switch (_missionController.sendToVehiclePreCheck()) {
@@ -838,6 +946,20 @@ Item {
                         onTriggered: {
                             insertLandHereItemAfterCurrent()
                         }
+                    },
+                    ToolStripAction {
+                        text: qsTr("打开")
+                        iconSource: "/qmlimages/Plan.svg"
+                        enabled: !_planMasterController.syncInProgress
+                        visible: toolStrip._isMissionLayer
+                        onTriggered: _triggerToolStripOpen()
+                    },
+                    ToolStripAction {
+                        text: qsTr("保存")
+                        iconSource: "/res/SaveToDisk.svg"
+                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        visible: toolStrip._isMissionLayer
+                        onTriggered: _triggerToolStripSave()
                     },
                     ToolStripAction {
                         text: qsTr("清空航线")

@@ -17,12 +17,14 @@ T.ComboBox {
     property color popupBackgroundColor: qgcPal.window
     property color popupBorderColor: qgcPal.text
     property color delegateBackgroundColor: qgcPal.button
+    property color delegateHoveredBackgroundColor: delegateBackgroundColor
     property color delegateSelectedBackgroundColor: qgcPal.buttonHighlight
     property color delegateTextColor: qgcPal.buttonText
     property color delegateSelectedTextColor: qgcPal.buttonHighlightText
     property real borderRadius: ScreenTools.defaultBorderRadius
     property bool showFocusBorder: false
     property int stateAnimationDuration: 200
+    property bool useExplicitPopupColors: false
 
     id: control
     padding: ScreenTools.comboBoxPadding
@@ -43,6 +45,7 @@ T.ComboBox {
     property bool _showBorder: qgcPal.globalTheme === QGCPalette.Light
     property bool _showHighlight: enabled && pressed
     readonly property bool _popupStyled: popupStyle.inPopupContext(control)
+    readonly property bool _usePopupStyle: _popupStyled && !useExplicitPopupColors
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
     QGCPopupStyle { id: popupStyle }
@@ -112,7 +115,7 @@ T.ComboBox {
         contentItem: Text {
             text: _text
             font: control.font
-            color: control._popupStyled
+            color: control._usePopupStyle
                 ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
                 : (control.currentIndex === index ? control.delegateSelectedTextColor : control.delegateTextColor)
             verticalAlignment: Text.AlignVCenter
@@ -120,13 +123,15 @@ T.ComboBox {
 
         background: Rectangle {
             radius: control._popupStyled ? popupStyle.cornerRadius : 0
-            color: control._popupStyled
+            color: control._usePopupStyle
                 ? (pressed
                     ? popupStyle.pressedColor(popupStyle.panelBackground)
                     : ((highlighted || hovered || control.currentIndex === index)
                         ? popupStyle.hoverColor(popupStyle.panelBackground)
                         : "transparent"))
-                : (control.currentIndex === index ? control.delegateSelectedBackgroundColor : control.delegateBackgroundColor)
+                : (control.currentIndex === index
+                    ? control.delegateSelectedBackgroundColor
+                    : ((highlighted || hovered || pressed) ? control.delegateHoveredBackgroundColor : control.delegateBackgroundColor))
             Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
         }
 
@@ -140,7 +145,7 @@ T.ComboBox {
         height: ScreenTools.defaultFontPixelWidth
         width: height
         source: "/qmlimages/arrow-down.png"
-        color: control._popupStyled ? popupStyle.primaryTextColor : control.textColor
+        color: control._usePopupStyle ? popupStyle.primaryTextColor : control.textColor
     }
 
     // The label of the button
@@ -148,27 +153,27 @@ T.ComboBox {
         id: text
         text: control.alternateText === "" ? control.currentText : control.alternateText
         font: control.font
-        color: control._popupStyled
+        color: control._usePopupStyle
             ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
             : control.textColor
         elide: Text.ElideRight
     }
 
     background: Rectangle {
-        color: control._popupStyled ? popupStyle.inputBackground : control.backgroundColor
-        border.color: (control.showFocusBorder || control._popupStyled) && control.activeFocus
-            ? (control._popupStyled ? popupStyle.accentColor : control.focusBorderColor)
-            : (control._popupStyled ? popupStyle.borderColor : control.borderColor)
-        border.width: (control._popupStyled || control._showBorder) ? 1 : 0
-        radius: control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+        color: control._usePopupStyle ? popupStyle.inputBackground : control.backgroundColor
+        border.color: (control.showFocusBorder || control._usePopupStyle) && control.activeFocus
+            ? (control._usePopupStyle ? popupStyle.accentColor : control.focusBorderColor)
+            : (control._usePopupStyle ? popupStyle.borderColor : control.borderColor)
+        border.width: (control._usePopupStyle || control._showBorder || control.showFocusBorder) ? 1 : 0
+        radius: control._usePopupStyle ? popupStyle.cornerRadius : control.borderRadius
 
         Behavior on color { ColorAnimation { duration: control.stateAnimationDuration } }
         Behavior on border.color { ColorAnimation { duration: control.stateAnimationDuration } }
 
         Rectangle {
             anchors.fill: parent
-            color: control._popupStyled ? popupStyle.focusGlowColor(0.35) : control.delegateSelectedBackgroundColor
-            opacity: control._popupStyled
+            color: control._usePopupStyle ? popupStyle.focusGlowColor(0.35) : control.delegateSelectedBackgroundColor
+            opacity: control._usePopupStyle
                 ? (control.activeFocus ? 1 : 0)
                 : (control._showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0)
             radius: parent.radius
@@ -211,8 +216,8 @@ T.ComboBox {
             Rectangle {
                 id:         comboPopupShadowSource
                 anchors.fill: parent
-                radius:     control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
-                color:      control._popupStyled ? popupStyle.popupBackground : control.popupBackgroundColor
+                radius:     control._usePopupStyle ? popupStyle.cornerRadius : control.borderRadius
+                color:      control._usePopupStyle ? popupStyle.popupBackground : control.popupBackgroundColor
                 visible:    false
             }
 
@@ -228,10 +233,10 @@ T.ComboBox {
 
             Rectangle {
                 anchors.fill: parent
-                color: control._popupStyled ? popupStyle.popupBackground : control.popupBackgroundColor
+                color: control._usePopupStyle ? popupStyle.popupBackground : control.popupBackgroundColor
                 border.width: 1
-                border.color: control._popupStyled ? popupStyle.borderColor : control.popupBorderColor
-                radius: control._popupStyled ? popupStyle.cornerRadius : control.borderRadius
+                border.color: control._usePopupStyle ? popupStyle.borderColor : control.popupBorderColor
+                radius: control._usePopupStyle ? popupStyle.cornerRadius : control.borderRadius
             }
         }
     }

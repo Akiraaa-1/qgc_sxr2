@@ -54,11 +54,25 @@ Item {
     property bool _startMissionUnavailableDialogVisible: false
     property string _startMissionUnavailableDialogText: ""
     property int _mapPrimarySliderAction: 0
+    property bool _startMissionCommandIssued: false
     property int _pendingStartMissionAttempts: 0
     property int _pendingStartMissionSequence: -1
     property bool _useExternalStartMissionUi: false
+    readonly property bool _startMissionAlreadyStarted: !!(guidedActionsController && guidedActionsController._missionActive)
+    readonly property bool _startMissionVehicleInAir: {
+        const altitude = root._activeVehicle && root._activeVehicle.altitudeRelative
+            ? Number(root._activeVehicle.altitudeRelative.rawValue)
+            : NaN
+        return !!((guidedActionsController && guidedActionsController._vehicleFlying) ||
+                  (root._activeVehicle && root._activeVehicle.flying) ||
+                  (!isNaN(altitude) && altitude > 2.0))
+    }
     readonly property bool _startMissionEntryVisible: !!guidedActionsController &&
-                                                      root._missionReadyForStart()
+                                                      !!root._activeVehicle &&
+                                                      root._hasStartMissionItems() &&
+                                                      !root._startMissionCommandIssued &&
+                                                      !root._startMissionAlreadyStarted &&
+                                                      !root._startMissionVehicleInAir
     readonly property int _startMissionExecuteMaxAttempts: 12
     property bool _instrumentPanelVisible: false
     readonly property real _profilePanelTargetHeight: Math.max(ScreenTools.defaultFontPixelHeight * 12.8, height * 0.3)
@@ -176,7 +190,22 @@ Item {
     function _hasFactValue(fact) { return fact && !isNaN(Number(fact.rawValue)) }
     function _hasStartMissionItems() {
         const missionController = planControllerInternal ? planControllerInternal.missionController : null
-        return !!(missionController && missionController.containsItems)
+        const visualItems = missionController ? missionController.visualItems : null
+        if (missionController && missionController.containsItems) {
+            return true
+        }
+        if (visualItems && visualItems.count > 1) {
+            return true
+        }
+        if (root._profileMissionPoints && root._profileMissionPoints.length > 1) {
+            for (let i = 0; i < root._profileMissionPoints.length; i++) {
+                const point = root._profileMissionPoints[i]
+                if (point && !point.profileGroundOrigin && !point.profileHiddenMarker) {
+                    return true
+                }
+            }
+        }
+        return false
     }
     function _missionPlanSyncInProgress() {
         const missionController = planControllerInternal ? planControllerInternal.missionController : null
@@ -192,6 +221,7 @@ Item {
                   !root._missionPlanSyncInProgress() &&
                   !root._missionPlanDirtyForUpload())
     }
+    function _missionAlreadyStarted() { return root._startMissionAlreadyStarted }
     function _firstStartMissionSequence() {
         const missionController = planControllerInternal ? planControllerInternal.missionController : null
         const visualItems = missionController ? missionController.visualItems : null
@@ -210,6 +240,37 @@ Item {
         }
 
         return -1
+    }
+    function _startMissionItemCountText() {
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null
+        const visualItems = missionController ? missionController.visualItems : null
+        const count = visualItems ? Math.max(0, Number(visualItems.count) - 1) : 0
+        return count > 0 ? qsTr("%1 个").arg(count) : "--"
+    }
+    function _startMissionFirstSequenceText() {
+        const sequence = root._firstStartMissionSequence()
+        return sequence >= 0 ? ("#" + sequence) : "--"
+    }
+    function _startMissionSyncStateText() {
+        if (root._missionPlanSyncInProgress()) {
+            return qsTr("同步中")
+        }
+        if (root._missionPlanDirtyForUpload()) {
+            return qsTr("待上传")
+        }
+        return qsTr("已同步")
+    }
+    function _startMissionDistanceText() {
+        const stats = root._profileStats(root._profileMissionPoints)
+        const distanceMeters = stats ? Number(stats.totalDistance) : NaN
+        if (isNaN(distanceMeters) || distanceMeters <= 1) {
+            return "--"
+        }
+        if (distanceMeters >= 1000) {
+            const decimals = distanceMeters >= 10000 ? 0 : 1
+            return qsTr("%1 km").arg((distanceMeters / 1000).toFixed(decimals))
+        }
+        return qsTr("%1 m").arg(Math.round(distanceMeters))
     }
     function _pendingStartMissionSequenceReady() {
         if (root._pendingStartMissionSequence < 0) {
@@ -2073,6 +2134,11 @@ Item {
     }
     function _showStartMissionSlider() {
         const actionCode = root._mapPrimaryActionCode()
+        if (actionCode === guidedActionsController.actionStartMission && root._startMissionVehicleInAir) {
+            root._hideStartMissionSlider()
+            root._showStartMissionUnavailableDialog(qsTr("飞行器已经在飞行中，不能重新开始任务。"))
+            return
+        }
         if (!root._mapPrimaryActionAvailable()) {
             root._hideStartMissionSlider()
             root._showStartMissionUnavailableDialog()
@@ -2085,18 +2151,20 @@ Item {
     }
     function _hideStartMissionSlider() {
         root._startMissionSliderVisible = false
-        if (startMissionSliderSwitch.visible) {
-            startMissionSliderSwitch.resetSpaceBarSliding()
-        }
     }
     function _confirmStartMissionSlider() {
+        const actionToExecute = root._mapPrimarySliderAction || root._mapPrimaryActionCode()
+        if (actionToExecute === guidedActionsController.actionStartMission && root._startMissionVehicleInAir) {
+            root._hideStartMissionSlider()
+            root._showStartMissionUnavailableDialog(qsTr("飞行器已经在飞行中，不能重新开始任务。"))
+            return
+        }
         if (!root._mapPrimaryActionAvailable()) {
             root._hideStartMissionSlider()
             root._showStartMissionUnavailableDialog()
             return
         }
         root._hideStartMissionSlider()
-        const actionToExecute = root._mapPrimarySliderAction
         switch (root._mapPrimarySliderAction) {
         case guidedActionsController.actionArm:
             root._showStartMissionFeedback(qsTr("解锁指令已发送。起飞前请确认飞行器状态。"), false)
@@ -2114,6 +2182,7 @@ Item {
         if (actionToExecute === guidedActionsController.actionStartMission) {
             const firstSequence = root._firstStartMissionSequence()
             if (root._activeVehicle && firstSequence >= 0) {
+                root._startMissionCommandIssued = true
                 root._pendingStartMissionAttempts = 0
                 root._pendingStartMissionSequence = firstSequence
                 root._activeVehicle.setCurrentMissionSequence(firstSequence)
@@ -2122,6 +2191,9 @@ Item {
             }
         }
 
+        if (actionToExecute === guidedActionsController.actionStartMission) {
+            root._startMissionCommandIssued = true
+        }
         guidedActionsController.executeAction(actionToExecute, undefined, 0, false)
     }
     function _showStartMissionFeedback(message, isError, title) {
@@ -2131,9 +2203,9 @@ Item {
         root._startMissionFeedbackVisible = true
         startMissionFeedbackTimer.restart()
     }
-    function _showStartMissionUnavailableDialog() {
+    function _showStartMissionUnavailableDialog(message) {
         root._hideStartMissionFeedback()
-        root._startMissionUnavailableDialogText = root._startMissionUnavailableMessage()
+        root._startMissionUnavailableDialogText = message === undefined ? root._startMissionUnavailableMessage() : message
         root._startMissionUnavailableDialogVisible = true
     }
     function _hideStartMissionUnavailableDialog() {
@@ -2142,6 +2214,9 @@ Item {
     function _hideStartMissionFeedback() {
         startMissionFeedbackTimer.stop()
         root._startMissionFeedbackVisible = false
+        if (!root._missionAlreadyStarted()) {
+            root._startMissionCommandIssued = false
+        }
     }
     function _mapStripActionTitle(key) {
         switch (key) {
@@ -2228,6 +2303,9 @@ Item {
         if (!root._activeVehicle) {
             return qsTr("当前没有活动飞行器。开始任务前请先连接飞行器。")
         }
+        if (root._mapPrimaryActionCode() === guidedActionsController.actionStartMission && root._startMissionVehicleInAir) {
+            return qsTr("飞行器已经在飞行中，不能重新开始任务。")
+        }
         switch (root._mapPrimaryActionCode()) {
         case guidedActionsController.actionArm:
             if (guidedActionsController._vehicleFlying) {
@@ -2285,11 +2363,11 @@ Item {
         if (!guidedActionsController || !root._activeVehicle) {
             return "startMission"
         }
-        if (root._startMissionEntryVisible) {
-            return "startMission"
-        }
         if (guidedActionsController.showContinueMission) {
             return "continueMission"
+        }
+        if (root._startMissionEntryVisible) {
+            return "startMission"
         }
         return "startMission"
     }
@@ -2326,7 +2404,7 @@ Item {
         case guidedActionsController.actionContinueMission:
             return guidedActionsController.showContinueMission
         default:
-            return guidedActionsController.showStartMission && root._missionReadyForStart()
+            return !root._startMissionVehicleInAir && guidedActionsController.showStartMission && root._missionReadyForStart()
         }
     }
     function _mapPrimaryActionMessage() {
@@ -3079,11 +3157,36 @@ Item {
         target: guidedActionsController
         function onShowStartMissionChanged() {
             if (!guidedActionsController.showStartMission) {
+                root._startMissionCommandIssued = false
+                if (root._missionAlreadyStarted()) {
+                    root._hideStartMissionSlider()
+                    root._hideStartMissionUnavailableDialog()
+                    root._hideStartMissionFeedback()
+                    return
+                }
                 if (root._startMissionSliderVisible) {
                     root._showStartMissionUnavailableDialog()
                 }
                 root._hideStartMissionSlider()
             }
+        }
+    }
+
+    on_StartMissionAlreadyStartedChanged: {
+        if (root._startMissionAlreadyStarted) {
+            root._clearPendingStartMission()
+            root._hideStartMissionSlider()
+            root._hideStartMissionUnavailableDialog()
+            root._hideStartMissionFeedback()
+        }
+    }
+
+    on_StartMissionVehicleInAirChanged: {
+        if (root._startMissionVehicleInAir) {
+            root._clearPendingStartMission()
+            root._hideStartMissionSlider()
+            root._hideStartMissionUnavailableDialog()
+            root._hideStartMissionFeedback()
         }
     }
 
@@ -3109,6 +3212,7 @@ Item {
                     guidedActionsController.showStartMission &&
                     (root._pendingStartMissionAttempts >= 4 || root._pendingStartMissionSequenceReady())) {
                 root._clearPendingStartMission()
+                root._startMissionCommandIssued = true
                 guidedActionsController.executeAction(guidedActionsController.actionStartMission, undefined, 0, false)
                 root._showStartMissionFeedback(qsTr("开始任务指令已发送。起飞前请确认飞行器状态。"), false)
                 return
@@ -3469,7 +3573,6 @@ Item {
                         property bool selected: vehicleObject === root._activeVehicle
                         property bool showRow: root._searchMatch(vehicleObject)
                         property real batteryPercent: root._batteryPercentForVehicle(vehicleObject)
-                        property var statusIndicators: root._vehicleStatusIndicators(vehicleObject)
                         readonly property color _selectedCardColor: "#32363A"
                         visible: showRow
                         width: vehicleList.width
@@ -3521,16 +3624,34 @@ Item {
                                 Item { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 0.22 }
                                 QGCLabel { Layout.fillWidth: true; color: "#FFFFFF"; elide: Text.ElideRight; font.weight: Font.DemiBold; text: root._vehicleTitle(vehicleObject) }
 
-                                Repeater {
-                                    model: statusIndicators
+                                Rectangle {
+                                    id: vehicleModePill
+                                    readonly property string modeText: root._flightModeDisplayName(vehicleObject ? vehicleObject.flightMode : "")
+                                    readonly property real _horizontalPadding: ScreenTools.defaultFontPixelWidth * 0.8
+                                    Layout.leftMargin: ScreenTools.defaultFontPixelWidth * 0.16
+                                    Layout.preferredWidth: Math.min(
+                                        Math.max(modeLabel.implicitWidth + _horizontalPadding, ScreenTools.defaultFontPixelWidth * 4.8),
+                                        ScreenTools.defaultFontPixelWidth * 8.4)
+                                    Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 8.4
+                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.02
+                                    Layout.alignment: Qt.AlignVCenter
+                                    color: selected ? Qt.rgba(0.20, 0.34, 0.43, 0.96) : Qt.rgba(0.10, 0.13, 0.16, 0.94)
+                                    radius: ScreenTools.defaultFontPixelHeight * 0.16
+                                    border.width: 1
+                                    border.color: selected ? "#79B8D9" : "#43515C"
 
-                                    delegate: QGCColoredImage {
-                                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.58
-                                        Layout.preferredHeight: Layout.preferredWidth
-                                        Layout.leftMargin: ScreenTools.defaultFontPixelWidth * 0.1
-                                        color: modelData.color
-                                        fillMode: Image.PreserveAspectFit
-                                        source: modelData.icon
+                                    QGCLabel {
+                                        id: modeLabel
+                                        anchors.fill: parent
+                                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.36
+                                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.36
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: selected ? "#D9F1FF" : "#BFD5E4"
+                                        elide: Text.ElideRight
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                        font.weight: Font.DemiBold
+                                        text: vehicleModePill.modeText
                                     }
                                 }
 
@@ -7172,52 +7293,60 @@ Item {
                     )
                 )
                 y: Math.max(root._margin, startMissionMapButton.mapToItem(rightPane, 0, 0).y - height - (root._margin * 0.55))
-                width: Math.min(ScreenTools.defaultFontPixelWidth * 38, Math.max(ScreenTools.defaultFontPixelWidth * 24, mapPanel.width - (root._margin * 2)))
-                height: ScreenTools.defaultFontPixelHeight * 5.8
-                visible: !root._useExternalStartMissionUi && root._startMissionSliderVisible
-                color: Qt.rgba(0.10, 0.10, 0.11, 0.96)
-                border.color: Qt.rgba(1, 1, 1, 0.08)
+                width: Math.min(ScreenTools.defaultFontPixelWidth * 34, Math.max(ScreenTools.defaultFontPixelWidth * 22, mapPanel.width - (root._margin * 2)))
+                height: startMissionConfirmContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.58)
+                visible: !root._useExternalStartMissionUi && root._startMissionSliderVisible && !root._startMissionAlreadyStarted
+                color: Qt.rgba(0.07, 0.10, 0.12, 0.96)
+                border.color: Qt.rgba(0.45, 0.74, 0.78, 0.20)
                 border.width: 1
-                radius: ScreenTools.defaultFontPixelHeight * 0.28
+                radius: ScreenTools.defaultFontPixelHeight * 0.22
                 z: QGroundControl.zOrderTopMost + 9
 
                 onVisibleChanged: {
-                    if (visible) {
-                        startMissionSliderSwitch.forceActiveFocus()
+                    if (!visible) {
+                        startMissionHoldAnimation.stop()
+                        startMissionHoldButton.holding = false
+                        startMissionHoldButton.holdProgress = 0
                     }
                 }
 
                 ColumnLayout {
+                    id: startMissionConfirmContent
                     anchors.fill: parent
-                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.42
-                    spacing: ScreenTools.defaultFontPixelHeight * 0.3
-
-                    QGCLabel {
-                        Layout.fillWidth: true
-                        text: root._mapPrimaryActionMessage()
-                        color: "#F1F3F5"
-                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                        wrapMode: Text.WordWrap
-                    }
+                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.30
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.22
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: ScreenTools.defaultFontPixelWidth * 0.55
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.32
 
-                        SliderSwitch {
-                            id: startMissionSliderSwitch
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.45
-                            focus: root._startMissionSliderVisible
-                            confirmText: qsTr("滑动或按住空格键")
-                            onAccept: root._confirmStartMissionSlider()
+                            spacing: 0
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: root._mapPrimaryActionDialogTitle()
+                                color: "#F5FBFC"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("确认航线状态后长按执行")
+                                color: "#8FB0B8"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                elide: Text.ElideRight
+                            }
                         }
 
                         Rectangle {
-                            Layout.preferredWidth: startMissionSliderSwitch.height
+                            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.96
                             Layout.preferredHeight: Layout.preferredWidth
                             radius: width / 2
-                            color: "#9CC1D7"
+                            color: Qt.rgba(1, 1, 1, 0.09)
 
                             QGCColoredImage {
                                 anchors.centerIn: parent
@@ -7231,6 +7360,158 @@ Item {
                             QGCMouseArea {
                                 anchors.fill: parent
                                 onClicked: root._hideStartMissionSlider()
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                        Repeater {
+                            model: [
+                                { "label": qsTr("航点"), "value": root._startMissionItemCountText() },
+                                { "label": qsTr("首点"), "value": root._startMissionFirstSequenceText() },
+                                { "label": qsTr("状态"), "value": root._startMissionSyncStateText() }
+                            ]
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.48
+                                color: Qt.rgba(0.09, 0.15, 0.18, 0.92)
+                                radius: ScreenTools.defaultFontPixelHeight * 0.12
+                                border.width: 1
+                                border.color: Qt.rgba(0.45, 0.74, 0.78, 0.12)
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.14
+                                    spacing: 0
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: modelData.label
+                                        color: "#7E9AA4"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.40
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                    }
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: modelData.value
+                                        color: "#E7F7F9"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                        font.weight: Font.DemiBold
+                                        horizontalAlignment: Text.AlignHCenter
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                            Layout.fillWidth: true
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.32
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("距离 %1").arg(root._startMissionDistanceText())
+                                color: "#8FB0B8"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
+                                elide: Text.ElideRight
+                            }
+
+                            QGCLabel {
+                                text: root._mapPrimaryActionMessage()
+                                color: "#CBE5EA"
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                    Rectangle {
+                        id: startMissionHoldButton
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.02
+                        property real holdProgress: 0
+                        property bool holding: false
+                        clip: true
+                        radius: ScreenTools.defaultFontPixelHeight * 0.16
+                        color: startMissionHoldMouseArea.pressed ? "#0F5F58" : (startMissionHoldMouseArea.containsMouse ? "#199688" : "#147C72")
+                        border.width: 1
+                        border.color: Qt.rgba(0.82, 1, 0.96, 0.24)
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * startMissionHoldButton.holdProgress
+                            color: Qt.rgba(1, 1, 1, 0.14)
+                        }
+
+                        QGCLabel {
+                            anchors.centerIn: parent
+                            text: startMissionHoldButton.holding
+                                  ? qsTr("保持按住 %1%").arg(Math.round(startMissionHoldButton.holdProgress * 100))
+                                  : qsTr("长按开始任务")
+                            color: "#EFFFFC"
+                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        NumberAnimation {
+                            id: startMissionHoldAnimation
+                            target: startMissionHoldButton
+                            property: "holdProgress"
+                            from: 0
+                            to: 1
+                            duration: 1250
+                            easing.type: Easing.InOutQuad
+                            onStopped: {
+                                if (startMissionHoldButton.holding && startMissionHoldButton.holdProgress >= 0.999) {
+                                    startMissionHoldButton.holding = false
+                                    root._confirmStartMissionSlider()
+                                }
+                            }
+                        }
+
+                        QGCMouseArea {
+                            id: startMissionHoldMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onPressed: {
+                                if (!root._mapPrimaryActionAvailable()) {
+                                    root._confirmStartMissionSlider()
+                                    return
+                                }
+                                startMissionHoldAnimation.stop()
+                                startMissionHoldButton.holdProgress = 0
+                                startMissionHoldButton.holding = true
+                                startMissionHoldAnimation.restart()
+                            }
+                            onReleased: {
+                                if (startMissionHoldButton.holding && startMissionHoldButton.holdProgress < 0.999) {
+                                    startMissionHoldAnimation.stop()
+                                    startMissionHoldButton.holding = false
+                                    startMissionHoldButton.holdProgress = 0
+                                }
+                            }
+                            onCanceled: {
+                                startMissionHoldAnimation.stop()
+                                startMissionHoldButton.holding = false
+                                startMissionHoldButton.holdProgress = 0
+                            }
+                            onExited: {
+                                if (pressed && startMissionHoldButton.holding) {
+                                    startMissionHoldAnimation.stop()
+                                    startMissionHoldButton.holding = false
+                                    startMissionHoldButton.holdProgress = 0
+                                }
                             }
                         }
                     }

@@ -26,6 +26,7 @@ Button {
     property real hoverOverlayOpacity: 0.2
     property real pressedOverlayOpacity: 1.0
     property int stateAnimationDuration: 200
+    property bool useExplicitPopupColors: false
 
     id: control
     hoverEnabled: !ScreenTools.isMobile
@@ -39,6 +40,7 @@ Button {
 
     property bool _showHighlight: enabled && (pressed | checked)
     readonly property bool _popupStyled: popupStyle.inPopupContext(control)
+    readonly property bool _usePopupStyle: _popupStyled && !useExplicitPopupColors
     property int _horizontalPadding: ScreenTools.defaultFontPixelWidth * 2
     property int _verticalPadding: Math.round(ScreenTools.defaultFontPixelHeight * heightFactor) - (iconSource === "" ? 0 : (_iconHeight - ScreenTools.defaultFontPixelHeight)  / 2)
     property real _iconHeight: text.height * 1.5
@@ -48,14 +50,14 @@ Button {
 
     background: Rectangle {
         id: backRect
-        radius: control._popupStyled ? popupStyle.cornerRadius : backRadius
+        radius: control._usePopupStyle ? popupStyle.cornerRadius : backRadius
         implicitWidth: ScreenTools.implicitButtonWidth
         implicitHeight: ScreenTools.implicitButtonHeight
-        border.width: (control._popupStyled || showBorder) ? 1 : 0
-        border.color: control._popupStyled
+        border.width: (control._usePopupStyle || showBorder) ? 1 : 0
+        border.color: control._usePopupStyle
             ? popupStyle.borderColor
             : qgcPal.buttonBorder
-        color: control._popupStyled
+        color: control._usePopupStyle
             ? (primary
                 ? (control.pressed
                     ? popupStyle.primaryButtonPressedColor()
@@ -71,7 +73,7 @@ Button {
         Rectangle {
             anchors.fill: parent
             color: control.overlayColor
-            opacity: control._popupStyled ? 0 : (_showHighlight ? control.pressedOverlayOpacity : control.enabled && control.hovered ? control.hoverOverlayOpacity : 0)
+            opacity: control._usePopupStyle ? 0 : (_showHighlight ? control.pressedOverlayOpacity : control.enabled && control.hovered ? control.hoverOverlayOpacity : 0)
             radius: parent.radius
             Behavior on opacity { NumberAnimation { duration: control.stateAnimationDuration } }
         }
@@ -100,7 +102,7 @@ Button {
             font.pointSize: control.pointSize
             font.family: control.font.family
             font.weight: fontWeight
-            color: control._popupStyled
+            color: control._usePopupStyle
                 ? (control.enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor)
                 : (_showHighlight ? qgcPal.buttonHighlightText : (primary ? qgcPal.primaryButtonText : qgcPal.buttonText))
             visible: control.text !== ""

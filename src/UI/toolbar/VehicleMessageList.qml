@@ -21,7 +21,39 @@ TextArea {
 
     property var _fact: null
 
+    function localizeVehicleMessage(message) {
+        let localizedMessage = message || ""
+        const replacements = [
+            { "pattern": /No valid mission available, loitering/gi, "text": qsTr("没有可执行的有效任务，飞行器正在保持/盘旋") },
+            { "pattern": /No valid mission available/gi, "text": qsTr("没有可执行的有效任务") },
+            { "pattern": /loitering/gi, "text": qsTr("正在保持/盘旋") },
+            { "pattern": /Mission rejected/gi, "text": qsTr("任务被拒绝") },
+            { "pattern": /Mission upload failed/gi, "text": qsTr("任务上传失败") },
+            { "pattern": /Mission transfer failed/gi, "text": qsTr("任务传输失败") },
+            { "pattern": /Mission accepted/gi, "text": qsTr("任务已接受") },
+            { "pattern": /Mission finished/gi, "text": qsTr("任务已完成") },
+            { "pattern": /Geofence violation/gi, "text": qsTr("触发地理围栏限制") },
+            { "pattern": /Failsafe enabled/gi, "text": qsTr("失效保护已触发") },
+            { "pattern": /Failsafe activated/gi, "text": qsTr("失效保护已激活") },
+            { "pattern": /Battery low/gi, "text": qsTr("电池电量低") },
+            { "pattern": /GPS signal lost/gi, "text": qsTr("GPS 信号丢失") },
+            { "pattern": /Manual control lost/gi, "text": qsTr("手动控制链路丢失") },
+            { "pattern": /Data link lost/gi, "text": qsTr("数传链路丢失") },
+            { "pattern": /Return to launch/gi, "text": qsTr("正在返航") },
+            { "pattern": /Takeoff detected/gi, "text": qsTr("检测到起飞") },
+            { "pattern": /Landing detected/gi, "text": qsTr("检测到降落") },
+            { "pattern": /Switching to mode 'Position control' is currently not possible No manual control input/gi, "text": qsTr("当前无法切换到“位置控制”模式：没有手动控制输入") },
+            { "pattern": /No manual control input/gi, "text": qsTr("没有手动控制输入") }
+        ]
+
+        for (let i = 0; i < replacements.length; i++) {
+            localizedMessage = localizedMessage.replace(replacements[i].pattern, replacements[i].text)
+        }
+        return localizedMessage
+    }
+
     function formatMessage(message) {
+        message = localizeVehicleMessage(message)
         message = message.replace(new RegExp("<#E>", "g"), "color: " + qgcPal.warningText + "; font: " + (ScreenTools.defaultFontPointSize.toFixed(0) - 1) + "pt monospace;");
         message = message.replace(new RegExp("<#I>", "g"), "color: " + qgcPal.warningText + "; font: " + (ScreenTools.defaultFontPointSize.toFixed(0) - 1) + "pt monospace;");
         message = message.replace(new RegExp("<#N>", "g"), "color: " + qgcPal.text + "; font: " + (ScreenTools.defaultFontPointSize.toFixed(0) - 1) + "pt monospace;");

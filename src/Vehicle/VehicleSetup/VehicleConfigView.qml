@@ -760,7 +760,7 @@ Rectangle {
     Rectangle {
         id:                     panelHost
         anchors.topMargin:      0
-        anchors.bottomMargin:   0
+        anchors.bottomMargin:   returnMenuFooter.visible ? returnMenuFooter.height : 0
         anchors.leftMargin:     0
         anchors.rightMargin:    0
         anchors.left:           parent.left
@@ -795,22 +795,37 @@ Rectangle {
         }
     }
 
-    QGCButton {
-        id: backToMenuButton
-        anchors.horizontalCenter: parent.horizontalCenter
+    Rectangle {
+        id: returnMenuFooter
+        anchors.left: parent.left
+        anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.35
-        z: QGroundControl.zOrderWidgets
-        text: qsTr("返回菜单")
+        height: visible ? ScreenTools.defaultFontPixelHeight * 2.25 : 0
+        color: vehicleConfigView._panelColor
         visible: _fullParameterVehicleAvailable && vehicleConfigView._selectedSpecial !== "menu"
-        backgroundColor: "#6B7280"
-        borderColor: "#80879A"
-        textColor: "#FFFFFF"
-        overlayColor: "#4B5563"
-        hoverOverlayOpacity: 0.20
-        pressedOverlayOpacity: 0.34
-        backRadius: vehicleConfigView._cornerRadius
-        showBorder: true
-        onClicked: vehicleConfigView.showMenuPanel()
+        z: QGroundControl.zOrderWidgets
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 1
+            color: vehicleConfigView._borderColor
+        }
+
+        QGCButton {
+            id: backToMenuButton
+            anchors.centerIn: parent
+            text: qsTr("返回菜单")
+            backgroundColor: "#6B7280"
+            borderColor: "#80879A"
+            textColor: "#FFFFFF"
+            overlayColor: "#4B5563"
+            hoverOverlayOpacity: 0.20
+            pressedOverlayOpacity: 0.34
+            backRadius: vehicleConfigView._cornerRadius
+            showBorder: true
+            onClicked: vehicleConfigView.showMenuPanel()
+        }
     }
 }

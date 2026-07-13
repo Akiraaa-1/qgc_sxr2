@@ -1,0 +1,45 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "include": [
+    "cmake/presets/common.json"
+  ],
+  "configurePresets": [
+    {
+      "name": "qgc-debug-nogst",
+      "displayName": "QGC Debug No GStreamer",
+      "inherits": [
+        "debug",
+        "ccache"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-nogst",
+      "toolchainFile": "$penv{QT_ROOT_DIR}/lib/cmake/Qt6/qt.toolchain.cmake",
+      "cacheVariables": {
+        "QGC_BUILD_TESTING": "OFF",
+        "QGC_ENABLE_GST_VIDEOSTREAMING": "OFF",
+        "QGC_ENABLE_UVC": "OFF",
+        "QGC_ENABLE_QMLLINT": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "qgc-debug-nogst",
+      "displayName": "Build QGC Debug NoGStreamer",
+      "configurePreset": "qgc-debug-nogst",
+      "inherits": [
+        "default"
+      ]
+    }
+  ]
+}

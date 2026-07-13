@@ -171,10 +171,35 @@ Item {
     Component {
         id: waitForCancelDialogComponent
 
-        QGCSimpleMessageDialog {
+        QGCPopupDialog {
             title:      qsTr("取消校准")
-            text:       qsTr("正在等待飞行器响应取消操作，这可能需要几秒钟。")
             buttons:    0
+            bottomActionButtons: _root.useDarkStyle
+            useExplicitActionColors: _root.useDarkStyle
+            actionPrimaryBackgroundColor: _accentColor
+
+            ColumnLayout {
+                width: ScreenTools.defaultFontPixelWidth * 50
+                spacing: ScreenTools.defaultFontPixelHeight * 0.75
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: waitingCancelText.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.6)
+                    color: Qt.rgba(0.08, 0.12, 0.16, 0.72)
+                    radius: _cornerRadius
+                    border.width: 1
+                    border.color: _borderColor
+
+                    QGCLabel {
+                        id: waitingCancelText
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.8
+                        wrapMode: Text.WordWrap
+                        color: _secondaryTextColor
+                        text: qsTr("正在等待飞行器响应取消操作，这可能需要几秒钟。")
+                    }
+                }
+            }
 
             Connections {
                 target: controller
@@ -199,6 +224,15 @@ Item {
 
         QGCPopupDialog {
             buttons: Dialog.Cancel | Dialog.Ok
+            acceptButtonText: qsTr("开始校准")
+            rejectButtonText: qsTr("取消")
+            bottomActionButtons: _root.useDarkStyle
+            useExplicitActionColors: _root.useDarkStyle
+            actionPrimaryBackgroundColor: _accentColor
+            actionPrimaryBorderColor: _accentColor
+            actionSecondaryBackgroundColor: _buttonColor
+            actionSecondaryBorderColor: _dropdownBorderColor
+            actionButtonRadius: _cornerRadius
 
             onAccepted: {
                 if (preCalibrationDialogType == "gyro") {
@@ -215,54 +249,97 @@ Item {
             }
 
             ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight
+                width: ScreenTools.defaultFontPixelWidth * 52
+                spacing: ScreenTools.defaultFontPixelHeight * 0.75
 
-                QGCLabel {
-                    Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 50
-                    Layout.preferredWidth:  innerColumn.width
-                    wrapMode:               Text.WordWrap
-                    text:                   preCalibrationDialogHelp
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: calibrationHelpText.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.5)
+                    color: Qt.rgba(0.08, 0.12, 0.16, 0.72)
+                    radius: _cornerRadius
+                    border.width: 1
+                    border.color: _borderColor
+
+                    QGCLabel {
+                        id: calibrationHelpText
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.75
+                        wrapMode: Text.WordWrap
+                        color: _primaryTextColor
+                        text: preCalibrationDialogHelp
+                    }
                 }
 
-                Column {
+                ColumnLayout {
                     id:         innerColumn
-                    spacing:    parent.spacing
+                    Layout.fillWidth: true
+                    spacing:    ScreenTools.defaultFontPixelHeight * 0.65
 
                     QGCLabel {
                         id:         boardRotationHelp
+                        Layout.fillWidth: true
                         wrapMode:   Text.WordWrap
+                        color:      _secondaryTextColor
                         visible:    !_sensorsHaveFixedOrientation && (preCalibrationDialogType == "accel" || preCalibrationDialogType == "compass")
                         text:       qsTr("校准前请先设置飞控方向。")
                     }
 
-                    Column {
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: boardRotationColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.1)
                         visible:    boardRotationHelp.visible
-                        QGCLabel { text: qsTr("飞控方向") }
+                        color: _inputColor
+                        radius: _cornerRadius
+                        border.width: 1
+                        border.color: _borderColor
 
-                        FactComboBox {
-                            sizeToContents: true
-                            fact:           sens_board_rot
-                            backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
-                            borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
-                            focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
-                            textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                            popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
-                            popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
-                            delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
-                            delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
-                            showFocusBorder:        _root.useDarkStyle
-                            borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                        }
+                        ColumnLayout {
+                            id: boardRotationColumn
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.55
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                        QGCLabel {
-                            wrapMode:   Text.WordWrap
-                            text:       qsTr("ROTATION_NONE 表示组件朝向与飞行方向一致。")
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("飞控方向")
+                                color: _primaryTextColor
+                                font.weight: Font.DemiBold
+                            }
+
+                            FactComboBox {
+                                Layout.fillWidth: true
+                                sizeToContents: true
+                                fact:           sens_board_rot
+                                useExplicitPopupColors: _root.useDarkStyle
+                                backgroundColor:        _dropdownColor
+                                borderColor:            _dropdownBorderColor
+                                focusBorderColor:       _accentColor
+                                textColor:              _primaryTextColor
+                                popupBackgroundColor:   "#181A1D"
+                                popupBorderColor:       _dropdownBorderColor
+                                delegateBackgroundColor: "transparent"
+                                delegateHoveredBackgroundColor: _dropdownHoverColor
+                                delegateSelectedBackgroundColor: _dropdownSelectColor
+                                delegateTextColor:      _secondaryTextColor
+                                delegateSelectedTextColor: _primaryTextColor
+                                showFocusBorder:        true
+                                borderRadius:           _cornerRadius
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: _secondaryTextColor
+                                text: qsTr("ROTATION_NONE 表示组件朝向与飞行方向一致。")
+                            }
                         }
                     }
 
                     QGCLabel {
+                        Layout.fillWidth: true
                         wrapMode:   Text.WordWrap
-                        text:       qsTr("点击确定开始校准。")
+                        color:      _secondaryTextColor
+                        text:       qsTr("确认环境与飞行器状态无误后开始校准。")
                     }
                 }
             }
@@ -282,83 +359,157 @@ Item {
 
         QGCPopupDialog {
             buttons: Dialog.Ok
+            acceptButtonText: qsTr("完成")
+            bottomActionButtons: _root.useDarkStyle
+            useExplicitActionColors: _root.useDarkStyle
+            actionPrimaryBackgroundColor: _accentColor
+            actionPrimaryBorderColor: _accentColor
+            actionSecondaryBackgroundColor: _buttonColor
+            actionSecondaryBorderColor: _dropdownBorderColor
+            actionButtonRadius: _cornerRadius
 
             property bool showRebootVehicleButton: true
 
             ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight
+                width: ScreenTools.defaultFontPixelWidth * 54
+                spacing: ScreenTools.defaultFontPixelHeight * 0.75
 
-                QGCLabel {
-                    text:       qsTr("Reboot the vehicle prior to flight.")
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: orientationIntro.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.5)
+                    color: Qt.rgba(0.08, 0.12, 0.16, 0.72)
+                    radius: _cornerRadius
+                    border.width: 1
+                    border.color: _borderColor
                     visible:    showRebootVehicleButton
+
+                    QGCLabel {
+                        id: orientationIntro
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.75
+                        wrapMode: Text.WordWrap
+                        color: _secondaryTextColor
+                        text: qsTr("飞行前请重启飞行器，使方向设置生效。")
+                    }
                 }
 
                 QGCButton {
-                    text:       qsTr("Reboot Vehicle")
+                    text:       qsTr("重启飞行器")
                     visible:    showRebootVehicleButton
+                    primary: true
+                    useExplicitPopupColors: _root.useDarkStyle
                     backgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.primaryButton
                     borderColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
                     textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.primaryButtonText
+                    overlayColor: "#FFFFFF"
+                    hoverOverlayOpacity: 0.10
+                    pressedOverlayOpacity: 0.18
                     backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                     showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
+                    Layout.alignment: Qt.AlignLeft
                     onClicked: { controller.vehicle.rebootVehicle(); close() }
                 }
 
                 QGCLabel {
+                    Layout.fillWidth: true
                     text:       qsTr("请按需调整方向。\n\nROTATION_NONE 表示组件朝向与飞行方向一致。")
+                    color:      _secondaryTextColor
+                    wrapMode:   Text.WordWrap
                     visible:    _boardOrientationChangeAllowed || (_compassOrientationChangeAllowed && currentExternalMagCount() !== 0)
                 }
 
-                Column {
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: boardOrientationColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.1)
                     visible: _boardOrientationChangeAllowed
+                    color: _inputColor
+                    radius: _cornerRadius
+                    border.width: 1
+                    border.color: _borderColor
 
-                    QGCLabel {
-                        text: qsTr("Autopilot Orientation")
-                    }
+                    ColumnLayout {
+                        id: boardOrientationColumn
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.55
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                    FactComboBox {
-                        sizeToContents: true
-                        fact:           sens_board_rot
-                        backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
-                        borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
-                        focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
-                        textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                        popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
-                        popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
-                        delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
-                        delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
-                        showFocusBorder:        _root.useDarkStyle
-                        borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            text: qsTr("飞控方向")
+                            color: _primaryTextColor
+                            font.weight: Font.DemiBold
+                        }
+
+                        FactComboBox {
+                            Layout.fillWidth: true
+                            sizeToContents: true
+                            fact:           sens_board_rot
+                            useExplicitPopupColors: _root.useDarkStyle
+                            backgroundColor:        _dropdownColor
+                            borderColor:            _dropdownBorderColor
+                            focusBorderColor:       _accentColor
+                            textColor:              _primaryTextColor
+                            popupBackgroundColor:   "#181A1D"
+                            popupBorderColor:       _dropdownBorderColor
+                            delegateBackgroundColor: "transparent"
+                            delegateHoveredBackgroundColor: _dropdownHoverColor
+                            delegateSelectedBackgroundColor: _dropdownSelectColor
+                            delegateTextColor:      _secondaryTextColor
+                            delegateSelectedTextColor: _primaryTextColor
+                            showFocusBorder:        true
+                            borderRadius:           _cornerRadius
+                        }
                     }
                 }
 
                 Repeater {
                     model: _compassOrientationChangeAllowed ? currentMagParamCount() : 0
 
-                    Column {
+                    Rectangle {
                         // id > = signals compass available, rot < 0 signals internal compass
                         visible: calMagIdFact.value > 0 && calMagRotFact.value >= 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: magOrientationColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.1)
+                        color: _inputColor
+                        radius: _cornerRadius
+                        border.width: 1
+                        border.color: _borderColor
 
                         property Fact calMagIdFact:     controller.getParameterFact(-1, _calMagIdParamFormat.replace("#", index))
                         property Fact calMagRotFact:    controller.getParameterFact(-1, _calMagRotParamFormat.replace("#", index))
 
-                        QGCLabel {
-                            text: qsTr("Mag %1 Orientation").arg(index)
-                        }
+                        ColumnLayout {
+                            id: magOrientationColumn
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.55
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                        FactComboBox {
-                            sizeToContents: true
-                            fact:           parent.calMagRotFact
-                            backgroundColor:        _root.useDarkStyle ? _inputColor : qgcPal.button
-                            borderColor:            _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
-                            focusBorderColor:       _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
-                            textColor:              _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                            popupBackgroundColor:   _root.useDarkStyle ? "#1A1A1A" : qgcPal.window
-                            popupBorderColor:       _root.useDarkStyle ? _borderColor : qgcPal.text
-                            delegateSelectedBackgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonHighlight
-                            delegateSelectedTextColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonHighlightText
-                            showFocusBorder:        _root.useDarkStyle
-                            borderRadius:           _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("磁力计 %1 方向").arg(index)
+                                color: _primaryTextColor
+                                font.weight: Font.DemiBold
+                            }
+
+                            FactComboBox {
+                                Layout.fillWidth: true
+                                sizeToContents: true
+                                fact:           magOrientationColumn.parent.calMagRotFact
+                                useExplicitPopupColors: _root.useDarkStyle
+                                backgroundColor:        _dropdownColor
+                                borderColor:            _dropdownBorderColor
+                                focusBorderColor:       _accentColor
+                                textColor:              _primaryTextColor
+                                popupBackgroundColor:   "#181A1D"
+                                popupBorderColor:       _dropdownBorderColor
+                                delegateBackgroundColor: "transparent"
+                                delegateHoveredBackgroundColor: _dropdownHoverColor
+                                delegateSelectedBackgroundColor: _dropdownSelectColor
+                                delegateTextColor:      _secondaryTextColor
+                                delegateSelectedTextColor: _primaryTextColor
+                                showFocusBorder:        true
+                                borderRadius:           _cornerRadius
+                            }
                         }
                     }
                 }
@@ -428,6 +579,12 @@ Item {
     readonly property color _primaryTextColor:   "#FFFFFF"
     readonly property color _secondaryTextColor: "#B0B0B0"
     readonly property color _accentColor:        "#2563EB"
+    readonly property color _buttonColor:        "#24272B"
+    readonly property color _buttonHoverColor:   "#3A4452"
+    readonly property color _dropdownColor:      "#202326"
+    readonly property color _dropdownBorderColor:"#3A3F46"
+    readonly property color _dropdownHoverColor: Qt.rgba(0.15, 0.39, 0.92, 0.14)
+    readonly property color _dropdownSelectColor: Qt.rgba(0.15, 0.39, 0.92, 0.24)
     readonly property real _cornerRadius:        8
     readonly property real _buttonRowSpacing:    ScreenTools.defaultFontPixelWidth * 0.5
     readonly property real _buttonPointSize:     Math.max(10, ScreenTools.defaultFontPointSize - 2)
@@ -461,9 +618,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("compass", compassHelp, qsTr("校准磁力计"))
@@ -477,9 +638,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("gyro", gyroHelp, qsTr("校准陀螺仪"))
@@ -493,9 +658,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("accel", accelHelp, qsTr("校准加速度计"))
@@ -510,9 +679,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("level", levelHelp, qsTr("校平地平线"))
@@ -526,9 +699,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _startCalibration("airspeed", airspeedHelp, qsTr("校准空速"))
@@ -542,9 +719,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked: {
@@ -561,9 +742,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  controller.resetFactoryParameters()
@@ -577,9 +762,13 @@ Item {
                 pointSize:  _buttonPointSize
                 heightFactor: _buttonHeightFactor
                 _horizontalPadding: _buttonHPadding
+                useExplicitPopupColors: _root.useDarkStyle
                 backgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.primaryButton
                 borderColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.primaryButtonText
+                overlayColor: "#FFFFFF"
+                hoverOverlayOpacity: 0.10
+                pressedOverlayOpacity: 0.18
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  _root.nextButtonClicked()
@@ -599,9 +788,13 @@ Item {
 
             QGCButton {
                 text:       qsTr("Cancel")
-                backgroundColor: _root.useDarkStyle ? "#333333" : qgcPal.button
-                borderColor: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                useExplicitPopupColors: _root.useDarkStyle
+                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
+                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
                 textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
+                overlayColor: _buttonHoverColor
+                hoverOverlayOpacity: 0.28
+                pressedOverlayOpacity: 0.42
                 backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
                 showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
                 onClicked:  controller.cancelCalibration()
@@ -667,6 +860,7 @@ Item {
                         calInProgress:      controller.orientationCalDownSideInProgress
                         calInProgressText:  controller.orientationCalDownSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalDownSideRotate ? "qrc:///qmlimages/VehicleDownRotate.png" : "qrc:///qmlimages/VehicleDown.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                     VehicleRotationCal {
                         width:              parent.indicatorWidth
@@ -676,6 +870,7 @@ Item {
                         calInProgress:      controller.orientationCalUpsideDownSideInProgress
                         calInProgressText:  controller.orientationCalUpsideDownSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalUpsideDownSideRotate ? "qrc:///qmlimages/VehicleUpsideDownRotate.png" : "qrc:///qmlimages/VehicleUpsideDown.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                     VehicleRotationCal {
                         width:              parent.indicatorWidth
@@ -685,6 +880,7 @@ Item {
                         calInProgress:      controller.orientationCalNoseDownSideInProgress
                         calInProgressText:  controller.orientationCalNoseDownSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalNoseDownSideRotate ? "qrc:///qmlimages/VehicleNoseDownRotate.png" : "qrc:///qmlimages/VehicleNoseDown.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                     VehicleRotationCal {
                         width:              parent.indicatorWidth
@@ -694,6 +890,7 @@ Item {
                         calInProgress:      controller.orientationCalTailDownSideInProgress
                         calInProgressText:  controller.orientationCalTailDownSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalTailDownSideRotate ? "qrc:///qmlimages/VehicleTailDownRotate.png" : "qrc:///qmlimages/VehicleTailDown.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                     VehicleRotationCal {
                         width:              parent.indicatorWidth
@@ -703,6 +900,7 @@ Item {
                         calInProgress:      controller.orientationCalLeftSideInProgress
                         calInProgressText:  controller.orientationCalLeftSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalLeftSideRotate ? "qrc:///qmlimages/VehicleLeftRotate.png" : "qrc:///qmlimages/VehicleLeft.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                     VehicleRotationCal {
                         width:              parent.indicatorWidth
@@ -712,6 +910,7 @@ Item {
                         calInProgress:      controller.orientationCalRightSideInProgress
                         calInProgressText:  controller.orientationCalRightSideRotate ? qsTr("Rotate") : qsTr("Hold Still")
                         imageSource:        controller.orientationCalRightSideRotate ? "qrc:///qmlimages/VehicleRightRotate.png" : "qrc:///qmlimages/VehicleRight.png"
+                        modernStyle:        _root.useDarkStyle
                     }
                 }
             }

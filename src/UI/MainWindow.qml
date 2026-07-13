@@ -2208,8 +2208,7 @@ ApplicationWindow {
                                  !!flyPageContent &&
                                  !!flyPageContent.guidedController &&
                                  flyPageContent._startMissionEntryVisible &&
-                                 !flyPageContent.guidedController._vehicleFlying &&
-                                 !flyPageContent.guidedController._missionActive &&
+                                 !flyPageContent._startMissionVehicleInAir &&
                                  !flyPageContent._startMissionSliderVisible &&
                                  !flyPageContent._startMissionFeedbackVisible &&
                                  !flyPageContent._startMissionUnavailableDialogVisible
@@ -2227,7 +2226,7 @@ ApplicationWindow {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: qsTr("开始任务")
+                                text: flyPageContent ? flyPageContent._mapPrimaryActionDialogTitle() : qsTr("开始任务")
                                 color: "#F8FAFC"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.8
                                 font.bold: true
@@ -2236,7 +2235,7 @@ ApplicationWindow {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: flyPageContent.guidedController.startMissionMessage
+                                text: flyPageContent ? flyPageContent._mapPrimaryActionMessage() : qsTr("开始任务")
                                 color: "#E5E7EB"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
                                 horizontalAlignment: Text.AlignHCenter
@@ -2335,54 +2334,66 @@ ApplicationWindow {
                         anchors.rightMargin: fallbackFlyMapHost._margin
                         anchors.bottomMargin: fallbackFlyMapHost._margin
                         width: Math.min(
-                            ScreenTools.defaultFontPixelWidth * 38,
-                            Math.max(ScreenTools.defaultFontPixelWidth * 24, fallbackFlyMapHost.width - (fallbackFlyMapHost._margin * 2))
+                            ScreenTools.defaultFontPixelWidth * 34,
+                            Math.max(ScreenTools.defaultFontPixelWidth * 22, fallbackFlyMapHost.width - (fallbackFlyMapHost._margin * 2))
                         )
-                        height: ScreenTools.defaultFontPixelHeight * 5.8
-                        visible: fallbackFlyMapHost.visible && !!flyPageContent && flyPageContent._startMissionSliderVisible
-                        color: Qt.rgba(0.10, 0.10, 0.11, 0.96)
-                        border.color: Qt.rgba(1, 1, 1, 0.08)
+                        height: fallbackStartMissionMapConfirmContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.58)
+                        visible: fallbackFlyMapHost.visible &&
+                                 !!flyPageContent &&
+                                 flyPageContent._startMissionSliderVisible &&
+                                 !flyPageContent._startMissionAlreadyStarted &&
+                                 !flyPageContent._startMissionVehicleInAir
+                        color: Qt.rgba(0.07, 0.10, 0.12, 0.96)
+                        border.color: Qt.rgba(0.45, 0.74, 0.78, 0.20)
                         border.width: 1
-                        radius: ScreenTools.defaultFontPixelHeight * 0.28
+                        radius: ScreenTools.defaultFontPixelHeight * 0.22
                         z: QGroundControl.zOrderWidgets + 20
 
                         onVisibleChanged: {
-                            if (visible) {
-                                fallbackStartMissionMapSliderSwitch.forceActiveFocus()
+                            if (!visible) {
+                                fallbackStartMissionHoldAnimation.stop()
+                                fallbackStartMissionHoldButton.holding = false
+                                fallbackStartMissionHoldButton.holdProgress = 0
                             }
                         }
 
                         ColumnLayout {
+                            id: fallbackStartMissionMapConfirmContent
                             anchors.fill: parent
-                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.42
-                            spacing: ScreenTools.defaultFontPixelHeight * 0.3
-
-                            QGCLabel {
-                                Layout.fillWidth: true
-                                text: flyPageContent && flyPageContent.guidedController ? flyPageContent.guidedController.startMissionMessage : qsTr("开始任务")
-                                color: "#F1F3F5"
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                                wrapMode: Text.WordWrap
-                            }
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.30
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.22
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: ScreenTools.defaultFontPixelWidth * 0.55
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.32
 
-                                SliderSwitch {
-                                    id: fallbackStartMissionMapSliderSwitch
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.45
-                                    focus: fallbackStartMissionMapSliderPanel.visible
-                                    confirmText: qsTr("滑动或按住空格键")
-                                    onAccept: flyPageContent._confirmStartMissionSlider()
+                                    spacing: 0
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: qsTr("开始任务")
+                                        color: "#F5FBFC"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        text: qsTr("确认航线状态后长按执行")
+                                        color: "#8FB0B8"
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                        elide: Text.ElideRight
+                                    }
                                 }
 
                                 Rectangle {
-                                    Layout.preferredWidth: fallbackStartMissionMapSliderSwitch.height
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.96
                                     Layout.preferredHeight: Layout.preferredWidth
                                     radius: width / 2
-                                    color: "#9CC1D7"
+                                    color: Qt.rgba(1, 1, 1, 0.09)
 
                                     QGCColoredImage {
                                         anchors.centerIn: parent
@@ -2396,6 +2407,160 @@ ApplicationWindow {
                                     QGCMouseArea {
                                         anchors.fill: parent
                                         onClicked: flyPageContent._hideStartMissionSlider()
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                                Repeater {
+                                    model: [
+                                        { "label": qsTr("航点"), "value": flyPageContent ? flyPageContent._startMissionItemCountText() : "--" },
+                                        { "label": qsTr("首点"), "value": flyPageContent ? flyPageContent._startMissionFirstSequenceText() : "--" },
+                                        { "label": qsTr("状态"), "value": flyPageContent ? flyPageContent._startMissionSyncStateText() : "--" }
+                                    ]
+
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.48
+                                        color: Qt.rgba(0.09, 0.15, 0.18, 0.92)
+                                        radius: ScreenTools.defaultFontPixelHeight * 0.12
+                                        border.width: 1
+                                        border.color: Qt.rgba(0.45, 0.74, 0.78, 0.12)
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.14
+                                            spacing: 0
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: modelData.label
+                                                color: "#7E9AA4"
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.40
+                                                horizontalAlignment: Text.AlignHCenter
+                                                elide: Text.ElideRight
+                                            }
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: modelData.value
+                                                color: "#E7F7F9"
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                font.weight: Font.DemiBold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.32
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("距离 %1").arg(flyPageContent ? flyPageContent._startMissionDistanceText() : "--")
+                                    color: "#8FB0B8"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
+                                    elide: Text.ElideRight
+                                }
+
+                                QGCLabel {
+                                    text: flyPageContent && flyPageContent.guidedController ? flyPageContent.guidedController.startMissionMessage : qsTr("开始任务")
+                                    color: "#CBE5EA"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Rectangle {
+                                id: fallbackStartMissionHoldButton
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.02
+                                property real holdProgress: 0
+                                property bool holding: false
+                                clip: true
+                                radius: ScreenTools.defaultFontPixelHeight * 0.16
+                                color: fallbackStartMissionHoldMouseArea.pressed ? "#0F5F58" : (fallbackStartMissionHoldMouseArea.containsMouse ? "#199688" : "#147C72")
+                                border.width: 1
+                                border.color: Qt.rgba(0.82, 1, 0.96, 0.24)
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: parent.width * fallbackStartMissionHoldButton.holdProgress
+                                    color: Qt.rgba(1, 1, 1, 0.14)
+                                }
+
+                                QGCLabel {
+                                    anchors.centerIn: parent
+                                    text: fallbackStartMissionHoldButton.holding
+                                          ? qsTr("保持按住 %1%").arg(Math.round(fallbackStartMissionHoldButton.holdProgress * 100))
+                                          : qsTr("长按开始任务")
+                                    color: "#EFFFFC"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
+                                    font.weight: Font.DemiBold
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                NumberAnimation {
+                                    id: fallbackStartMissionHoldAnimation
+                                    target: fallbackStartMissionHoldButton
+                                    property: "holdProgress"
+                                    from: 0
+                                    to: 1
+                                    duration: 1250
+                                    easing.type: Easing.InOutQuad
+                                    onStopped: {
+                                        if (fallbackStartMissionHoldButton.holding && fallbackStartMissionHoldButton.holdProgress >= 0.999 && flyPageContent) {
+                                            fallbackStartMissionHoldButton.holding = false
+                                            flyPageContent._confirmStartMissionSlider()
+                                        }
+                                    }
+                                }
+
+                                QGCMouseArea {
+                                    id: fallbackStartMissionHoldMouseArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onPressed: {
+                                        if (!flyPageContent || !flyPageContent._mapPrimaryActionAvailable()) {
+                                            if (flyPageContent) {
+                                                flyPageContent._confirmStartMissionSlider()
+                                            }
+                                            return
+                                        }
+                                        fallbackStartMissionHoldAnimation.stop()
+                                        fallbackStartMissionHoldButton.holdProgress = 0
+                                        fallbackStartMissionHoldButton.holding = true
+                                        fallbackStartMissionHoldAnimation.restart()
+                                    }
+                                    onReleased: {
+                                        if (fallbackStartMissionHoldButton.holding && fallbackStartMissionHoldButton.holdProgress < 0.999) {
+                                            fallbackStartMissionHoldAnimation.stop()
+                                            fallbackStartMissionHoldButton.holding = false
+                                            fallbackStartMissionHoldButton.holdProgress = 0
+                                        }
+                                    }
+                                    onCanceled: {
+                                        fallbackStartMissionHoldAnimation.stop()
+                                        fallbackStartMissionHoldButton.holding = false
+                                        fallbackStartMissionHoldButton.holdProgress = 0
+                                    }
+                                    onExited: {
+                                        if (pressed && fallbackStartMissionHoldButton.holding) {
+                                            fallbackStartMissionHoldAnimation.stop()
+                                            fallbackStartMissionHoldButton.holding = false
+                                            fallbackStartMissionHoldButton.holdProgress = 0
+                                        }
                                     }
                                 }
                             }
@@ -5079,6 +5244,37 @@ ApplicationWindow {
     //-------------------------------------------------------------------------
     //-- Critical Vehicle Message Popup
 
+    function _localizedVehicleMessage(message) {
+        let localizedMessage = message || ""
+        const replacements = [
+            { "pattern": /No valid mission available, loitering/gi, "text": qsTr("没有可执行的有效任务，飞行器正在保持/盘旋") },
+            { "pattern": /No valid mission available/gi, "text": qsTr("没有可执行的有效任务") },
+            { "pattern": /loitering/gi, "text": qsTr("正在保持/盘旋") },
+            { "pattern": /Mission rejected/gi, "text": qsTr("任务被拒绝") },
+            { "pattern": /Mission upload failed/gi, "text": qsTr("任务上传失败") },
+            { "pattern": /Mission transfer failed/gi, "text": qsTr("任务传输失败") },
+            { "pattern": /Mission accepted/gi, "text": qsTr("任务已接受") },
+            { "pattern": /Mission finished/gi, "text": qsTr("任务已完成") },
+            { "pattern": /Geofence violation/gi, "text": qsTr("触发地理围栏限制") },
+            { "pattern": /Failsafe enabled/gi, "text": qsTr("失效保护已触发") },
+            { "pattern": /Failsafe activated/gi, "text": qsTr("失效保护已激活") },
+            { "pattern": /Battery low/gi, "text": qsTr("电池电量低") },
+            { "pattern": /GPS signal lost/gi, "text": qsTr("GPS 信号丢失") },
+            { "pattern": /Manual control lost/gi, "text": qsTr("手动控制链路丢失") },
+            { "pattern": /Data link lost/gi, "text": qsTr("数传链路丢失") },
+            { "pattern": /Return to launch/gi, "text": qsTr("正在返航") },
+            { "pattern": /Takeoff detected/gi, "text": qsTr("检测到起飞") },
+            { "pattern": /Landing detected/gi, "text": qsTr("检测到降落") },
+            { "pattern": /Switching to mode 'Position control' is currently not possible No manual control input/gi, "text": qsTr("当前无法切换到“位置控制”模式：没有手动控制输入") },
+            { "pattern": /No manual control input/gi, "text": qsTr("没有手动控制输入") }
+        ]
+
+        for (let i = 0; i < replacements.length; i++) {
+            localizedMessage = localizedMessage.replace(replacements[i].pattern, replacements[i].text)
+        }
+        return localizedMessage
+    }
+
     function showCriticalVehicleMessage(message) {
         closeIndicatorDrawer()
         if (criticalVehicleMessagePopup.visible || QGroundControl.videoManager.fullScreen) {
@@ -5086,7 +5282,7 @@ ApplicationWindow {
             // When the user close the older one drop the message indicator tool so they can see the rest of them.
             criticalVehicleMessagePopup.additionalCriticalMessagesReceived = true
         } else {
-            criticalVehicleMessagePopup.criticalVehicleMessage      = message
+            criticalVehicleMessagePopup.criticalVehicleMessage      = _localizedVehicleMessage(message)
             criticalVehicleMessagePopup.additionalCriticalMessagesReceived = false
             criticalVehicleMessagePopup.open()
         }
@@ -5096,76 +5292,76 @@ ApplicationWindow {
         id:                 criticalVehicleMessagePopup
         y:                  ScreenTools.toolbarHeight + ScreenTools.defaultFontPixelHeight
         x:                  Math.round((mainWindow.width - width) * 0.5)
-        width:              mainWindow.width  * 0.55
-        height:             criticalVehicleMessageText.contentHeight + ScreenTools.defaultFontPixelHeight * 2
+        width:              Math.min(mainWindow.width * 0.52, ScreenTools.defaultFontPixelWidth * 58)
+        height:             criticalVehicleMessageContent.implicitHeight + ScreenTools.defaultFontPixelHeight
         modal:              false
         focus:              true
+        padding:            0
 
         property string criticalVehicleMessage:             ""
         property bool   additionalCriticalMessagesReceived: false
 
         background: Rectangle {
             anchors.fill:   parent
-            color:          qgcPal.alertBackground
-            radius:         ScreenTools.defaultFontPixelHeight * 0.5
-            border.color:   qgcPal.alertBorder
-            border.width:   2
+            color:          Qt.rgba(0.10, 0.10, 0.11, 0.96)
+            radius:         ScreenTools.defaultFontPixelHeight * 0.36
+            border.color:   Qt.rgba(1.0, 0.66, 0.20, 0.72)
+            border.width:   1
+        }
 
-            Rectangle {
-                anchors.horizontalCenter:   parent.horizontalCenter
-                anchors.top:                parent.top
-                anchors.topMargin:          -(height / 2)
-                color:                      qgcPal.alertBackground
-                radius:                     ScreenTools.defaultFontPixelHeight * 0.25
-                border.color:               qgcPal.alertBorder
-                border.width:               1
-                width:                      vehicleWarningLabel.contentWidth + _margins
-                height:                     vehicleWarningLabel.contentHeight + _margins
+        Column {
+            id:                 criticalVehicleMessageContent
+            anchors.fill:       parent
+            anchors.margins:    ScreenTools.defaultFontPixelHeight * 0.5
+            spacing:            ScreenTools.defaultFontPixelHeight * 0.28
 
-                property real _margins: ScreenTools.defaultFontPixelHeight * 0.25
+            Row {
+                width:      parent.width
+                spacing:    ScreenTools.defaultFontPixelWidth * 0.7
+
+                Rectangle {
+                    width:              ScreenTools.defaultFontPixelHeight * 0.55
+                    height:             width
+                    radius:             width / 2
+                    color:              "#F59E0B"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
 
                 QGCLabel {
                     id:                 vehicleWarningLabel
-                    anchors.centerIn:   parent
-                    text:               qsTr("飞行器错误")
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    color:              qgcPal.alertText
+                    text:               qsTr("飞行器告警")
+                    color:              "#F8FAFC"
+                    font.bold:          true
+                    font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.72
+                    anchors.verticalCenter: parent.verticalCenter
                 }
-            }
-
-            Rectangle {
-                id:                         additionalErrorsIndicator
-                anchors.horizontalCenter:   parent.horizontalCenter
-                anchors.bottom:             parent.bottom
-                anchors.bottomMargin:       -(height / 2)
-                color:                      qgcPal.alertBackground
-                radius:                     ScreenTools.defaultFontPixelHeight * 0.25
-                border.color:               qgcPal.alertBorder
-                border.width:               1
-                width:                      additionalErrorsLabel.contentWidth + _margins
-                height:                     additionalErrorsLabel.contentHeight + _margins
-                visible:                    criticalVehicleMessagePopup.additionalCriticalMessagesReceived
-
-                property real _margins: ScreenTools.defaultFontPixelHeight * 0.25
 
                 QGCLabel {
-                    id:                 additionalErrorsLabel
-                    anchors.centerIn:   parent
-                    text:               qsTr("收到更多错误信息")
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    color:              qgcPal.alertText
+                    text:               qsTr("点击关闭")
+                    color:              Qt.rgba(1, 1, 1, 0.48)
+                    font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.58
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
-        }
 
-        QGCLabel {
-            id:                 criticalVehicleMessageText
-            width:              criticalVehicleMessagePopup.width - ScreenTools.defaultFontPixelHeight
-            anchors.centerIn:   parent
-            wrapMode:           Text.WordWrap
-            color:              qgcPal.alertText
-            textFormat:         TextEdit.RichText
-            text:               criticalVehicleMessagePopup.criticalVehicleMessage
+            QGCLabel {
+                id:                 criticalVehicleMessageText
+                width:              parent.width
+                wrapMode:           Text.WordWrap
+                color:              "#FDE68A"
+                textFormat:         TextEdit.RichText
+                text:               criticalVehicleMessagePopup.criticalVehicleMessage
+                font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.72
+            }
+
+            QGCLabel {
+                width:              parent.width
+                visible:            criticalVehicleMessagePopup.additionalCriticalMessagesReceived
+                text:               qsTr("还有新的告警信息，请打开消息列表查看。")
+                color:              Qt.rgba(1, 1, 1, 0.62)
+                wrapMode:           Text.WordWrap
+                font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.62
+            }
         }
 
         MouseArea {
