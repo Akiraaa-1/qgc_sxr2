@@ -549,6 +549,95 @@ ApplicationWindow {
         return hours > 0 ? (hours + ":" + pad(minutes) + ":" + pad(seconds)) : (minutes + ":" + pad(seconds))
     }
 
+    function _flightModeDisplayName(flightMode) {
+        const rawMode = flightMode === undefined || flightMode === null ? "" : ("" + flightMode)
+        const mode = rawMode.trim()
+        const normalizedMode = mode.toLowerCase()
+
+        if (normalizedMode.indexOf("precision lan") === 0 || normalizedMode === "precland") {
+            return qsTr("精准降落")
+        }
+        if (normalizedMode.indexOf("safe recovery") === 0) {
+            return qsTr("安全恢复")
+        }
+        if (normalizedMode.indexOf("position slow") === 0) {
+            return qsTr("慢速位置")
+        }
+        if (normalizedMode.indexOf("follow target") === 0) {
+            return qsTr("跟随目标")
+        }
+        if (normalizedMode.indexOf("vtol takeoff") === 0) {
+            return qsTr("VTOL 起飞")
+        }
+        if (normalizedMode.indexOf("manual") >= 0) {
+            return qsTr("手动")
+        }
+        if (normalizedMode.indexOf("stabilized") >= 0) {
+            return qsTr("自稳")
+        }
+        if (normalizedMode.indexOf("acro") >= 0) {
+            return qsTr("特技")
+        }
+        if (normalizedMode.indexOf("rattitude") >= 0) {
+            return qsTr("半自稳")
+        }
+        if (normalizedMode.indexOf("offboard") >= 0) {
+            return qsTr("板外控制")
+        }
+        if (normalizedMode.indexOf("position") >= 0) {
+            return qsTr("定点")
+        }
+        if (normalizedMode.indexOf("return") >= 0 || normalizedMode.indexOf("rtl") >= 0) {
+            return qsTr("返航")
+        }
+
+        switch (mode) {
+        case "":                return qsTr("自动")
+        case "Hold":            return qsTr("保持")
+        case "Mission":         return qsTr("任务")
+        case "Return":
+        case "RTL":             return qsTr("返航")
+        case "Land":            return qsTr("降落")
+        case "Takeoff":         return qsTr("起飞")
+        case "Manual":          return qsTr("手动")
+        case "Position":
+        case "Position Hold":   return qsTr("定点")
+        case "Altitude":
+        case "Altitude Hold":   return qsTr("定高")
+        case "Stabilized":      return qsTr("自稳")
+        case "Acro":            return qsTr("特技")
+        case "Rattitude":       return qsTr("半自稳")
+        case "Offboard":        return qsTr("板外控制")
+        case "Orbit":           return qsTr("环绕")
+        case "Descend":         return qsTr("下降")
+        case "Unknown":         return qsTr("未知")
+        default:                return mode
+        }
+    }
+
+    function _requestMapFlightModeChange(vehicle, flightMode) {
+        if (!vehicle || !vehicle.flightModeSetAvailable) {
+            return
+        }
+
+        const targetMode = flightMode === undefined || flightMode === null ? "" : ("" + flightMode)
+        const currentMode = vehicle.flightMode === undefined || vehicle.flightMode === null ? "" : ("" + vehicle.flightMode)
+        if (targetMode === "" || targetMode === currentMode) {
+            return
+        }
+
+        QGroundControl.showMessageDialog(
+            mainWindow,
+            qsTr("切换飞行模式"),
+            qsTr("将飞行模式切换为 %1？").arg(_flightModeDisplayName(targetMode)),
+            Dialog.Yes | Dialog.Cancel,
+            function() {
+                if (vehicle) {
+                    vehicle.flightMode = targetMode
+                }
+            })
+    }
+
     function _formatSignedValue(value, precision = 0, suffix = "") {
         if (isNaN(Number(value))) {
             return "--"
@@ -623,13 +712,13 @@ ApplicationWindow {
         return true
     }
 
-    property string closeDialogTitle: qsTr("Close %1").arg(QGroundControl.appName)
+    property string closeDialogTitle: qsTr("关闭 %1").arg(QGroundControl.appName)
 
     function checkForUnsavedMission() {
         const planViewItem = _planViewItem()
         if (planViewItem && (planViewItem._planMasterController.dirtyForSave || planViewItem._planMasterController.dirtyForUpload)) {
             QGroundControl.showMessageDialog(mainWindow, closeDialogTitle,
-                              qsTr("You have a mission edit in progress which has not been saved/uploaded. If you close you will lose changes. Are you sure you want to close?"),
+                              qsTr("当前有未保存或未上传的任务编辑。关闭后将丢失这些更改，确定要关闭吗？"),
                               Dialog.Yes | Dialog.No,
                               function() { _closeChecksToSkip |= _skipUnsavedMissionCheckMask; performCloseChecks() })
             return false
@@ -642,7 +731,7 @@ ApplicationWindow {
         for (var index=0; index<QGroundControl.multiVehicleManager.vehicles.count; index++) {
             if (QGroundControl.multiVehicleManager.vehicles.get(index).parameterManager.pendingWrites) {
                 QGroundControl.showMessageDialog(mainWindow, closeDialogTitle,
-                    qsTr("You have pending parameter updates to a vehicle. If you close you will lose changes. Are you sure you want to close?"),
+                    qsTr("当前有尚未写入飞行器的参数更新。关闭后将丢失这些更改，确定要关闭吗？"),
                     Dialog.Yes | Dialog.No,
                     function() { _closeChecksToSkip |= _skipPendingParameterWritesCheckMask; performCloseChecks() })
                 return false
@@ -654,7 +743,7 @@ ApplicationWindow {
     function checkForActiveConnections() {
         if (QGroundControl.multiVehicleManager.activeVehicle) {
             QGroundControl.showMessageDialog(mainWindow, closeDialogTitle,
-                qsTr("There are still active connections to vehicles. Are you sure you want to exit?"),
+                qsTr("当前仍有飞行器处于活动连接状态。确定要退出吗？"),
                 Dialog.Yes | Dialog.No,
                 function() { _closeChecksToSkip |= _skipActiveConnectionsCheckMask; performCloseChecks() })
             return false
@@ -1553,6 +1642,7 @@ ApplicationWindow {
 
                     property var _activeVehicle: globals.activeVehicle
                     property bool _trafficViewVisible: false
+                    property bool _instrumentPanelVisible: false
                     property bool _videoOverlayExpanded: false
                     property bool _mapStripExpanded: true
                     property string _mapNavigationSelection: ""
@@ -1599,6 +1689,15 @@ ApplicationWindow {
                     }
 
                     function _isMapStripActionEnabled(key, requiresVehicle) {
+                        if (key === "flightMode") {
+                            return !!(_activeVehicle && _activeVehicle.flightModeSetAvailable)
+                        }
+                        if (key === "land") {
+                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showLand)
+                        }
+                        if (key === "emergencyStop") {
+                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showEmergenyStop)
+                        }
                         if (key === "locate") {
                             return _vehicleHasPosition(_activeVehicle)
                         }
@@ -1609,25 +1708,141 @@ ApplicationWindow {
                         if (key === "traffic") {
                             return _trafficViewVisible
                         }
-                        if (key === "pan") {
-                            return _mapNavigationSelection === "pan"
+                        if (key === "showPath") {
+                            return flyPageContent ? flyPageContent._showFlightPath : true
                         }
-                        if (key === "locate") {
-                            return _mapNavigationSelection === "locate"
+                        if (key === "list") {
+                            return flyPageContent ? flyPageContent._instrumentPanelVisible : _instrumentPanelVisible
+                        }
+                        if (key === "armDisarm") {
+                            return !!(_activeVehicle && _activeVehicle.armed)
+                        }
+                        if (key === "pan" || key === "locate") {
+                            return _mapNavigationSelection === key
                         }
                         return false
                     }
 
-                    function _triggerMapStripAction(command) {
+                    function _mapStripFlightModeText() {
+                        const text = _activeVehicle && _activeVehicle.flightMode
+                            ? mainWindow._flightModeDisplayName(_activeVehicle.flightMode)
+                            : qsTr("模式")
+                        const compactText = ("" + text).replace(/\s+/g, "")
+                        if (compactText.length <= 3) {
+                            return compactText
+                        }
+                        if (compactText.length === 4) {
+                            return compactText.slice(0, 2) + "\n" + compactText.slice(2)
+                        }
+                        const splitIndex = Math.ceil(compactText.length / 2)
+                        return compactText.slice(0, splitIndex) + "\n" + compactText.slice(splitIndex)
+                    }
+
+                    function _flightModeMenuMinimumWidth() {
+                        const modes = _activeVehicle && _activeVehicle.flightModeSetAvailable ? _activeVehicle.flightModes : []
+                        let widestText = 0
+                        for (let i = 0; i < modes.length; i++) {
+                            fallbackFlightModeMenuTextMetrics.text = mainWindow._flightModeDisplayName(modes[i])
+                            widestText = Math.max(widestText, fallbackFlightModeMenuTextMetrics.advanceWidth)
+                        }
+
+                        return widestText + (ScreenTools.defaultFontPixelWidth * 5.5)
+                    }
+
+                    function _mapStripActionTitle(key) {
+                        switch (key) {
+                        case "traffic":
+                            return qsTr("态势")
+                        case "showPath":
+                            return qsTr("显示航迹")
+                        case "list":
+                            return qsTr("仪表")
+                        case "checklist":
+                            return qsTr("飞行前检查单")
+                        case "armDisarm":
+                            return _activeVehicle && _activeVehicle.armed ? qsTr("上锁") : qsTr("解锁")
+                        case "play":
+                            return qsTr("继续任务")
+                        case "pause":
+                            return qsTr("暂停")
+                        case "rtl":
+                            return qsTr("返航")
+                        case "land":
+                            return qsTr("降落")
+                        case "emergencyStop":
+                            return qsTr("紧急停止")
+                        case "flightMode":
+                            return qsTr("飞行模式")
+                        case "up":
+                            return qsTr("上升")
+                        case "down":
+                            return qsTr("下降")
+                        case "orbit":
+                            return qsTr("旋转地图")
+                        case "lockOrbit":
+                            return qsTr("锁定朝向")
+                        case "pan":
+                            return qsTr("平移")
+                        case "locate":
+                            return qsTr("定位")
+                        default:
+                            return qsTr("操作不可用")
+                        }
+                    }
+
+                    function _mapStripUnavailableMessage(key, requiresVehicle) {
+                        if (requiresVehicle && !_activeVehicle) {
+                            return qsTr("当前没有连接飞行器。")
+                        }
+                        switch (key) {
+                        case "locate":
+                            return qsTr("当前飞行器还没有有效定位。")
+                        case "flightMode":
+                            return qsTr("当前飞控不支持从地面站切换飞行模式。")
+                        case "land":
+                            return qsTr("当前状态不允许降落。")
+                        case "emergencyStop":
+                            return qsTr("当前状态不允许紧急停止。")
+                        case "play":
+                            return qsTr("当前没有可继续的任务。")
+                        case "pause":
+                            return qsTr("当前飞行模式不允许暂停。")
+                        case "up":
+                        case "down":
+                            return qsTr("当前飞行模式不允许直接调整高度。")
+                        default:
+                            return qsTr("当前状态下无法执行此操作。")
+                        }
+                    }
+
+                    function _showMapStripUnavailable(key, requiresVehicle) {
+                        QGroundControl.showMessageDialog(
+                            mainWindow,
+                            _mapStripActionTitle(key),
+                            _mapStripUnavailableMessage(key, requiresVehicle))
+                    }
+
+                    function _triggerMapStripAction(command, sourceItem) {
                         const guidedController = globals.guidedControllerFlyView
                         switch (command) {
                         case "traffic":
                             _trafficViewVisible = !_trafficViewVisible
                             if (_trafficViewVisible) {
+                                if (flyPageContent) {
+                                    flyPageContent._instrumentPanelVisible = false
+                                } else {
+                                    _instrumentPanelVisible = false
+                                }
                                 fallbackTrafficViewPanel.refresh()
                             }
                             break
                         case "list":
+                            _trafficViewVisible = false
+                            if (flyPageContent) {
+                                flyPageContent._instrumentPanelVisible = !flyPageContent._instrumentPanelVisible
+                            } else {
+                                _instrumentPanelVisible = !_instrumentPanelVisible
+                            }
                             break
                         case "orbit":
                             if (typeof fallbackFlyMap.bearing !== "undefined") {
@@ -1654,6 +1869,36 @@ ApplicationWindow {
                                 guidedController.confirmAction(guidedController.actionRTL)
                             }
                             break
+                        case "land":
+                            if (guidedController) {
+                                guidedController.confirmAction(guidedController.actionLand)
+                            }
+                            break
+                        case "emergencyStop":
+                            if (guidedController) {
+                                guidedController.confirmAction(guidedController.actionEmergencyStop)
+                            }
+                            break
+                        case "checklist":
+                            if (flyPageContent && flyPageContent.preFlightChecklistPopupItem) {
+                                flyPageContent.preFlightChecklistPopupItem.open()
+                            }
+                            break
+                        case "armDisarm":
+                            if (_activeVehicle) {
+                                const arm = !_activeVehicle.armed
+                                QGroundControl.showMessageDialog(
+                                    mainWindow,
+                                    arm ? qsTr("解锁") : qsTr("上锁"),
+                                    arm ? qsTr("确认解锁飞行器？") : qsTr("确认上锁飞行器？"),
+                                    Dialog.Yes | Dialog.Cancel,
+                                    function() {
+                                        if (fallbackFlyMapHost._activeVehicle) {
+                                            fallbackFlyMapHost._activeVehicle.armed = arm
+                                        }
+                                    })
+                            }
+                            break
                         case "play":
                             if (!guidedController) {
                                 break
@@ -1667,6 +1912,19 @@ ApplicationWindow {
                         case "pause":
                             if (guidedController) {
                                 guidedController.confirmAction(guidedController.actionPause)
+                            }
+                            break
+                        case "flightMode":
+                            if (_activeVehicle && _activeVehicle.flightModeSetAvailable && sourceItem) {
+                                fallbackMapFlightModeMenu.width = Math.max(fallbackMapFlightModeMenu.implicitWidth,
+                                                                           fallbackFlyMapHost._flightModeMenuMinimumWidth())
+                                fallbackMapFlightModeMenu.popup(fallbackFloatingMapStrip.x + fallbackFloatingMapStrip.width,
+                                                                fallbackFloatingMapStrip.y + sourceItem.y)
+                            }
+                            break
+                        case "showPath":
+                            if (flyPageContent) {
+                                flyPageContent._showFlightPath = !flyPageContent._showFlightPath
                             }
                             break
                         case "pan":
@@ -1731,25 +1989,51 @@ ApplicationWindow {
                         anchors.fill: parent
                         mapName: "FlyFallbackMap"
                         pipMode: false
-                        showMissionPaths: true
+                        showMissionPaths: flyPageContent ? flyPageContent._showFlightPath : true
                         planMasterController: fallbackPlanController
                         rightPanelWidth: 0
                         toolInsets: fallbackToolInsets
+                    }
+
+                    QGCMenu {
+                        id: fallbackMapFlightModeMenu
+                        width: Math.max(implicitWidth, fallbackFlyMapHost._flightModeMenuMinimumWidth())
+
+                        Instantiator {
+                            model: fallbackFlyMapHost._activeVehicle && fallbackFlyMapHost._activeVehicle.flightModeSetAvailable
+                                ? fallbackFlyMapHost._activeVehicle.flightModes
+                                : []
+                            delegate: QGCMenuItem {
+                                required property var modelData
+                                text: mainWindow._flightModeDisplayName(modelData)
+                                onTriggered: mainWindow._requestMapFlightModeChange(fallbackFlyMapHost._activeVehicle, modelData)
+                            }
+                            onObjectAdded: (index, object) => fallbackMapFlightModeMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => fallbackMapFlightModeMenu.removeItem(object)
+                        }
+                    }
+
+                    TextMetrics {
+                        id: fallbackFlightModeMenuTextMetrics
                     }
 
                     Rectangle {
                         id: fallbackFloatingMapStrip
                         anchors.left: parent.left
                         anchors.leftMargin: fallbackFlyMapHost._margin
-                        anchors.verticalCenter: parent.verticalCenter
+                        y: Math.max(fallbackFlyMapHost._margin, (parent.height - height) * 0.5)
                         readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 2.18
                         readonly property real _innerMargin: ScreenTools.defaultFontPixelHeight * 0.16
-                        readonly property real _expandedWidth: ScreenTools.defaultFontPixelHeight * 2.75
+                        readonly property real _iconRailWidth: ScreenTools.defaultFontPixelHeight * 2.75
+                        readonly property real _expandedWidth: _iconRailWidth
                         readonly property real _collapsedWidth: 0
-                        readonly property real _expandedHeight: fallbackStripButtonColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.38)
+                        readonly property real _buttonSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+                        readonly property real _expandedHeight: fallbackStripButtonColumn.implicitHeight + (_innerMargin * 2)
                         readonly property real _collapsedHeight: 0
                         width: fallbackFlyMapHost._mapStripExpanded ? _expandedWidth : _collapsedWidth
-                        height: fallbackFlyMapHost._mapStripExpanded ? _expandedHeight : _collapsedHeight
+                        height: fallbackFlyMapHost._mapStripExpanded
+                            ? Math.min(_expandedHeight, Math.max(0, parent.height - (fallbackFlyMapHost._margin * 2)))
+                            : _collapsedHeight
                         color: Qt.rgba(0.06, 0.06, 0.07, 0.9)
                         radius: ScreenTools.defaultFontPixelHeight * 0.18
                         clip: true
@@ -1762,49 +2046,119 @@ ApplicationWindow {
                             NumberAnimation { duration: 180; easing.type: Easing.InOutCubic }
                         }
 
-                        ColumnLayout {
-                            id: fallbackStripButtonColumn
+                        Flickable {
+                            id: fallbackStripFlickable
                             anchors.fill: parent
                             anchors.margins: fallbackFloatingMapStrip._innerMargin
-                            spacing: ScreenTools.defaultFontPixelHeight * 0.12
+                            contentWidth: width
+                            contentHeight: fallbackStripButtonColumn.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            clip: true
+                            interactive: fallbackFlyMapHost._mapStripExpanded && contentHeight > height
 
-                            Repeater {
-                                model: [
+                            ScrollBar.vertical: ScrollBar {
+                                policy: fallbackStripFlickable.contentHeight > fallbackStripFlickable.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                                width: ScreenTools.defaultFontPixelWidth * 0.35
+                            }
+
+                            ColumnLayout {
+                                id: fallbackStripButtonColumn
+                                width: fallbackStripFlickable.width
+                                spacing: fallbackFloatingMapStrip._buttonSpacing
+
+                                Repeater {
+                                    model: [
                                     { "key": "traffic",   "icon": "/InstrumentValueIcons/border-outer.svg",    "requiresVehicle": false, "slashed": false },
-                                    { "key": "list",      "icon": "/InstrumentValueIcons/clipboard.svg",       "requiresVehicle": false, "slashed": false },
-                                    { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": false },
-                                    { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": true  },
-                                    { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",   "requiresVehicle": true,  "slashed": false },
-                                    { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg", "requiresVehicle": true,  "slashed": false },
-                                    { "key": "rtl",       "icon": "/res/rtl.svg",                              "requiresVehicle": true,  "slashed": false },
+                                    { "key": "showPath",  "icon": "/InstrumentValueIcons/view-show.svg",       "requiresVehicle": false, "slashed": false },
+                                    { "key": "checklist", "icon": "/InstrumentValueIcons/shield.svg",          "requiresVehicle": false, "slashed": false },
+                                    { "key": "armDisarm", "icon": fallbackFlyMapHost._activeVehicle && fallbackFlyMapHost._activeVehicle.armed ? "/res/LockClosed.svg" : "/res/LockOpen.svg", "requiresVehicle": true, "slashed": false },
                                     { "key": "play",      "icon": "/InstrumentValueIcons/play-outline.svg",    "requiresVehicle": true,  "slashed": false },
                                     { "key": "pause",     "icon": "/InstrumentValueIcons/pause-outline.svg",   "requiresVehicle": true,  "slashed": false },
+                                    { "key": "rtl",       "icon": "/res/rtl.svg",                              "requiresVehicle": true,  "slashed": false },
+                                    { "key": "land",      "icon": "/res/land.svg",                             "requiresVehicle": true,  "slashed": false },
+                                    { "key": "emergencyStop", "icon": "/res/Stop.svg",                         "requiresVehicle": true,  "slashed": false },
+                                    { "key": "flightMode","icon": "",                                          "requiresVehicle": true,  "slashed": false },
+                                    { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",   "requiresVehicle": true,  "slashed": false },
+                                    { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg", "requiresVehicle": true,  "slashed": false },
+                                    { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": false },
+                                    { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": true  },
                                     { "key": "pan",       "icon": "/InstrumentValueIcons/map-pan.svg",         "requiresVehicle": false, "slashed": false },
                                     { "key": "locate",    "icon": "/InstrumentValueIcons/map-follow.svg",      "requiresVehicle": true,  "slashed": false }
-                                ]
+                                    ]
 
-                                delegate: Rectangle {
+                                    delegate: Rectangle {
                                     required property var modelData
 
-                                    readonly property bool _enabled: fallbackFlyMapHost._isMapStripActionEnabled(modelData.key, modelData.requiresVehicle)
-                                    readonly property bool _selected: fallbackFlyMapHost._isMapStripSelected(modelData.key)
+                                    readonly property bool _isSeparator: modelData.separator === true
+                                    readonly property bool _isFlightMode: modelData.key === "flightMode"
+                                    readonly property bool _enabled: !_isSeparator && fallbackFlyMapHost._isMapStripActionEnabled(modelData.key, modelData.requiresVehicle)
+                                    readonly property bool _selected: !_isSeparator && fallbackFlyMapHost._isMapStripSelected(modelData.key)
 
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: fallbackFloatingMapStrip._buttonHeight
-                                    color: _selected ? "#2F6FC7" : (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")
-                                    opacity: fallbackFlyMapHost._mapStripExpanded ? (_enabled ? 1 : 0.42) : 0
+                                    Layout.preferredHeight: _isSeparator ? ScreenTools.defaultFontPixelHeight * 0.42 : fallbackFloatingMapStrip._buttonHeight
+                                    color: _isSeparator
+                                        ? "transparent"
+                                        : (_selected
+                                            ? "#2F6FC7"
+                                            : (_isFlightMode
+                                                ? (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")
+                                                : (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")))
+                                    opacity: fallbackFlyMapHost._mapStripExpanded ? (_isSeparator ? 1 : (_enabled ? 1 : 0.42)) : 0
                                     radius: ScreenTools.defaultFontPixelHeight * 0.18
+                                    border.width: 0
+                                    border.color: "transparent"
+
+                                    Rectangle {
+                                        visible: parent._isSeparator
+                                        anchors.centerIn: parent
+                                        width: parent.width * 0.58
+                                        height: 1
+                                        color: Qt.rgba(1, 1, 1, 0.18)
+                                    }
 
                                     Item {
+                                        visible: !parent._isSeparator
                                         anchors.fill: parent
 
+                                        Rectangle {
+                                            visible: parent.parent._isFlightMode
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.14
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: ScreenTools.defaultFontPixelWidth * 0.22
+                                            height: parent.height * 0.62
+                                            radius: width / 2
+                                            color: "#7FD0FF"
+                                            opacity: 0.8
+                                        }
+
                                         QGCColoredImage {
+                                            visible: !parent.parent._isFlightMode
                                             anchors.centerIn: parent
                                             width: parent.height * 0.42
                                             height: width
                                             color: "#FFFFFF"
                                             fillMode: Image.PreserveAspectFit
-                                            source: modelData.icon
+                                            source: modelData.icon || ""
+                                        }
+
+                                        QGCLabel {
+                                            visible: parent.parent._isFlightMode
+                                            anchors.centerIn: parent
+                                            width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.7)
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                            text: fallbackFlyMapHost._mapStripFlightModeText()
+                                            color: "#FFFFFF"
+                                            wrapMode: Text.Wrap
+                                            maximumLineCount: 2
+                                            elide: Text.ElideRight
+                                            lineHeightMode: Text.FixedHeight
+                                            lineHeight: ScreenTools.defaultFontPixelHeight * 0.62
+                                            font.pixelSize: Math.max(ScreenTools.defaultFontPixelHeight * 0.36,
+                                                                     Math.min(ScreenTools.defaultFontPixelHeight * 0.54,
+                                                                              parent.width / Math.max(2.2, text.replace(/\n/g, "").length * 0.56)))
+                                            font.bold: true
                                         }
 
                                         Rectangle {
@@ -1821,8 +2175,15 @@ ApplicationWindow {
                                     QGCMouseArea {
                                         id: fallbackStripMouseArea
                                         anchors.fill: parent
-                                        enabled: fallbackFlyMapHost._mapStripExpanded && parent._enabled
-                                        onClicked: fallbackFlyMapHost._triggerMapStripAction(modelData.key)
+                                        enabled: fallbackFlyMapHost._mapStripExpanded && !parent._isSeparator
+                                        onClicked: {
+                                            if (parent._enabled) {
+                                                fallbackFlyMapHost._triggerMapStripAction(modelData.key, parent)
+                                            } else {
+                                                fallbackFlyMapHost._showMapStripUnavailable(modelData.key, modelData.requiresVehicle)
+                                            }
+                                        }
+                                    }
                                     }
                                 }
                             }
@@ -1870,7 +2231,7 @@ ApplicationWindow {
                         border.width: 1
                         radius: ScreenTools.defaultFontPixelHeight * 0.18
                         clip: true
-                        z: QGroundControl.zOrderWidgets
+                        z: QGroundControl.zOrderWidgets + 2
 
                         property var _adsbModel: QGroundControl.adsbVehicleManager ? QGroundControl.adsbVehicleManager.adsbVehicles : null
                         property var _referenceCoordinate: null
@@ -2088,6 +2449,140 @@ ApplicationWindow {
                             text: fallbackTrafficViewPanel.trafficCount === 0
                                 ? qsTr("Waiting for live traffic data")
                                 : qsTr("Traffic detected. Waiting for vehicle position")
+                        }
+                    }
+
+                    Rectangle {
+                        id: fallbackInstrumentPanel
+                        anchors.left: fallbackFloatingMapStrip.right
+                        anchors.leftMargin: fallbackFlyMapHost._margin * 0.9
+                        anchors.top: fallbackFloatingMapStrip.top
+                        width: Math.min(
+                            Math.max(ScreenTools.defaultFontPixelWidth * 26, parent.width * 0.34),
+                            Math.max(ScreenTools.defaultFontPixelWidth * 22, parent.width - fallbackFloatingMapStrip.width - (fallbackFlyMapHost._margin * 2.4))
+                        )
+                        height: Math.min(parent.height - (fallbackFlyMapHost._margin * 2), ScreenTools.defaultFontPixelHeight * 24)
+                        visible: flyPageContent ? flyPageContent._instrumentPanelVisible : fallbackFlyMapHost._instrumentPanelVisible
+                        color: Qt.rgba(0.10, 0.10, 0.11, 0.96)
+                        border.color: Qt.rgba(1, 1, 1, 0.08)
+                        border.width: 1
+                        radius: ScreenTools.defaultFontPixelHeight * 0.18
+                        clip: true
+                        z: QGroundControl.zOrderWidgets + 2
+
+                        property var _vehicle: fallbackFlyMapHost._activeVehicle
+                        property var _battery: _vehicle && _vehicle.batteries && _vehicle.batteries.count > 0 ? _vehicle.batteries.get(0) : null
+                        readonly property real _panelMargin: ScreenTools.defaultFontPixelHeight * 0.64
+                        readonly property real _rowHeight: ScreenTools.defaultFontPixelHeight * 1.72
+
+                        function _factText(fact, precision = 0) {
+                            if (!fact || fact.rawValue === undefined || isNaN(Number(fact.rawValue))) {
+                                return "--"
+                            }
+
+                            const units = fact.units === undefined || fact.units === null ? "" : fact.units
+                            return Number(fact.rawValue).toFixed(precision) + units
+                        }
+
+                        function _flightTimeText() {
+                            if (!_vehicle) {
+                                return "--"
+                            }
+                            const fact = _vehicle.getFact("flightTime")
+                            if (!fact || fact.rawValue === undefined || isNaN(Number(fact.rawValue))) {
+                                return "--"
+                            }
+                            const totalSeconds = Math.max(0, Math.round(Number(fact.rawValue)))
+                            const minutes = Math.floor(totalSeconds / 60)
+                            const seconds = totalSeconds % 60
+                            return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.AllButtons
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: fallbackInstrumentPanel._panelMargin
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.42
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.2
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("仪表")
+                                    color: "#E8E8E8"
+                                    font.weight: Font.DemiBold
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.82
+                                    elide: Text.ElideRight
+                                }
+
+                                QGCLabel {
+                                    text: fallbackInstrumentPanel._vehicle ? mainWindow._flightModeDisplayName(fallbackInstrumentPanel._vehicle.flightMode) : qsTr("未连接")
+                                    color: "#7FD0FF"
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 2
+                                rowSpacing: ScreenTools.defaultFontPixelHeight * 0.36
+                                columnSpacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                                Repeater {
+                                    model: [
+                                        { "label": qsTr("飞行时间"), "value": fallbackInstrumentPanel._flightTimeText() },
+                                        { "label": qsTr("电量"), "value": fallbackInstrumentPanel._battery ? fallbackInstrumentPanel._factText(fallbackInstrumentPanel._battery.percentRemaining, 0) : "--" },
+                                        { "label": qsTr("高度"), "value": fallbackInstrumentPanel._vehicle ? fallbackInstrumentPanel._factText(fallbackInstrumentPanel._vehicle.altitudeRelative, 1) : "--" },
+                                        { "label": qsTr("航向"), "value": fallbackInstrumentPanel._vehicle ? fallbackInstrumentPanel._factText(fallbackInstrumentPanel._vehicle.heading, 0) : "--" },
+                                        { "label": qsTr("空速"), "value": fallbackInstrumentPanel._vehicle ? fallbackInstrumentPanel._factText(fallbackInstrumentPanel._vehicle.airSpeed, 1) : "--" },
+                                        { "label": qsTr("垂直速度"), "value": fallbackInstrumentPanel._vehicle ? fallbackInstrumentPanel._factText(fallbackInstrumentPanel._vehicle.climbRate, 1) : "--" }
+                                    ]
+
+                                    delegate: Rectangle {
+                                        required property var modelData
+
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: fallbackInstrumentPanel._rowHeight
+                                        color: Qt.rgba(1, 1, 1, 0.035)
+                                        radius: ScreenTools.defaultFontPixelHeight * 0.14
+                                        border.color: Qt.rgba(1, 1, 1, 0.055)
+                                        border.width: 1
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.24
+                                            spacing: 0
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: modelData.label
+                                                color: "#8F9BA8"
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                                elide: Text.ElideRight
+                                            }
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: modelData.value
+                                                color: "#F6F8FB"
+                                                font.weight: Font.DemiBold
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item { Layout.fillHeight: true }
                         }
                     }
 
@@ -3486,18 +3981,20 @@ ApplicationWindow {
                     property int _selectedDataBits: 8
                     property int _selectedStopBits: 1
                     property int _selectedParity: 0
-                    property int _selectedMavlinkVersion: 2
+                    property int _selectedMavlinkVersion: 1
                     property bool _autoConnectOnBoot: false
                     property int _connectedVehicleCount: 0
                     property bool _isConnected: false
                     readonly property string _connectionStateIdle: "idle"
                     readonly property string _connectionStateConnecting: "connecting"
+                    readonly property string _connectionStateWaitingParams: "waitingParams"
                     readonly property string _connectionStateFinishing: "finishing"
                     property string _manualConnectionState: _connectionStateIdle
-                    readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateFinishing
+                    readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateWaitingParams || _manualConnectionState === _connectionStateFinishing
                     property real _connectionProgress: 0
                     property int _connectionElapsedMs: 0
                     readonly property int _connectionTimeoutMs: 6000
+                    readonly property int _parameterTimeoutMs: 8000
                     property bool _pendingWorkspaceEntry: false
                     property bool _manualConnectionArmed: false
                     property string _statusText: qsTr("Select a link and connect the vehicle")
@@ -3543,8 +4040,80 @@ ApplicationWindow {
                         _manualConnectionArmed = true
                         _connectingConfig = config
                         startConnectionCompleteTimer.stop()
-                        _statusText = qsTr("Connecting to vehicle...")
+                        _statusText = qsTr("正在连接飞行器...")
                         _recentConnectionText = _statusText
+                    }
+
+                    function _activeVehicleParametersReady() {
+                        const parameterManager = _activeVehicle ? _activeVehicle.parameterManager : null
+                        return !!(parameterManager && parameterManager.parametersReady && !parameterManager.missingParameters)
+                    }
+
+                    function _activeVehicleHasMissingParameters() {
+                        const parameterManager = _activeVehicle ? _activeVehicle.parameterManager : null
+                        return !!(parameterManager && parameterManager.parametersReady && parameterManager.missingParameters)
+                    }
+
+                    function _waitForVehicleParameters() {
+                        _manualConnectionState = _connectionStateWaitingParams
+                        _connectionElapsedMs = 0
+                        _connectionProgress = Math.max(_connectionProgress, 0.58)
+                        startConnectionCompleteTimer.stop()
+                        _statusText = qsTr("已连接飞控，正在读取参数...")
+                        _recentConnectionText = _statusText
+                    }
+
+                    function _showParameterConnectionFailure(reasonText) {
+                        const versionText = qsTr("MAVLink %1").arg(_selectedMavlinkVersion)
+                        const message = reasonText + "\n\n"
+                            + qsTr("当前选择：%1。\n请检查 MAVLink 版本、串口、波特率和飞控供电后重新连接。").arg(versionText)
+                        QGroundControl.showMessageDialog(mainWindow, qsTr("参数读取失败"), message)
+                    }
+
+                    function _failParameterConnection(reasonText) {
+                        _cancelConnectionAttempt()
+                        _manualConnectionState = _connectionStateIdle
+                        _pendingWorkspaceEntry = false
+                        _manualConnectionArmed = false
+                        _connectionProgress = 0
+                        _connectionElapsedMs = 0
+                        _connectingConfig = null
+                        startConnectionCompleteTimer.stop()
+                        if (_linkManager) {
+                            _linkManager.communicationErrorDisplayPaused = false
+                            _linkManager.clearDeferredCommunicationError()
+                        }
+                        _statusText = reasonText
+                        _recentConnectionText = reasonText
+                        _appendEvent(reasonText)
+                        _showParameterConnectionFailure(reasonText)
+                    }
+
+                    function _tryFinishAfterParametersReady() {
+                        if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed)) {
+                            return false
+                        }
+
+                        if (_activeVehicleParametersReady()) {
+                            _finishConnectionProgress(true)
+                            if (mainWindow._showStartPage) {
+                                _appendEvent(qsTr("参数读取完成，进入工作区"))
+                            }
+                            return true
+                        }
+
+                        if (_activeVehicleHasMissingParameters()) {
+                            _failParameterConnection(qsTr("飞控参数读取不完整，已停止进入工作区"))
+                            return true
+                        }
+
+                        if (_manualConnectionState !== _connectionStateWaitingParams) {
+                            _waitForVehicleParameters()
+                            if (mainWindow._showStartPage) {
+                                _appendEvent(qsTr("已收到飞控心跳，等待参数读取完成"))
+                            }
+                        }
+                        return true
                     }
 
                     function _cancelConnectionAttempt() {
@@ -3608,7 +4177,7 @@ ApplicationWindow {
                     }
 
                     function _handleDisconnectDuringManualConnection(vehicleId) {
-                        if (_manualConnectionState === _connectionStateConnecting) {
+                        if (_manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateWaitingParams) {
                             return true
                         }
 
@@ -3650,7 +4219,7 @@ ApplicationWindow {
                             _selectedDataBits = 8
                             _selectedStopBits = 1
                             _selectedParity = 0
-                            _selectedMavlinkVersion = 2
+                            _selectedMavlinkVersion = 1
                             return
                         }
 
@@ -3678,7 +4247,7 @@ ApplicationWindow {
                         if (cfg && cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
                             _selectedMavlinkVersion = Number(cfg.mavlinkVersion) <= 1 ? 1 : 2
                         } else {
-                            _selectedMavlinkVersion = 2
+                            _selectedMavlinkVersion = 1
                         }
                     }
 
@@ -4125,11 +4694,14 @@ ApplicationWindow {
                         }
 
                         if (_isConnected && (_connectionInProgress || _manualConnectionArmed)) {
-                            _finishConnectionProgress(true)
-                            if (mainWindow._showStartPage) {
-                                _appendEvent(qsTr("Vehicle connected"))
+                            if (_tryFinishAfterParametersReady()) {
+                                return
                             }
-                            return
+                        }
+
+                        if (_isConnected && _activeVehicleHasMissingParameters()) {
+                            _statusText = qsTr("飞控参数读取不完整，请检查连接设置")
+                            _recentConnectionText = _statusText
                         }
 
                         const wasShowingStartPage = mainWindow._showStartPage
@@ -4153,6 +4725,15 @@ ApplicationWindow {
                         _syncConnectionState(false)
 
                         if (_isConnected) {
+                            if (!_activeVehicleParametersReady()) {
+                                if (_activeVehicleHasMissingParameters()) {
+                                    _failParameterConnection(qsTr("飞控参数读取不完整，已停止进入工作区"))
+                                } else {
+                                    _waitForVehicleParameters()
+                                    _appendEvent(qsTr("已连接飞控，等待参数读取完成"))
+                                }
+                                return
+                            }
                             mainWindow._hadConnectedVehicleSession = true
                             if (enterWorkspace) {
                                 _appendEvent(qsTr("Entering main workspace"))
@@ -4239,13 +4820,19 @@ ApplicationWindow {
                             }
 
                             startPageOverlay._connectionElapsedMs += interval
-                            if (startPageOverlay._connectionElapsedMs >= startPageOverlay._connectionTimeoutMs) {
+                            const waitingForParameters = startPageOverlay._manualConnectionState === startPageOverlay._connectionStateWaitingParams
+                            const timeoutMs = waitingForParameters ? startPageOverlay._parameterTimeoutMs : startPageOverlay._connectionTimeoutMs
+                            if (startPageOverlay._connectionElapsedMs >= timeoutMs) {
+                                if (waitingForParameters) {
+                                    startPageOverlay._failParameterConnection(qsTr("已收到飞控心跳，但参数读取超时，已停止进入工作区"))
+                                    return
+                                }
                                 const wasUdpConnection = startPageOverlay._connectingConfig
                                     && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
                                 startPageOverlay._timeoutConnectionProgress()
                                 startPageOverlay._appendEvent(qsTr("Vehicle connection timed out"))
                                 const portChanged = wasUdpConnection ? false : startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
-                                if (startPageOverlay._recentConnectionText === qsTr("Connecting to vehicle...")) {
+                                if (startPageOverlay._recentConnectionText === qsTr("正在连接飞行器...")) {
                                     startPageOverlay._statusText = wasUdpConnection
                                         ? qsTr("UDP connection timed out. Start PX4 simulation and try again")
                                         : qsTr("Connection timed out. Check the port and try again")
@@ -4261,8 +4848,12 @@ ApplicationWindow {
                                 return
                             }
 
-                            const progressRange = 0.84
-                            startPageOverlay._connectionProgress = Math.min(0.92, 0.08 + (startPageOverlay._connectionElapsedMs / startPageOverlay._connectionTimeoutMs) * progressRange)
+                            if (waitingForParameters) {
+                                startPageOverlay._connectionProgress = Math.min(0.94, 0.58 + (startPageOverlay._connectionElapsedMs / startPageOverlay._parameterTimeoutMs) * 0.34)
+                            } else {
+                                const progressRange = 0.84
+                                startPageOverlay._connectionProgress = Math.min(0.92, 0.08 + (startPageOverlay._connectionElapsedMs / startPageOverlay._connectionTimeoutMs) * progressRange)
+                            }
                         }
                     }
 
@@ -4355,6 +4946,21 @@ ApplicationWindow {
                             startPageOverlay._resetConnectionUiState()
                             startPageOverlay._syncConnectionState()
                             mainWindow._handleVehicleDisconnected(vehicleId)
+                        }
+                    }
+
+                    Connections {
+                        target: startPageOverlay._activeVehicle ? startPageOverlay._activeVehicle.parameterManager : null
+                        ignoreUnknownSignals: true
+
+                        function onParametersReadyChanged(parametersReady) {
+                            if (parametersReady) {
+                                startPageOverlay._tryFinishAfterParametersReady()
+                            }
+                        }
+
+                        function onMissingParametersChanged(missingParameters) {
+                            startPageOverlay._tryFinishAfterParametersReady()
                         }
                     }
 
@@ -4976,7 +5582,9 @@ ApplicationWindow {
 
                                                 QGCButton {
                                                     Layout.fillWidth: true
-                                                    text: startPageOverlay._connectionInProgress ? qsTr("连接中...") : (startPageOverlay._isConnected ? qsTr("进入工作区") : qsTr("连接飞行器"))
+                                                    text: startPageOverlay._manualConnectionState === startPageOverlay._connectionStateWaitingParams
+                                                          ? qsTr("读取参数...")
+                                                          : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : (startPageOverlay._isConnected ? qsTr("进入工作区") : qsTr("连接飞行器")))
                                                     pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                     enabled: startPageOverlay._canConnect
                                                     showBorder: true
@@ -4991,14 +5599,19 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     text: qsTr("离线访问")
                                                     pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                    enabled: !startPageOverlay._connectionInProgress
+                                                    enabled: true
                                                     showBorder: true
                                                     backRadius: startPageOverlay._uiRadius
                                                     borderColor: startPageOverlay._borderColor
                                                     backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
                                                     textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
                                                     stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                    onClicked: startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
+                                                    onClicked: {
+                                                        if (startPageOverlay._connectionInProgress) {
+                                                            startPageOverlay._timeoutConnectionProgress()
+                                                        }
+                                                        startPageOverlay._openWorkspaceTab(mainWindow._planTabIndex)
+                                                    }
                                                 }
                                             }
                                         }

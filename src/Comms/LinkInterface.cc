@@ -74,7 +74,7 @@ bool LinkInterface::_allocateMavlinkChannel()
     qCDebug(LinkInterfaceLog) << "_allocateMavlinkChannel" << _mavlinkChannel;
 
     const SharedLinkConfigurationPtr linkConfig = linkConfiguration();
-    const int mavlinkVersion = linkConfig ? linkConfig->mavlinkVersion() : 2;
+    const int mavlinkVersion = linkConfig ? linkConfig->mavlinkVersion() : 1;
     mavlink_status_t *const mavlinkStatus = mavlink_get_channel_status(_mavlinkChannel);
     if (mavlinkVersion <= 1) {
         mavlinkStatus->flags |= MAVLINK_STATUS_FLAG_OUT_MAVLINK1;

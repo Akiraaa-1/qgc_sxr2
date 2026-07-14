@@ -8,8 +8,15 @@ import QGroundControl.Controls
 /// Popup container for preflight checklists
 QGCPopupDialog {
     id:         _root
-    title:      qsTr("Pre-Flight Checklist")
+    title:      qsTr("飞行前检查单")
     buttons:    Dialog.Close
+    rejectButtonText: qsTr("关闭")
+    showTitleAccent: true
+    useExplicitActionColors: true
+    actionSecondaryBackgroundColor: "#2A2E2B"
+    actionSecondaryBorderColor: "#454B45"
+    actionSecondaryTextColor: "#F0F3EA"
+    actionButtonRadius: ScreenTools.defaultFontPixelHeight * 0.28
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _useChecklist:      QGroundControl.settingsManager.appSettings.useChecklist.rawValue && QGroundControl.corePlugin.options.preFlightChecklistUrl.toString().length

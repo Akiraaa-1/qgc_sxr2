@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
@@ -33,9 +34,12 @@ QGCButton {
     readonly property int _stateFailed:     1   ///< Telemetry check is failing, user cannot click to make it pass
     readonly property int _statePassed:     2   ///< Check has passed
 
-    readonly property color _passedColor:   "#86cc6a"
-    readonly property color _pendingColor:  "#f7a81f"
-    readonly property color _failedColor:   "#c31818"
+    readonly property color _passedColor:   "#8FCB7B"
+    readonly property color _pendingColor:  "#D9A441"
+    readonly property color _failedColor:   "#D85D5D"
+    readonly property color _panelColor:    "#242824"
+    readonly property color _panelHoverColor: "#2D332D"
+    readonly property color _borderColor:   "#3D463F"
 
     property string _text: "<b>" + name +"</b>: " +
                            ((_telemetryState !== _statePassed) ?
@@ -50,29 +54,71 @@ QGCButton {
                                           _failedColor))
 
     width:          40 * ScreenTools.defaultFontPixelWidth
-    topPadding:     _verticalPadding
-    bottomPadding:  _verticalPadding
-    leftPadding:    (_horizontalPadding * 2) + _stateFlagWidth
-    rightPadding:   _horizontalPadding
+    topPadding:     0
+    bottomPadding:  0
+    leftPadding:    0
+    rightPadding:   0
+    implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.45, checkText.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.95)
 
     background: Rectangle {
-        color:          qgcPal.button
-        border.color:   qgcPal.button;
+        color:          pressed ? "#1E231E" : (hovered ? _panelHoverColor : _panelColor)
+        radius:         ScreenTools.defaultFontPixelHeight * 0.28
+        border.width:   1
+        border.color:   _borderColor
+        clip:           true
 
         Rectangle {
             color:          _color
             anchors.left:   parent.left
             anchors.top:    parent.top
             anchors.bottom: parent.bottom
-            width:          _stateFlagWidth
+            width:          ScreenTools.defaultFontPixelWidth * 0.45
         }
+
+        Behavior on color { ColorAnimation { duration: 160 } }
     }
 
-    contentItem: QGCLabel {
-        wrapMode:               Text.WordWrap
-        horizontalAlignment:    Text.AlignHCenter
-        color:                  qgcPal.buttonText
-        text:                   _text
+    contentItem: RowLayout {
+        anchors.fill: parent
+        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.05
+        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.85
+        anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.34
+        anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.34
+        spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+        Rectangle {
+            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.62
+            Layout.preferredHeight: Layout.preferredWidth
+            Layout.alignment: Qt.AlignVCenter
+            radius: width / 2
+            color: Qt.rgba(_color.r, _color.g, _color.b, 0.16)
+            border.width: 1
+            border.color: _color
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.42
+                height: width
+                radius: width / 2
+                color: _color
+            }
+        }
+
+        QGCLabel {
+            id: checkText
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.alignment: Qt.AlignVCenter
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignLeft
+            verticalAlignment: Text.AlignVCenter
+            color: "#F0F3EA"
+            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
+            textFormat: Text.RichText
+            lineHeight: 1.12
+            lineHeightMode: Text.ProportionalHeight
+            text: _text
+        }
     }
 
     function _updateTelemetryState() {

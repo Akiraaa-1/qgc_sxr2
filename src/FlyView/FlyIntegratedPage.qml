@@ -21,10 +21,16 @@ Item {
     property var guidedController: guidedActionsController
     property var planController: planControllerInternal
     property var _missionController: planControllerInternal ? planControllerInternal.missionController : null
+    property alias preFlightChecklistPopupItem: preFlightChecklistPopup
     property bool _isFullWindowItemDark: (typeof mapView !== "undefined" && mapView) ? mapView.isSatelliteMap : false
     property bool _showFlightPath: true
     property string _vehicleSearchText: ""
     property int _vehicleStatusPageIndex: 0
+    on_VehicleStatusPageIndexChanged: {
+        if (_vehicleStatusPageIndex === 1) {
+            _vehicleStatusPageIndex = 0
+        }
+    }
     property bool _profilePanelExpanded: true
     property bool _profilePlaybackActive: false
     property real _profileProgress: 0
@@ -467,6 +473,27 @@ Item {
         if (normalizedMode.indexOf("vtol takeoff") === 0) {
             return qsTr("VTOL 起飞")
         }
+        if (normalizedMode.indexOf("manual") >= 0) {
+            return qsTr("手动")
+        }
+        if (normalizedMode.indexOf("stabilized") >= 0) {
+            return qsTr("自稳")
+        }
+        if (normalizedMode.indexOf("acro") >= 0) {
+            return qsTr("特技")
+        }
+        if (normalizedMode.indexOf("rattitude") >= 0) {
+            return qsTr("半自稳")
+        }
+        if (normalizedMode.indexOf("offboard") >= 0) {
+            return qsTr("板外控制")
+        }
+        if (normalizedMode.indexOf("position") >= 0) {
+            return qsTr("定点")
+        }
+        if (normalizedMode.indexOf("return") >= 0 || normalizedMode.indexOf("rtl") >= 0) {
+            return qsTr("返航")
+        }
 
         switch (mode) {
         case "":
@@ -477,7 +504,7 @@ Item {
             return qsTr("任务")
         case "Return":
         case "RTL":
-            return qsTr("返航/RTL")
+            return qsTr("返航")
         case "Land":
             return qsTr("降落")
         case "Takeoff":
@@ -486,16 +513,18 @@ Item {
             return qsTr("手动")
         case "Position":
         case "Position Hold":
-            return qsTr("位置保持")
+            return qsTr("定点")
         case "Altitude":
         case "Altitude Hold":
             return qsTr("定高")
         case "Stabilized":
-            return qsTr("增稳")
+            return qsTr("自稳")
         case "Acro":
             return qsTr("特技")
+        case "Rattitude":
+            return qsTr("半自稳")
         case "Offboard":
-            return qsTr("机外控制")
+            return qsTr("板外控制")
         case "Orbit":
             return qsTr("环绕")
         case "Descend":
@@ -649,6 +678,9 @@ Item {
         root._vehicleStatusIconMap = nextMap
     }
     function _vehicleTypeIcon(vehicle) { return root._vehicleStatusIcon(vehicle) }
+    function _vehicleStatusStackIndex(pageIndex) {
+        return pageIndex === 0 ? 1 : pageIndex
+    }
     function _setActiveVehicle(vehicle) {
         if (vehicle && vehicle !== QGroundControl.multiVehicleManager.activeVehicle && !_activeVehicleSwitchPending) {
             _activeVehicleSwitchPending = true
@@ -2016,7 +2048,7 @@ Item {
         root.last_x = bestDist >= 0 ? Math.max(0, Math.min(1, bestDist / totalDist)) : -1
         return root.last_x
     }
-    function _triggerMapStripAction(command) {
+    function _triggerMapStripAction(command, sourceItem) {
         if (command !== "startMission" && root._startMissionSliderVisible) {
             root._hideStartMissionSlider()
         }
@@ -2101,7 +2133,48 @@ Item {
                 root._mapNavigationSelection = "locate"
             }
             break
+        case "checklist":
+            preFlightChecklistPopup.open()
+            break
+        case "showPath":
+            root._showFlightPath = !root._showFlightPath
+            break
+        case "armDisarm":
+            root._confirmMapStripArmDisarm()
+            break
+        case "land":
+            root._triggerGuidedPanelAction(guidedActionsController.actionLand)
+            break
+        case "emergencyStop":
+            root._triggerGuidedPanelAction(guidedActionsController.actionEmergencyStop)
+            break
+        case "flightMode":
+            if (root._activeVehicle && root._activeVehicle.flightModeSetAvailable) {
+                root._popupMenuInLeftPane(
+                    flightModeMenu,
+                    sourceItem || floatingMapStrip,
+                    Math.max(flightModeMenu.implicitWidth, root._flightModeMenuMinimumWidth()))
+            }
+            break
         }
+    }
+    function _confirmMapStripArmDisarm() {
+        if (!root._activeVehicle) {
+            root._showMapStripUnavailable("armDisarm", true)
+            return
+        }
+
+        const arm = !root._activeVehicle.armed
+        QGroundControl.showMessageDialog(
+            root,
+            arm ? qsTr("解锁") : qsTr("上锁"),
+            arm ? qsTr("确认解锁飞行器？") : qsTr("确认上锁飞行器？"),
+            Dialog.Yes | Dialog.Cancel,
+            function() {
+                if (root._activeVehicle) {
+                    root._activeVehicle.armed = arm
+                }
+            })
     }
     function _confirmMapStripAltitudeChange(altitudeChange) {
         if (!root._activeVehicle) {
@@ -2242,6 +2315,18 @@ Item {
             return qsTr("平移")
         case "locate":
             return qsTr("定位")
+        case "checklist":
+            return qsTr("飞行前检查单")
+        case "showPath":
+            return qsTr("显示航迹")
+        case "armDisarm":
+            return root._activeVehicle && root._activeVehicle.armed ? qsTr("上锁") : qsTr("解锁")
+        case "land":
+            return qsTr("降落")
+        case "emergencyStop":
+            return qsTr("紧急停止")
+        case "flightMode":
+            return qsTr("飞行模式")
         default:
             return qsTr("操作不可用")
         }
@@ -2286,6 +2371,14 @@ Item {
                 return qsTr("高度调整仅在飞行器正在飞行时可用。")
             }
             return qsTr("当前飞行模式不允许直接调整高度。")
+        case "armDisarm":
+            return qsTr("当前没有连接飞行器。")
+        case "land":
+            return root._guidedPanelActionUnavailableMessage(guidedActionsController.actionLand)
+        case "emergencyStop":
+            return root._guidedPanelActionUnavailableMessage(guidedActionsController.actionEmergencyStop)
+        case "flightMode":
+            return qsTr("当前飞控不支持从地面站切换飞行模式。")
         default:
             return qsTr("当前状态下无法执行此操作。")
         }
@@ -2455,6 +2548,15 @@ Item {
         if (key === "up" || key === "down") {
             return guidedActionsController.showChangeAlt
         }
+        if (key === "land") {
+            return root._isGuidedPanelActionAvailable(guidedActionsController.actionLand)
+        }
+        if (key === "emergencyStop") {
+            return root._isGuidedPanelActionAvailable(guidedActionsController.actionEmergencyStop)
+        }
+        if (key === "flightMode") {
+            return !!(root._activeVehicle && root._activeVehicle.flightModeSetAvailable)
+        }
         return !requiresVehicle || !!root._activeVehicle
     }
     function _profilePlaybackControlsEnabled() {
@@ -2479,7 +2581,27 @@ Item {
         if (key === "pan" || key === "locate") {
             return root._mapNavigationSelection === key
         }
+        if (key === "showPath") {
+            return root._showFlightPath
+        }
+        if (key === "armDisarm") {
+            return !!(root._activeVehicle && root._activeVehicle.armed)
+        }
         return false
+    }
+    function _mapStripFlightModeText() {
+        const text = root._activeVehicle && root._activeVehicle.flightMode
+            ? root._flightModeDisplayName(root._activeVehicle.flightMode)
+            : qsTr("模式")
+        const compactText = ("" + text).replace(/\s+/g, "")
+        if (compactText.length <= 3) {
+            return compactText
+        }
+        if (compactText.length === 4) {
+            return compactText.slice(0, 2) + "\n" + compactText.slice(2)
+        }
+        const splitIndex = Math.ceil(compactText.length / 2)
+        return compactText.slice(0, splitIndex) + "\n" + compactText.slice(splitIndex)
     }
     function _batteryIcon(percent) {
         if (isNaN(percent)) { return "/InstrumentValueIcons/battery-half.svg" }
@@ -3115,7 +3237,7 @@ Item {
         menu.width = desiredWidth
 
         const minX = edgePadding
-        const maxX = Math.max(minX, leftPane.width - desiredWidth - edgePadding)
+        const maxX = Math.max(minX, root.width - desiredWidth - edgePadding)
         const popupX = Math.max(minX, Math.min(anchorTop.x, maxX))
 
         const belowY = anchorBottom.y + topGap
@@ -3127,9 +3249,20 @@ Item {
 
         menu.popup(popupX, popupY)
     }
+    function _flightModeMenuMinimumWidth() {
+        const modes = root._activeVehicle && root._activeVehicle.flightModeSetAvailable ? root._activeVehicle.flightModes : []
+        let widestText = 0
+        for (let i = 0; i < modes.length; i++) {
+            flightModeMenuTextMetrics.text = root._flightModeDisplayName(modes[i])
+            widestText = Math.max(widestText, flightModeMenuTextMetrics.advanceWidth)
+        }
+
+        return widestText + (ScreenTools.defaultFontPixelWidth * 5.5)
+    }
     function dropMainStatusIndicatorTool() {}
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
+    TextMetrics { id: flightModeMenuTextMetrics }
     PlanMasterController { id: planControllerInternal; flyView: true; Component.onCompleted: start() }
 
     QGCToolInsets {
@@ -3424,9 +3557,11 @@ Item {
 
     QGCMenu {
         id: flightModeMenu
+        parent: Overlay.overlay
+        width: Math.max(implicitWidth, root._flightModeMenuMinimumWidth())
         Instantiator {
             model: root._activeVehicle && root._activeVehicle.flightModeSetAvailable ? root._activeVehicle.flightModes : []
-            delegate: QGCMenuItem { required property var modelData; text: root._flightModeDisplayName(modelData); onTriggered: root._setPendingFlightMode(modelData) }
+            delegate: QGCMenuItem { required property var modelData; text: root._flightModeDisplayName(modelData); onTriggered: root._requestFlightModeChange(modelData) }
             onObjectAdded: (index, object) => flightModeMenu.insertItem(index, object)
             onObjectRemoved: (index, object) => flightModeMenu.removeItem(object)
         }
@@ -3769,10 +3904,11 @@ Item {
                                 model: vehicleStatusCard._statusPages
                                 delegate: Rectangle {
                                     required property var modelData
-                                        required property int index
+                                    required property int index
+                                    visible: index !== 1
                                     readonly property bool _selected: root._vehicleStatusPageIndex === index
                                     width: parent.width
-                                    height: ScreenTools.defaultFontPixelHeight * 1.88
+                                    height: visible ? ScreenTools.defaultFontPixelHeight * 1.88 : 0
                                     color: _selected
                                         ? (sideRailMouseArea.pressed
                                             ? vehicleStatusCard._highlightPressedColor
@@ -3780,7 +3916,7 @@ Item {
                                         : (sideRailMouseArea.pressed
                                             ? "#181818"
                                             : (sideRailMouseArea.containsMouse ? "#262626" : vehicleStatusCard._railColor))
-                                    y: index * height
+                                    y: (index > 1 ? index - 1 : index) * ScreenTools.defaultFontPixelHeight * 1.88
                                     border.width: vehicleStatusCard._controlBorderWidth
                                     border.color: vehicleStatusCard._controlBorderColor
 
@@ -3801,7 +3937,11 @@ Item {
                                         id: sideRailMouseArea
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        onClicked: root._vehicleStatusPageIndex = index
+                                        onClicked: {
+                                            if (index !== 1) {
+                                                root._vehicleStatusPageIndex = index
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3822,9 +3962,7 @@ Item {
                                 anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.46
                                 anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.46
                                 anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.44
-                                currentIndex: root._vehicleStatusPageIndex === 0
-                                              ? 1
-                                              : (root._vehicleStatusPageIndex === 1 ? 0 : root._vehicleStatusPageIndex)
+                                currentIndex: root._vehicleStatusStackIndex(root._vehicleStatusPageIndex)
 
                                 Item {
                                     ColumnLayout {
@@ -3977,85 +4115,6 @@ Item {
                                                     anchors.fill: parent
                                                     hoverEnabled: true
                                                     onClicked: root._popupMenuInLeftPane(vehicleMenu, vehicleSelectorDropdownField, vehicleSelectorDropdownField.width)
-                                                }
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.9
-                                            color: vehicleStatusCard._blockColor
-                                            radius: vehicleStatusCard._controlRadius
-                                            border.width: vehicleStatusCard._controlBorderWidth
-                                            border.color: vehicleStatusCard._controlBorderColor
-
-                                            RowLayout {
-                                                anchors.fill: parent
-                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.38
-                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
-                                                spacing: ScreenTools.defaultFontPixelWidth * 0.28
-
-                                                QGCLabel {
-                                                    color: vehicleStatusCard._textPrimaryColor
-                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                                                    text: qsTr("飞行模式")
-                                                }
-
-                                                Item {
-                                                    Layout.fillWidth: true
-                                                }
-
-                                                Rectangle {
-                                                    id: flightModeDropdownField
-                                                    Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 10.5, parent.width * 0.4)
-                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.42
-                                                    color: flightModeMouseArea.pressed
-                                                        ? vehicleStatusCard._buttonSecondaryPressedColor
-                                                        : (flightModeMouseArea.containsMouse ? vehicleStatusCard._buttonSecondaryHoverColor : vehicleStatusCard._fieldColor)
-                                                    radius: vehicleStatusCard._controlRadius
-                                                    border.width: vehicleStatusCard._controlBorderWidth
-                                                    border.color: vehicleStatusCard._controlBorderColor
-
-                                                    Behavior on color {
-                                                        ColorAnimation { duration: vehicleStatusCard._transitionDuration }
-                                                    }
-
-                                                    RowLayout {
-                                                        anchors.fill: parent
-                                                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.3
-                                                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.24
-                                                        spacing: ScreenTools.defaultFontPixelWidth * 0.18
-
-                                                        QGCColoredImage {
-                                                            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.56
-                                                            Layout.preferredHeight: Layout.preferredWidth
-                                                            color: vehicleStatusCard._textPrimaryColor
-                                                            fillMode: Image.PreserveAspectFit
-                                                            source: "/InstrumentValueIcons/target.svg"
-                                                        }
-
-                                                        QGCLabel {
-                                                            Layout.fillWidth: true
-                                                            color: vehicleStatusCard._textPrimaryColor
-                                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
-                                                            text: root._activeVehicle && root._activeVehicle.flightMode ? root._flightModeDisplayName(root._activeVehicle.flightMode) : qsTr("自动")
-                                                        }
-
-                                                        QGCColoredImage {
-                                                            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.34
-                                                            Layout.preferredHeight: Layout.preferredWidth
-                                                            color: vehicleStatusCard._textPrimaryColor
-                                                            fillMode: Image.PreserveAspectFit
-                                                            source: "/InstrumentValueIcons/cheveron-down.svg"
-                                                        }
-                                                    }
-
-                                                    QGCMouseArea {
-                                                        id: flightModeMouseArea
-                                                        anchors.fill: parent
-                                                        hoverEnabled: true
-                                                        onClicked: root._popupMenuInLeftPane(flightModeMenu, flightModeDropdownField, flightModeDropdownField.width)
-                                                    }
                                                 }
                                             }
                                         }
@@ -4483,10 +4542,11 @@ Item {
                                                     "action": guidedActionsController.actionLand
                                                 },
                                                 {
-                                                    "background": vehicleStatusCard._highlightColor,
+                                                    "background": vehicleStatusCard._buttonSecondaryColor,
                                                     "foreground": vehicleStatusCard._textPrimaryColor,
                                                     "icon": "/res/Stop.svg",
                                                     "label": qsTr("紧急停止"),
+                                                    "emphasis": false,
                                                     "action": guidedActionsController.actionEmergencyStop
                                                 }
                                             ]
@@ -4499,7 +4559,7 @@ Item {
                                                 color: actionButtonMouseArea.pressed
                                                     ? vehicleStatusCard._buttonSecondaryPressedColor
                                                     : (actionButtonMouseArea.containsMouse
-                                                        ? (modelData.background === vehicleStatusCard._highlightColor ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryHoverColor)
+                                                        ? (modelData.emphasis ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryHoverColor)
                                                         : modelData.background)
                                                 opacity: _actionAvailable ? 1 : 0.45
                                                 radius: vehicleStatusCard._controlRadius
@@ -4563,30 +4623,157 @@ Item {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
 
-                                            FlyViewInstrumentPanel {
+                                            ColumnLayout {
                                                 anchors.fill: parent
-                                                useLegacySelectableControl: false
-                                                showHeader: true
-                                                showHeaderAction: true
-                                                headerTitle: qsTr("仪表")
-                                                headerHeight: vehicleStatusCard._sectionHeaderHeight
-                                                headerSpacing: vehicleStatusCard._sectionHeaderSpacing
-                                                headerTitleSize: vehicleStatusCard._sectionHeaderTitleSize
-                                                headerTitleColor: vehicleStatusCard._textPrimaryColor
-                                                panelLeftMargin: 0
-                                                panelRightMargin: 0
-                                                panelTopMargin: 0
-                                                panelBottomMargin: 0
-                                                headerActionSize: vehicleStatusCard._sectionHeaderButtonSize
-                                                headerActionRightMargin: vehicleStatusCard._sectionHeaderButtonRightMargin
-                                                headerActionRadius: vehicleStatusCard._controlRadius
-                                                headerActionIconScale: vehicleStatusCard._sectionHeaderIconScale
-                                                headerActionIconColor: vehicleStatusCard._textSecondaryColor
-                                                headerActionColor: vehicleStatusCard._buttonSecondaryColor
-                                                headerActionHoverColor: vehicleStatusCard._buttonSecondaryHoverColor
-                                                headerActionPressedColor: vehicleStatusCard._buttonSecondaryPressedColor
-                                                headerActionBorderColor: vehicleStatusCard._controlBorderColor
-                                                headerTransitionDuration: vehicleStatusCard._transitionDuration
+                                                spacing: vehicleStatusCard._sectionContentSpacing
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
+                                                    spacing: vehicleStatusCard._sectionHeaderSpacing
+
+                                                    QGCLabel {
+                                                        Layout.fillWidth: true
+                                                        color: vehicleStatusCard._textPrimaryColor
+                                                        font.weight: Font.DemiBold
+                                                        font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
+                                                        text: qsTr("仪表")
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+
+                                                    Rectangle {
+                                                        Layout.preferredWidth: vehicleStatusCard._sectionHeaderButtonSize
+                                                        Layout.preferredHeight: Layout.preferredWidth
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        Layout.rightMargin: vehicleStatusCard._sectionHeaderButtonRightMargin
+                                                        color: instrumentSettingsMouseArea.pressed
+                                                            ? vehicleStatusCard._buttonSecondaryPressedColor
+                                                            : (instrumentSettingsMouseArea.containsMouse ? vehicleStatusCard._buttonSecondaryHoverColor : vehicleStatusCard._buttonSecondaryColor)
+                                                        radius: vehicleStatusCard._controlRadius
+                                                        border.width: vehicleStatusCard._controlBorderWidth
+                                                        border.color: vehicleStatusCard._controlBorderColor
+
+                                                        Behavior on color {
+                                                            ColorAnimation { duration: vehicleStatusCard._transitionDuration }
+                                                        }
+
+                                                        QGCColoredImage {
+                                                            anchors.centerIn: parent
+                                                            width: parent.height * vehicleStatusCard._sectionHeaderIconScale
+                                                            height: width
+                                                            color: vehicleStatusCard._textSecondaryColor
+                                                            fillMode: Image.PreserveAspectFit
+                                                            source: "/InstrumentValueIcons/cog.svg"
+                                                        }
+
+                                                        QGCMouseArea {
+                                                            id: instrumentSettingsMouseArea
+                                                            anchors.fill: parent
+                                                            hoverEnabled: true
+                                                        }
+                                                    }
+                                                }
+
+                                                Rectangle {
+                                                    id: flightModeDropdownField
+                                                    Layout.fillWidth: true
+                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.9
+                                                    color: vehicleStatusCard._blockColor
+                                                    radius: vehicleStatusCard._controlRadius
+                                                    border.width: vehicleStatusCard._controlBorderWidth
+                                                    border.color: vehicleStatusCard._controlBorderColor
+
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.38
+                                                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                                        spacing: ScreenTools.defaultFontPixelWidth * 0.28
+
+                                                        QGCLabel {
+                                                            Layout.alignment: Qt.AlignVCenter
+                                                            color: vehicleStatusCard._textPrimaryColor
+                                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                            text: qsTr("飞行模式")
+                                                        }
+
+                                                        Item {
+                                                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 0.12
+                                                        }
+
+                                                        Rectangle {
+                                                            Layout.fillWidth: true
+                                                            Layout.minimumWidth: 0
+                                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.42
+                                                            color: flightModeMouseArea.pressed
+                                                                ? vehicleStatusCard._buttonSecondaryPressedColor
+                                                                : (flightModeMouseArea.containsMouse ? vehicleStatusCard._buttonSecondaryHoverColor : vehicleStatusCard._fieldColor)
+                                                            radius: vehicleStatusCard._controlRadius
+                                                            border.width: vehicleStatusCard._controlBorderWidth
+                                                            border.color: vehicleStatusCard._controlBorderColor
+
+                                                            Behavior on color {
+                                                                ColorAnimation { duration: vehicleStatusCard._transitionDuration }
+                                                            }
+
+                                                            RowLayout {
+                                                                anchors.fill: parent
+                                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.3
+                                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.24
+                                                                spacing: ScreenTools.defaultFontPixelWidth * 0.18
+
+                                                                QGCColoredImage {
+                                                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                    Layout.preferredHeight: Layout.preferredWidth
+                                                                    Layout.alignment: Qt.AlignVCenter
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    fillMode: Image.PreserveAspectFit
+                                                                    source: "/InstrumentValueIcons/target.svg"
+                                                                }
+
+                                                                QGCLabel {
+                                                                    Layout.fillWidth: true
+                                                                    Layout.minimumWidth: 0
+                                                                    Layout.alignment: Qt.AlignVCenter
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                    fontSizeMode: Text.Fit
+                                                                    minimumPixelSize: 8
+                                                                    elide: Text.ElideRight
+                                                                    maximumLineCount: 1
+                                                                    text: root._activeVehicle && root._activeVehicle.flightMode ? root._flightModeDisplayName(root._activeVehicle.flightMode) : qsTr("自动")
+                                                                }
+
+                                                                QGCColoredImage {
+                                                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.34
+                                                                    Layout.preferredHeight: Layout.preferredWidth
+                                                                    Layout.alignment: Qt.AlignVCenter
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    fillMode: Image.PreserveAspectFit
+                                                                    source: "/InstrumentValueIcons/cheveron-down.svg"
+                                                                }
+                                                            }
+
+                                                            QGCMouseArea {
+                                                                id: flightModeMouseArea
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                onClicked: root._popupMenuInLeftPane(flightModeMenu, flightModeDropdownField, Math.max(flightModeDropdownField.width, root._flightModeMenuMinimumWidth()))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                FlyViewInstrumentPanel {
+                                                    Layout.fillWidth: true
+                                                    Layout.fillHeight: true
+                                                    useLegacySelectableControl: false
+                                                    showHeader: false
+                                                    showHeaderAction: false
+                                                    panelLeftMargin: 0
+                                                    panelRightMargin: 0
+                                                    panelTopMargin: 0
+                                                    panelBottomMargin: 0
+                                                }
                                             }
 
                                         }
@@ -5998,7 +6185,7 @@ Item {
                     id: floatingMapStripAnchor
                     anchors.left: parent.left
                     anchors.leftMargin: root._margin
-                    y: Math.max(root._margin, (parent.height - floatingMapStrip._expandedHeight) * 0.5)
+                    y: Math.max(root._margin, (parent.height - floatingMapStrip.height) * 0.5)
                     width: 1
                     height: 1
                 }
@@ -6013,10 +6200,13 @@ Item {
                     readonly property real _innerMargin: ScreenTools.defaultFontPixelHeight * 0.16
                     readonly property real _expandedWidth: ScreenTools.defaultFontPixelHeight * 2.75
                     readonly property real _collapsedWidth: (_innerMargin * 2) + _toggleButtonSize
-                    readonly property real _expandedHeight: stripButtonColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.38)
+                    readonly property real _buttonSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+                    readonly property real _expandedHeight: (_innerMargin * 2) + _toggleButtonSize + _buttonSpacing + stripActionColumn.implicitHeight
                     readonly property real _collapsedHeight: (_innerMargin * 2) + _toggleButtonSize + (ScreenTools.defaultFontPixelHeight * 0.38)
                     width: root._mapStripExpanded ? _expandedWidth : _collapsedWidth
-                    height: root._mapStripExpanded ? _expandedHeight : _collapsedHeight
+                    height: root._mapStripExpanded
+                        ? Math.min(_expandedHeight, Math.max(0, parent.height - (root._margin * 2)))
+                        : _collapsedHeight
                     color: Qt.rgba(0.06, 0.06, 0.07, 0.9)
                     radius: ScreenTools.defaultFontPixelHeight * 0.18
                     clip: true
@@ -6032,7 +6222,7 @@ Item {
                         id: stripButtonColumn
                         anchors.fill: parent
                         anchors.margins: floatingMapStrip._innerMargin
-                        spacing: ScreenTools.defaultFontPixelHeight * 0.12
+                        spacing: floatingMapStrip._buttonSpacing
 
                         Rectangle {
                             Layout.alignment: Qt.AlignHCenter
@@ -6059,47 +6249,100 @@ Item {
                             }
                         }
 
-                        Repeater {
-                            model: [
+                        Flickable {
+                            id: stripActionFlickable
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            contentWidth: width
+                            contentHeight: stripActionColumn.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            clip: true
+                            interactive: root._mapStripExpanded && contentHeight > height
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: stripActionFlickable.contentHeight > stripActionFlickable.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                                width: ScreenTools.defaultFontPixelWidth * 0.35
+                            }
+
+                            ColumnLayout {
+                                id: stripActionColumn
+                                width: stripActionFlickable.width
+                                spacing: floatingMapStrip._buttonSpacing
+
+                                Repeater {
+                                    model: [
                                 { "key": "traffic",   "icon": "/InstrumentValueIcons/border-outer.svg",   "accent": true,  "requiresVehicle": false, "slashed": false },
-                                { "key": "list",      "icon": "/InstrumentValueIcons/clipboard.svg",      "accent": false, "requiresVehicle": false, "slashed": false },
-                                { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": false },
-                                { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": true  },
-                                { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",  "accent": false, "requiresVehicle": true,  "slashed": false },
-                                { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg","accent": false, "requiresVehicle": true,  "slashed": false },
-                                { "key": "rtl",       "icon": "/res/rtl.svg",                             "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "showPath",  "icon": "/InstrumentValueIcons/view-show.svg",      "accent": false, "requiresVehicle": false, "slashed": false },
+                                { "key": "checklist", "icon": "/InstrumentValueIcons/shield.svg",         "accent": false, "requiresVehicle": false, "slashed": false },
+                                { "key": "armDisarm", "icon": root._activeVehicle && root._activeVehicle.armed ? "/res/LockClosed.svg" : "/res/LockOpen.svg", "accent": false, "requiresVehicle": true, "slashed": false },
                                 { "key": "play",      "icon": "/InstrumentValueIcons/play-outline.svg",   "accent": false, "requiresVehicle": true,  "slashed": false, "visible": guidedActionsController.showContinueMission },
                                 { "key": "pause",     "icon": "/InstrumentValueIcons/pause-outline.svg",  "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "rtl",       "icon": "/res/rtl.svg",                             "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "land",      "icon": "/res/land.svg",                            "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "emergencyStop", "icon": "/res/Stop.svg",                        "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "flightMode","icon": "",                                         "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",  "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg","accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": false },
+                                { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": true  },
                                 { "key": "pan",       "icon": "/InstrumentValueIcons/map-pan.svg",       "accent": false, "requiresVehicle": false, "slashed": false },
                                 { "key": "locate",    "icon": "/InstrumentValueIcons/map-follow.svg",    "accent": false, "requiresVehicle": true, "slashed": false }
-                            ]
+                                    ]
 
-                            delegate: Rectangle {
+                                    delegate: Rectangle {
                                 required property var modelData
 
                                 visible: modelData.visible === undefined ? true : !!modelData.visible
+                                readonly property bool _isSeparator: modelData.separator === true
                                 readonly property bool _isStartMission: modelData.key === "startMission"
-                                readonly property bool _enabled: root._isMapStripActionEnabled(modelData.key, modelData.requiresVehicle)
-                                readonly property bool _selected: root._isMapStripSelected(modelData.key)
+                                readonly property bool _isFlightMode: modelData.key === "flightMode"
+                                readonly property bool _enabled: !_isSeparator && root._isMapStripActionEnabled(modelData.key, modelData.requiresVehicle)
+                                readonly property bool _selected: !_isSeparator && root._isMapStripSelected(modelData.key)
 
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: visible
-                                    ? (_isStartMission ? floatingMapStrip._buttonHeight * 1.08 : floatingMapStrip._buttonHeight)
+                                    ? (_isSeparator ? ScreenTools.defaultFontPixelHeight * 0.42 : (_isStartMission ? floatingMapStrip._buttonHeight * 1.08 : floatingMapStrip._buttonHeight))
                                     : 0
-                                color: _selected
+                                color: _isSeparator
+                                    ? "transparent"
+                                    : (_selected
                                     ? "#2F6FC7"
                                     : (_isStartMission
                                         ? (stripMouseArea.pressed ? "#9A3412" : "#EA580C")
-                                        : (stripMouseArea.pressed ? "#1A1C1F" : "#121315"))
-                                opacity: root._mapStripExpanded ? (_enabled ? 1 : 0.42) : 0
+                                        : (_isFlightMode
+                                            ? (stripMouseArea.pressed ? "#1A1C1F" : "#121315")
+                                            : (stripMouseArea.pressed ? "#1A1C1F" : "#121315"))))
+                                opacity: root._mapStripExpanded ? (_isSeparator ? 1 : (_enabled ? 1 : 0.42)) : 0
                                 radius: ScreenTools.defaultFontPixelHeight * 0.18
                                 border.width: _isStartMission ? 2 : 0
                                 border.color: _isStartMission ? Qt.rgba(1, 1, 1, 0.28) : "transparent"
 
+                                Rectangle {
+                                    visible: parent._isSeparator
+                                    anchors.centerIn: parent
+                                    width: parent.width * 0.58
+                                    height: 1
+                                    color: Qt.rgba(1, 1, 1, 0.18)
+                                }
+
                                 Item {
+                                    visible: !parent._isSeparator
                                     anchors.fill: parent
 
+                                    Rectangle {
+                                        visible: parent.parent._isFlightMode
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.14
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: ScreenTools.defaultFontPixelWidth * 0.22
+                                        height: parent.height * 0.62
+                                        radius: width / 2
+                                        color: "#7FD0FF"
+                                        opacity: 0.8
+                                    }
+
                                     QGCColoredImage {
+                                        visible: !parent.parent._isFlightMode
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.verticalCenter: parent.verticalCenter
                                         anchors.verticalCenterOffset: _isStartMission ? -(ScreenTools.defaultFontPixelHeight * 0.18) : 0
@@ -6107,7 +6350,26 @@ Item {
                                         height: width
                                         color: _isStartMission ? "#FFF7ED" : "#FFFFFF"
                                         fillMode: Image.PreserveAspectFit
-                                        source: modelData.icon
+                                        source: modelData.icon || ""
+                                    }
+
+                                    QGCLabel {
+                                        visible: parent.parent._isFlightMode
+                                        anchors.centerIn: parent
+                                        width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.7)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: root._mapStripFlightModeText()
+                                        color: "#FFFFFF"
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
+                                        lineHeightMode: Text.FixedHeight
+                                        lineHeight: ScreenTools.defaultFontPixelHeight * 0.62
+                                        font.pixelSize: Math.max(ScreenTools.defaultFontPixelHeight * 0.36,
+                                                                 Math.min(ScreenTools.defaultFontPixelHeight * 0.54,
+                                                                          parent.width / Math.max(2.2, text.replace(/\n/g, "").length * 0.56)))
+                                        font.bold: true
                                     }
 
                                     QGCLabel {
@@ -6146,13 +6408,15 @@ Item {
                                 QGCMouseArea {
                                     id: stripMouseArea
                                     anchors.fill: parent
-                                    enabled: root._mapStripExpanded
+                                    enabled: root._mapStripExpanded && !parent._isSeparator
                                     onClicked: {
                                         if (parent._enabled) {
-                                            root._triggerMapStripAction(modelData.key)
+                                            root._triggerMapStripAction(modelData.key, parent)
                                         } else {
                                             root._showMapStripUnavailable(modelData.key, modelData.requiresVehicle)
                                         }
+                                    }
+                                }
                                     }
                                 }
                             }
@@ -6506,6 +6770,8 @@ Item {
                     property var headingFact: _vehicle ? _vehicle.heading : null
                     property var airSpeedFact: _vehicle ? _vehicle.airSpeed : null
                     property var climbRateFact: _vehicle ? _vehicle.climbRate : null
+                    property var rollFact: _vehicle ? _vehicle.roll : null
+                    property var pitchFact: _vehicle ? _vehicle.pitch : null
                     readonly property bool hasTurnValue: _vehicle && root._hasFactValue(_vehicle.roll)
                     readonly property real turnValue: hasTurnValue ? Number(_vehicle.roll.rawValue) : 0
                     readonly property real turnNeedleRotation: Math.max(-45, Math.min(45, turnValue))
@@ -6661,10 +6927,51 @@ Item {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
 
-                                        QGCAttitudeWidget {
-                                            anchors.centerIn: parent
-                                            size: Math.min(parent.width, parent.height) * 0.84
-                                            vehicle: instrumentPanel._vehicle
+                                        Item {
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.top: parent.top
+                                            anchors.bottom: attitudeValuesRow.top
+                                            anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.04
+
+                                            QGCAttitudeWidget {
+                                                anchors.centerIn: parent
+                                                size: Math.min(parent.width, parent.height) * 0.88
+                                                vehicle: instrumentPanel._vehicle
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            id: attitudeValuesRow
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.bottom: parent.bottom
+                                            height: ScreenTools.defaultFontPixelHeight * 1.15
+                                            spacing: instrumentPanel._columnSpacing * 0.6
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                color: "#F1F1F1"
+                                                font.pixelSize: instrumentPanel._dialValueFontSize * 0.64
+                                                fontSizeMode: Text.Fit
+                                                minimumPixelSize: 8
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: qsTr("滚转 %1").arg(root._hasFactValue(instrumentPanel.rollFact) ? (Number(instrumentPanel.rollFact.rawValue).toFixed(1) + "\u00B0") : "--")
+                                            }
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                color: "#F1F1F1"
+                                                font.pixelSize: instrumentPanel._dialValueFontSize * 0.64
+                                                fontSizeMode: Text.Fit
+                                                minimumPixelSize: 8
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: qsTr("俯仰 %1").arg(root._hasFactValue(instrumentPanel.pitchFact) ? (Number(instrumentPanel.pitchFact.rawValue).toFixed(1) + "\u00B0") : "--")
+                                            }
                                         }
                                     }
                                 }

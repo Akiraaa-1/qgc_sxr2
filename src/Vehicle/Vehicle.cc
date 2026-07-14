@@ -40,6 +40,7 @@
 #include "MissionManager.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
+#include "PlanManager.h"
 #include "PlanMasterController.h"
 #include "PositionManager.h"
 #include "QGC.h"
@@ -87,6 +88,13 @@ QGC_LOGGING_CATEGORY(VehicleLog, "Vehicle.Vehicle")
 // After a second GCS has requested control and we have given it permission to takeover, we will remove takeover permission automatically after this timeout
 // If the second GCS didn't get control
 #define REQUEST_OPERATOR_CONTROL_ALLOW_TAKEOVER_TIMEOUT_MSECS 10000
+
+static bool _isPlanRequestListRetryFailure(int errorCode, const QString& errorMsg)
+{
+    return errorCode == PlanManager::MaxRetryExceeded
+            && (errorMsg.contains(QStringLiteral("request list failed"), Qt::CaseInsensitive)
+                || errorMsg.contains(QStringLiteral("请求列表失败")));
+}
 
 const QString guided_mode_not_supported_by_vehicle = QObject::tr("Guided mode not supported by Vehicle.");
 
@@ -1792,20 +1800,38 @@ void Vehicle::sendMessageMultipleOnCurrentLinks(mavlink_message_t message, int c
 
 void Vehicle::_missionManagerError(int errorCode, const QString& errorMsg)
 {
-    Q_UNUSED(errorCode);
-    qgcApp()->showAppMessage(tr("Mission transfer failed. Error: %1").arg(errorMsg));
+    const QString message = tr("Mission transfer failed. Error: %1").arg(errorMsg);
+    if (_isPlanRequestListRetryFailure(errorCode, errorMsg)) {
+        qCWarning(VehicleLog) << message;
+        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_WARNING, message.toHtmlEscaped(), QString());
+        return;
+    }
+
+    qgcApp()->showAppMessage(message);
 }
 
 void Vehicle::_geoFenceManagerError(int errorCode, const QString& errorMsg)
 {
-    Q_UNUSED(errorCode);
-    qgcApp()->showAppMessage(tr("GeoFence transfer failed. Error: %1").arg(errorMsg));
+    const QString message = tr("GeoFence transfer failed. Error: %1").arg(errorMsg);
+    if (_isPlanRequestListRetryFailure(errorCode, errorMsg)) {
+        qCWarning(VehicleLog) << message;
+        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_WARNING, message.toHtmlEscaped(), QString());
+        return;
+    }
+
+    qgcApp()->showAppMessage(message);
 }
 
 void Vehicle::_rallyPointManagerError(int errorCode, const QString& errorMsg)
 {
-    Q_UNUSED(errorCode);
-    qgcApp()->showAppMessage(tr("Rally Point transfer failed. Error: %1").arg(errorMsg));
+    const QString message = tr("Rally Point transfer failed. Error: %1").arg(errorMsg);
+    if (_isPlanRequestListRetryFailure(errorCode, errorMsg)) {
+        qCWarning(VehicleLog) << message;
+        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_WARNING, message.toHtmlEscaped(), QString());
+        return;
+    }
+
+    qgcApp()->showAppMessage(message);
 }
 
 void Vehicle::_clearCameraTriggerPoints()

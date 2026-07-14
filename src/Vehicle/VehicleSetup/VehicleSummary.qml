@@ -42,6 +42,7 @@ Rectangle {
     readonly property real _cardCornerRadius: ScreenTools.defaultFontPixelHeight * 0.66
     readonly property real _cardPadding: ScreenTools.defaultFontPixelHeight * 0.9
     readonly property real _cardHeaderSpacing: ScreenTools.defaultFontPixelHeight * 0.58
+    readonly property real _summaryCardHeight: ScreenTools.defaultFontPixelHeight * (_columnCount > 1 ? 9.6 : 10.8)
     readonly property real _statusBadgeSize: ScreenTools.defaultFontPixelHeight * 1.55
     readonly property real _statusGlyphSize: _statusBadgeSize * 0.62
     readonly property color _cardBorderColor: "#333333"
@@ -388,6 +389,10 @@ Rectangle {
         var setupSource = component.setupSource ? component.setupSource.toString().toLowerCase() : ""
         var summarySource = component.summaryQmlSource ? component.summaryQmlSource.toString().toLowerCase() : ""
 
+        if (_componentKey(component) === "flightBehavior") {
+            return true
+        }
+
         if (_isActuatorComponent(component)) {
             return true
         }
@@ -691,17 +696,14 @@ Rectangle {
 
                         readonly property var vehicleComponent: modelData
                         readonly property var summaryComponent: _summaryRoot._summaryDisplayComponent(vehicleComponent)
-                        readonly property color _activeFillColor: cardMouseArea.pressed
-                            ? _summaryRoot._cardPressedColor
-                            : (cardMouseArea.containsMouse ? _summaryRoot._cardHoverColor : _summaryRoot._cardBaseColor)
 
                         visible: _summaryRoot._showCard(vehicleComponent)
                         Layout.preferredWidth: _summaryRoot._columnCount > 1 ? _summaryRoot._multiColumnCardWidth : _summaryRoot._singleColumnCardWidth
+                        Layout.preferredHeight: _summaryRoot._summaryCardHeight
                         Layout.fillWidth: _summaryRoot._columnCount === 1
                         Layout.alignment: Qt.AlignTop
-                        implicitHeight: cardContent.implicitHeight + (_summaryRoot._cardPadding * 2)
 
-                        color: _activeFillColor
+                        color: _summaryRoot._cardBaseColor
                         radius: _summaryRoot._cardCornerRadius
                         border.width: 1
                         border.color: _summaryRoot._cardBorderColor
@@ -719,28 +721,6 @@ Rectangle {
                             radius: parent.radius + 1
                             color: _summaryRoot._cardShadowColor
                             z: -1
-                        }
-
-                        MouseArea {
-                            id: cardMouseArea
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: summaryComponent && summaryComponent.setupSource !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-
-                            onClicked: {
-                                if (summaryComponent && summaryComponent.setupSource !== "") {
-                                    if (typeof vehicleConfigView !== "undefined" &&
-                                            vehicleConfigView &&
-                                            typeof vehicleConfigView.showVehicleComponentPanel === "function") {
-                                        vehicleConfigView.showVehicleComponentPanel(summaryComponent)
-                                    } else if (typeof mainWindow !== "undefined" &&
-                                               mainWindow &&
-                                               typeof mainWindow.showVehicleConfigComponentPanel === "function") {
-                                        mainWindow.showVehicleConfigComponentPanel(summaryComponent)
-                                    }
-                                }
-                            }
                         }
 
                         ColumnLayout {
@@ -802,7 +782,8 @@ Rectangle {
                                 id: summaryViewport
 
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: summaryLoader.item ? summaryLoader.item.implicitHeight : 0
+                                Layout.fillHeight: true
+                                Layout.minimumHeight: 0
                                 clip: true
 
                                 Loader {
@@ -832,4 +813,3 @@ Rectangle {
         }
     }
 }
-

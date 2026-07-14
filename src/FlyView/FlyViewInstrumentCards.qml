@@ -20,6 +20,8 @@ Item {
     property var headingFact: vehicle ? vehicle.heading : null
     property var airSpeedFact: vehicle ? vehicle.airSpeed : null
     property var climbRateFact: vehicle ? vehicle.climbRate : null
+    property var rollFact: vehicle ? vehicle.roll : null
+    property var pitchFact: vehicle ? vehicle.pitch : null
     property real extraInset: 0
     property real extraValuesWidth: 0
     property bool showHeader: true
@@ -330,12 +332,37 @@ Item {
                             }
                         }
 
-                        Item {
+                        RowLayout {
                             id: attitudeFooter
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             height: root._dialFooterHeight
+                            spacing: root._columnSpacing * 0.7
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                color: qgcPal.text
+                                font.pixelSize: root._dialValueFontSize * 0.68
+                                fontSizeMode: Text.Fit
+                                minimumPixelSize: 8
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: qsTr("滚转 %1").arg(root._hasFactValue(root.rollFact) ? (Number(root.rollFact.rawValue).toFixed(1) + "\u00B0") : "--")
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                color: qgcPal.text
+                                font.pixelSize: root._dialValueFontSize * 0.68
+                                fontSizeMode: Text.Fit
+                                minimumPixelSize: 8
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: qsTr("俯仰 %1").arg(root._hasFactValue(root.pitchFact) ? (Number(root.pitchFact.rawValue).toFixed(1) + "\u00B0") : "--")
+                            }
                         }
                     }
                 }

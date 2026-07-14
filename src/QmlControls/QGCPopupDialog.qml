@@ -169,31 +169,31 @@ Popup {
             acceptButton.text = qsTr("保存")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Apply) {
-            acceptButton.text = qsTr("Apply")
+            acceptButton.text = qsTr("应用")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Open) {
-            acceptButton.text = qsTr("Open")
+            acceptButton.text = qsTr("打开")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.SaveAll) {
-            acceptButton.text = qsTr("Save All")
+            acceptButton.text = qsTr("全部保存")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Yes) {
-            acceptButton.text = qsTr("Yes")
+            acceptButton.text = qsTr("是")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.YesToAll) {
-            acceptButton.text = qsTr("Yes to All")
+            acceptButton.text = qsTr("全部是")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Retry) {
-            acceptButton.text = qsTr("Retry")
+            acceptButton.text = qsTr("重试")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Reset) {
-            acceptButton.text = qsTr("Reset")
+            acceptButton.text = qsTr("重置")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.RestoreToDefaults) {
-            acceptButton.text = qsTr("Restore to Defaults")
+            acceptButton.text = qsTr("恢复默认")
             _acceptButtonVisible = true
         } else if (buttons & Dialog.Ignore) {
-            acceptButton.text = qsTr("Ignore")
+            acceptButton.text = qsTr("忽略")
             _acceptButtonVisible = true
         }
 
@@ -208,10 +208,10 @@ Popup {
             rejectButton.text = qsTr("否")
             _rejectButtonVisible = true
         } else if (buttons & Dialog.NoToAll) {
-            rejectButton.text = qsTr("No to All")
+            rejectButton.text = qsTr("全部否")
             _rejectButtonVisible = true
         } else if (buttons & Dialog.Abort) {
-            rejectButton.text = qsTr("Abort")
+            rejectButton.text = qsTr("中止")
             _rejectButtonVisible = true
         }
 

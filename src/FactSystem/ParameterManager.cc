@@ -1388,8 +1388,9 @@ void ParameterManager::_paramRequestListTimeout()
         qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "Retrying initial parameter request list";
         _startParameterDownload(MAV_COMP_ID_ALL);
     } else if (!_vehicle->genericFirmware()) {
-        const QString errorMsg = tr("Vehicle %1 did not respond to request for parameters. "
-                                    "This will cause %2 to be unable to display its full user interface.").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
+        const QString errorMsg = tr("飞行器 %1 未响应参数请求。\n"
+                                    "请检查串口、波特率、飞控供电和 MAVLink 版本，然后重新连接。\n"
+                                    "参数加载完成前，%2 可能无法显示完整界面。").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
         qCDebug(ParameterManagerLog) << errorMsg;
         qgcApp()->showAppMessage(errorMsg);
     }

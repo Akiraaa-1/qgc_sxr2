@@ -8,7 +8,7 @@ import QGroundControl.Controls
 import QGroundControl.FlyView
 
 ColumnLayout {
-    spacing: 0.8 * ScreenTools.defaultFontPixelWidth
+    spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
     property real _verticalMargin: ScreenTools.defaultFontPixelHeight / 2
 
@@ -115,24 +115,40 @@ ColumnLayout {
     // Header/title of checklist
     RowLayout {
         Layout.fillWidth:   true
-        height:             1.75 * ScreenTools.defaultFontPixelHeight
-        spacing:            0
+        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1
+        spacing:            ScreenTools.defaultFontPixelWidth * 0.55
 
         QGCLabel {
             Layout.fillWidth:   true
-            text:               allChecksPassed ? qsTr("(Passed)") : qsTr("In Progress")
-            font.pointSize:     ScreenTools.mediumFontPointSize
+            text:               allChecksPassed ? qsTr("检查已通过") : qsTr("检查进行中")
+            color:              allChecksPassed ? "#9BCF89" : "#F0F3EA"
+            font.weight:        Font.DemiBold
+            font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.74
+            verticalAlignment:  Text.AlignVCenter
         }
-        QGCButton {
-            width:              1.2 * ScreenTools.defaultFontPixelHeight
-            height:             1.2 * ScreenTools.defaultFontPixelHeight
+        Rectangle {
+            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.65
+            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.65
             Layout.alignment:   Qt.AlignVCenter
-            onClicked:          checkListRepeater.model.reset()
+            color:              resetMouseArea.pressed ? "#222720" : (resetMouseArea.containsMouse ? "#30362F" : "#272B28")
+            radius:             ScreenTools.defaultFontPixelHeight * 0.24
+            border.width:       1
+            border.color:       "#454B45"
 
             QGCColoredImage {
+                anchors.centerIn: parent
+                width:          parent.height * 0.52
+                height:         width
                 source:         "/qmlimages/MapSyncBlack.svg"
-                color:          qgcPal.buttonText
-                anchors.fill:   parent
+                color:          "#F0F3EA"
+                fillMode:       Image.PreserveAspectFit
+            }
+
+            QGCMouseArea {
+                id: resetMouseArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: checkListRepeater.model.reset()
             }
         }
     }
