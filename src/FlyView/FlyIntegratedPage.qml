@@ -78,7 +78,10 @@ Item {
                                                       root._hasStartMissionItems() &&
                                                       !root._startMissionCommandIssued &&
                                                       !root._startMissionAlreadyStarted &&
-                                                      !root._startMissionVehicleInAir
+                                                      (guidedActionsController.showContinueMission ||
+                                                       (!root._startMissionVehicleInAir &&
+                                                        guidedActionsController.showStartMission &&
+                                                        root._missionReadyForStart()))
     readonly property int _startMissionExecuteMaxAttempts: 12
     property bool _instrumentPanelVisible: false
     readonly property real _profilePanelTargetHeight: Math.max(ScreenTools.defaultFontPixelHeight * 12.8, height * 0.3)
