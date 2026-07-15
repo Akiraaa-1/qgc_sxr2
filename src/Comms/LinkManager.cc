@@ -434,8 +434,12 @@ void LinkManager::_addUDPAutoConnectLink()
         QMutexLocker locker(&_linksMutex);
         for (const SharedLinkInterfacePtr &link : _rgLinks) {
             const SharedLinkConfigurationPtr linkConfig = link->linkConfiguration();
-            if (linkConfig && (linkConfig->type() == LinkConfiguration::TypeUdp) && (linkConfig->name() == _defaultUDPLinkName)) {
-                return;
+            if (linkConfig && (linkConfig->type() == LinkConfiguration::TypeUdp)) {
+                const UDPConfiguration *const udpConfig = qobject_cast<const UDPConfiguration*>(linkConfig.get());
+                if ((linkConfig->name() == _defaultUDPLinkName) ||
+                    (udpConfig && (udpConfig->localPort() == _autoConnectSettings->udpListenPort()->rawValue().toUInt()))) {
+                    return;
+                }
             }
         }
     }

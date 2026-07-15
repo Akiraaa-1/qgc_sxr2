@@ -311,6 +311,17 @@ bool InitialConnectStateMachine::_shouldSkipForPlanLoad()
         _lastSkipReason = QStringLiteral("(high latency or log replay link)");
         return true;
     }
+    if (vehicle()->genericFirmware()) {
+        _lastSkipReason = QStringLiteral("(generic firmware)");
+        return true;
+    }
+
+    SharedLinkInterfacePtr sharedLink = vehicle()->vehicleLinkManager()->primaryLink().lock();
+    if (sharedLink && sharedLink->linkConfiguration()->type() == LinkConfiguration::TypeUdp && sharedLink->linkConfiguration()->name().startsWith(QStringLiteral("Start Page UDP"))) {
+        _lastSkipReason = QStringLiteral("(start page UDP simulation link)");
+        return true;
+    }
+
     return false;
 }
 

@@ -4103,7 +4103,10 @@ ApplicationWindow {
                         }
 
                         if (_activeVehicleHasMissingParameters()) {
-                            _failParameterConnection(qsTr("飞控参数读取不完整，已停止进入工作区"))
+                            _finishConnectionProgress(true)
+                            if (mainWindow._showStartPage) {
+                                _appendEvent(qsTr("飞控参数读取不完整，继续进入工作区"))
+                            }
                             return true
                         }
 
@@ -4599,7 +4602,7 @@ ApplicationWindow {
 
                         config.dynamic = true
                         config.name = qsTr("Start Page UDP (%1)").arg(_udpListenPort())
-                        config.autoConnect = true
+                        config.autoConnect = false
                         config.localPort = _udpListenPort()
                         config.mavlinkVersion = _selectedMavlinkVersion
                         if (!_temporaryStartUdpConfig) {
@@ -4824,7 +4827,8 @@ ApplicationWindow {
                             const timeoutMs = waitingForParameters ? startPageOverlay._parameterTimeoutMs : startPageOverlay._connectionTimeoutMs
                             if (startPageOverlay._connectionElapsedMs >= timeoutMs) {
                                 if (waitingForParameters) {
-                                    startPageOverlay._failParameterConnection(qsTr("已收到飞控心跳，但参数读取超时，已停止进入工作区"))
+                                    startPageOverlay._finishConnectionProgress(true)
+                                    startPageOverlay._appendEvent(qsTr("已收到飞控心跳，但参数读取超时，继续进入工作区"))
                                     return
                                 }
                                 const wasUdpConnection = startPageOverlay._connectingConfig

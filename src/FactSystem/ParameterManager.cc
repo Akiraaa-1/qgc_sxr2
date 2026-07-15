@@ -1387,12 +1387,23 @@ void ParameterManager::_paramRequestListTimeout()
     if (!_disableAllRetries && (++_initialRequestRetryCount <= _maxInitialRequestListRetry)) {
         qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "Retrying initial parameter request list";
         _startParameterDownload(MAV_COMP_ID_ALL);
-    } else if (!_vehicle->genericFirmware()) {
-        const QString errorMsg = tr("飞行器 %1 未响应参数请求。\n"
-                                    "请检查串口、波特率、飞控供电和 MAVLink 版本，然后重新连接。\n"
-                                    "参数加载完成前，%2 可能无法显示完整界面。").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
-        qCDebug(ParameterManagerLog) << errorMsg;
-        qgcApp()->showAppMessage(errorMsg);
+    } else {
+        _initialLoadComplete = true;
+        _missingParameters = true;
+        _parametersReady = true;
+        _waitingForDefaultComponent = false;
+        emit parametersReadyChanged(true);
+        emit missingParametersChanged(_missingParameters);
+
+        if (!_vehicle->genericFirmware()) {
+            const QString errorMsg = tr("飞行器 %1 未响应参数请求。\n"
+                                        "请检查串口、波特率、飞控供电和 MAVLink 版本，然后重新连接。\n"
+                                        "参数加载完成前，%2 可能无法显示完整界面。").arg(_vehicle->id()).arg(QCoreApplication::applicationName());
+            qCDebug(ParameterManagerLog) << errorMsg;
+            qgcApp()->showAppMessage(errorMsg);
+        } else {
+            qCDebug(ParameterManagerLog) << _logVehiclePrefix(-1) << "Generic firmware did not respond to parameter requests; continuing with missing parameters";
+        }
     }
 }
 

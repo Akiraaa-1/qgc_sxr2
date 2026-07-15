@@ -269,11 +269,11 @@ void PlanMasterController::_sendMissionComplete(void)
     if (_sendGeoFence) {
         _sendGeoFence = false;
         _sendRallyPoints = true;
-        if (_geoFenceController.supported()) {
+        if (_geoFenceController.supported() && (_geoFenceController.containsItems() || _geoFenceController.dirty())) {
             qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle start GeoFence sendToVehicle";
             _geoFenceController.sendToVehicle();
         } else {
-            qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle GeoFence not supported skipping";
+            qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle GeoFence empty or not supported skipping";
             _sendGeoFenceComplete();
         }
     }
@@ -283,11 +283,11 @@ void PlanMasterController::_sendGeoFenceComplete(void)
 {
     if (_sendRallyPoints) {
         _sendRallyPoints = false;
-        if (_rallyPointController.supported()) {
+        if (_rallyPointController.supported() && (_rallyPointController.containsItems() || _rallyPointController.dirty())) {
             qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle start rally sendToVehicle";
             _rallyPointController.sendToVehicle();
         } else {
-            qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle Rally Points not support skipping";
+            qCDebug(PlanMasterControllerLog) << "PlanMasterController::sendToVehicle Rally Points empty or not supported skipping";
             _sendRallyPointsComplete();
         }
     }
@@ -687,6 +687,12 @@ void PlanMasterController::sendPlanToVehicle(Vehicle* vehicle, const QString& fi
 
 void PlanMasterController::_showPlanFromManagerVehicle(void)
 {
+    if (_managerVehicle->genericFirmware()) {
+        qCDebug(PlanMasterControllerLog) << "_showPlanFromManagerVehicle: generic firmware, skipping plan load from vehicle";
+        _setDirtyStates(containsItems() /* dirtyForSave */, containsItems() /* dirtyForUpload */);
+        return;
+    }
+
     if (!_managerVehicle->initialPlanRequestComplete()) {
         // We need to wait until initial load is complete before we show anything.
         return;

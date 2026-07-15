@@ -305,6 +305,13 @@ Item {
 
     function _sendToolStripUpload(source, forceUpload) {
         _uploadStatusSource = source
+        if (_planMasterController.syncInProgress) {
+            _openUploadStatusPanel(source,
+                                   qsTr("无法%1").arg(qsTr("上传")),
+                                   qsTr("计划仍在与飞行器同步。请等待当前同步结束后再上传。"))
+            return
+        }
+
         if (_warnZeroDistanceComplexMissionItems(source)) {
             return
         }
@@ -971,7 +978,7 @@ Item {
                     ToolStripAction {
                         text: qsTr("上传")
                         iconSource: "/res/UploadToVehicle.svg"
-                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        enabled: _planMasterController.containsItems
                         visible: toolStrip._isMissionLayer
                         onTriggered: (source) => _triggerToolStripUpload(source)
                     },
