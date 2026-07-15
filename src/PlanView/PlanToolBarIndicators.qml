@@ -31,7 +31,44 @@ RowLayout {
     readonly property real _margins: ScreenTools.defaultFontPixelWidth
 
     function _uploadClicked() {
-        _planMasterController.upload()
+        if (_syncInProgress) {
+            QGroundControl.showMessageDialog(root,
+                                             qsTr("无法上传"),
+                                             qsTr("计划仍在与飞行器同步。请等待当前同步结束后再上传。"))
+            return
+        }
+
+        switch (_planMasterController.readyForSaveState()) {
+        case VisualMissionItem.NotReadyForSaveData:
+            QGroundControl.showMessageDialog(root,
+                                             qsTr("无法上传"),
+                                             qsTr("计划中有未完成的项目。请补全所有项目后重新上传。"))
+            return
+        case VisualMissionItem.NotReadyForSaveTerrain:
+            QGroundControl.showMessageDialog(root,
+                                             qsTr("无法上传"),
+                                             qsTr("计划正在等待服务器地形数据以计算正确高度。"))
+            return
+        }
+
+        switch (_missionController.sendToVehiclePreCheck()) {
+        case MissionController.SendToVehiclePreCheckStateOk:
+            _planMasterController.sendToVehicle()
+            break
+        case MissionController.SendToVehiclePreCheckStateNoActiveVehicle:
+            QGroundControl.showMessageDialog(root, qsTr("发送到飞行器"), qsTr("必须连接飞行器后才能上传计划。"))
+            break
+        case MissionController.SendToVehiclePreCheckStateActiveMission:
+            QGroundControl.showMessageDialog(root, qsTr("发送到飞行器"), qsTr("上传新计划前必须先暂停当前任务。"))
+            break
+        case MissionController.SendToVehiclePreCheckStateFirwmareVehicleMismatch:
+            QGroundControl.showMessageDialog(root,
+                                             qsTr("计划上传"),
+                                             qsTr("此计划创建时使用的固件或机型与当前上传目标不一致，可能导致错误或异常行为。\n\n建议按当前固件和机型重新创建计划。\n\n点击“OK”仍然上传。"),
+                                             Dialog.Ok | Dialog.Cancel,
+                                             function() { _planMasterController.sendToVehicle() })
+            break
+        }
     }
 
     function _downloadClicked() {
