@@ -80,7 +80,6 @@ Item {
                                                       !root._startMissionAlreadyStarted &&
                                                       (guidedActionsController.showContinueMission ||
                                                        (!root._startMissionVehicleInAir &&
-                                                        guidedActionsController.showStartMission &&
                                                         root._missionReadyForStart()))
     readonly property int _startMissionExecuteMaxAttempts: 12
     property bool _instrumentPanelVisible: false
