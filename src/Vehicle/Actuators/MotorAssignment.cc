@@ -65,35 +65,35 @@ bool MotorAssignment::initAssignment(int selectedActuatorIdx, int firstMotorsFun
     if (numAssigned == 0 && _functionFacts[selectedActuatorIdx].size() >= numMotors) {
         _assignMotors = true;
         extraMessage = tr(
-R"(<br />No motors are assigned yet.
-By saying yes, all motors will be assigned to the first %1 channels of the selected output (%2)
- (you can also first assign all motors, then start the identification).<br />)").arg(numMotors).arg(selectedActuatorOutputName);
+R"(<br />当前还没有分配电机。
+选择“是”后，所有电机会分配到当前选中输出（%2）的前 %1 个通道
+（也可以先手动分配所有电机，然后再开始识别）。<br />)").arg(numMotors).arg(selectedActuatorOutputName);
 
     } else if (numAssigned > 0 && numAssignedToSelected == 0 && _functionFacts[selectedActuatorIdx].size() >= numMotors) {
         _assignMotors = true;
         extraMessage = tr(
-R"(<br />Motors are currently assigned to a different output.
-By saying yes, all motors will be reassigned to the first %1 channels of the selected output (%2).<br />)")
+R"(<br />电机当前分配在其它输出上。
+选择“是”后，所有电机会重新分配到当前选中输出（%2）的前 %1 个通道。<br />)")
             .arg(numMotors).arg(selectedActuatorOutputName);
 
     } else if (numAssigned < numMotors) {
-        _message = tr("Not all motors are assigned yet. Either clear all existing assignments or assign all motors to an output.");
+        _message = tr("还有电机未完成分配。请先清除现有分配，或将所有电机分配到一个输出。");
         emit messageChanged();
         return false;
     }
 
     _message = tr(
-R"(This will automatically spin individual motors at 15% thrust.<br /><br />
-<b>Warning: Only proceed if you removed all propellers</b>.<br />
+R"(该操作会自动以 15% 推力逐个转动电机。<br /><br />
+<b>警告：必须先拆下所有螺旋桨，才能继续。</b><br />
 %1
 <br />
-The procedure is as following:<br />
-- After confirming, the first motor starts to spin for 0.5 seconds.<br />
-- Then click on the motor that was spinning.<br />
-- The above steps are repeated for all motors.<br />
-- The motor output functions will automatically be reassigned by the selected order.<br />
+操作流程如下：<br />
+- 确认后，第一个电机会转动 0.5 秒。<br />
+- 然后点击刚才转动的那个电机。<br />
+- 对所有电机重复上述步骤。<br />
+- 系统会按照你点击的顺序自动重新分配电机输出功能。<br />
 <br />
-Do you wish to proceed?)").arg(extraMessage);
+是否继续？)").arg(extraMessage);
     emit messageChanged();
 
     _selectedActuatorIdx = selectedActuatorIdx;
@@ -200,7 +200,7 @@ void MotorAssignment::ackHandler(MAV_RESULT commandResult, VehicleTypes::MavCmdR
     _commandInProgress = false;
     if (failureCode != VehicleTypes::MavCmdResultFailureNoResponseToCommand && commandResult != MAV_RESULT_ACCEPTED) {
         abort();
-        qgcApp()->showAppMessage(tr("Actuator test command failed"));
+        qgcApp()->showAppMessage(tr("执行器测试指令失败"));
     }
 }
 

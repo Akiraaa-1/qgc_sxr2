@@ -42,6 +42,10 @@ SetupPage {
             return qsTr("Z 位置")
         case "Direction CCW":
             return qsTr("逆时针方向")
+        case "Axis":
+            return qsTr("轴向")
+        case "Bidirectional Slew Rate":
+            return qsTr("双向响应速率")
         case "Function":
             return qsTr("功能")
         case "Disarmed":
@@ -50,8 +54,14 @@ SetupPage {
             return qsTr("最小值")
         case "Maximum":
             return qsTr("最大值")
+        case "Center":
+        case "Trim":
+        case "Neutral":
+            return qsTr("中位")
         case "Actuator Outputs":
             return qsTr("执行器输出")
+        case "ESCs":
+            return qsTr("电调")
         case "PWM AUX":
             return qsTr("PWM 辅助")
         case "PWM MAIN":
@@ -92,7 +102,7 @@ SetupPage {
             readonly property real _leftColumnWidth:    Math.max(actuatorTesting.implicitWidth, mixerUi.implicitWidth) + (_margins * 2)
             readonly property real _contentWidth:       contentRow.implicitWidth
 
-            width:          _contentWidth + (_outerPadding * 2)
+            width:          Math.max(_contentWidth + (_outerPadding * 2), Math.min(actuatorPage.availableWidth, _leftColumnWidth + (_outerPadding * 2)))
             height:         contentRow.implicitHeight + (_outerPadding * 2)
             implicitWidth:  width
             implicitHeight: height
@@ -125,7 +135,7 @@ SetupPage {
                     Layout.preferredWidth:      pageRoot._leftColumnWidth
                     visible:                    actuators.mixer.groups.count > 0
                     QGCLabel {
-                        text:                   qsTr("Geometry") + (actuators.mixer.title ? ": " + actuatorPage._translatedMixerTitle(actuators.mixer.title) : "")
+                        text:                   actuatorPage._translatedActuatorText("Geometry") + (actuators.mixer.title ? ": " + actuatorPage._translatedMixerTitle(actuators.mixer.title) : "")
                         font.pointSize:         ScreenTools.mediumFontPointSize
                         Layout.fillWidth:       true
                     }
@@ -274,7 +284,7 @@ SetupPage {
 
                 // actuator testing
                 QGCLabel {
-                    text:               qsTr("Actuator Testing")
+                    text:               qsTr("执行器测试")
                     font.pointSize:     ScreenTools.mediumFontPointSize
                 }
 
@@ -296,7 +306,7 @@ SetupPage {
                         }
 
                         QGCLabel {
-                            text: qsTr("Configure some outputs in order to test them.")
+                            text: qsTr("请先配置输出，然后再进行测试。")
                             color: popupStyle.secondaryTextColor
                             visible: actuators.actuatorTest.actuators.count == 0
                         }
@@ -334,7 +344,7 @@ SetupPage {
 
                             QGCLabel {
                                 color:  popupStyle.secondaryTextColor
-                                text: safetySwitch.checked ? qsTr("Careful: Actuator sliders are enabled") : qsTr("Propellers are removed - Enable sliders")
+                                text: safetySwitch.checked ? qsTr("注意：执行器滑块已启用") : qsTr("确认已拆除螺旋桨 - 启用滑块")
                             }
                         } // Row
 
@@ -465,8 +475,8 @@ SetupPage {
                 // actuator outputs
                 Rectangle {
                     id:                             selActuatorOutput
-                    implicitWidth:                  actuatorGroupColumn.width + (_margins * 2)
-                    implicitHeight:                 actuatorGroupColumn.height + (_margins * 2)
+                    implicitWidth:                  actuatorGroupColumn.implicitWidth + (_margins * 2)
+                    implicitHeight:                 actuatorGroupColumn.implicitHeight + (_margins * 2)
                     color:                          popupStyle.panelBackground
                     border.color:                   popupStyle.borderColor
                     border.width:                   1

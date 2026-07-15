@@ -94,7 +94,7 @@
             ]
         },
         {
-            "title": "ESC PWM Calibration",
+            "title": "ESC PWM 最小/最大值校准",
             "keywords": [
                 "esc",
                 "calibration",
@@ -132,13 +132,39 @@
                 "node"
             ],
             "image": "/qmlimages/Gears.svg",
-            "showWhen": "_uavcanAvailable && _uavcanEnable.rawValue !== 0",
             "controls": [
                 {
                     "param": "UAVCAN_ENABLE",
                     "label": "UAVCAN",
-                    "control": "combobox"
+                    "control": "combobox",
+                    "optional": true,
+                    "showWhen": "_uavcanAvailable"
                 },
+                {
+                    "control": "label",
+                    "label": "当前固件未提供 UAVCAN_ENABLE 参数。",
+                    "showWhen": "!_uavcanAvailable"
+                },
+                {
+                    "control": "label",
+                    "label": "更改后需要重启。"
+                }
+            ]
+        },
+        {
+            "title": "UAVCAN 电机编号和方向分配",
+            "keywords": [
+                "uavcan",
+                "can bus",
+                "dronecan",
+                "esc",
+                "node",
+                "assignment",
+                "motor direction"
+            ],
+            "image": "/qmlimages/Gears.svg",
+            "showWhen": "_uavcanAvailable && _uavcanEnable && _uavcanEnable.rawValue !== 0",
+            "controls": [
                 {
                     "control": "label",
                     "label": "警告：在执行 UAVCAN 电调配置前，必须先拆下螺旋桨。",

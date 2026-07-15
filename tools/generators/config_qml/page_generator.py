@@ -1174,7 +1174,7 @@ def generate_config_page_qml(page: PageDef) -> str:
     lines.append("")
     lines.append("        Item {")
     lines.append("            width: Math.max(availableWidth, outerColumn.width)")
-    lines.append("            height: outerColumn.height")
+    lines.append("            height: Math.max(availableHeight, outerColumn.height)")
     lines.append("")
     lines.append(f"            {page.controllerType} {{")
     lines.append("                id: controller")

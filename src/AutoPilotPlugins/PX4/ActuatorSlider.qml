@@ -22,6 +22,7 @@ Column {
     Layout.alignment:                 Qt.AlignTop
 
     readonly property int _sliderHeight: 6
+    readonly property real _sliderWidth: ScreenTools.defaultFontPixelHeight * 1.8
     readonly property bool _popupStyled: popupStyle.inPopupContext(root)
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
@@ -80,11 +81,14 @@ Column {
         value:                      defaultVal
         live:   true
         anchors.horizontalCenter:   parent.horizontalCenter
+        width:                      root._sliderWidth
         height:                     ScreenTools.defaultFontPixelHeight * _sliderHeight
-        trackColor:                 _popupStyled ? popupStyle.inputBackground : qgcPal.button
-        trackBorderColor:           _popupStyled ? popupStyle.borderColor : qgcPal.buttonText
-        handleColor:                _popupStyled ? popupStyle.panelBackground : qgcPal.button
-        handleBorderColor:          _popupStyled ? popupStyle.borderColor : qgcPal.buttonText
+        barHeight:                  Math.max(4, ScreenTools.defaultFontPixelHeight * 0.32)
+        handleDiameter:             Math.max(ScreenTools.defaultFontPixelHeight * 1.15, 16)
+        trackColor:                 _popupStyled ? Qt.rgba(1, 1, 1, 0.16) : qgcPal.button
+        trackBorderColor:           _popupStyled ? Qt.rgba(1, 1, 1, 0.24) : qgcPal.buttonText
+        handleColor:                _popupStyled ? popupStyle.primaryTextColor : qgcPal.button
+        handleBorderColor:          _popupStyled ? popupStyle.accentColor : qgcPal.buttonText
         labelColor:                 _popupStyled ? popupStyle.secondaryTextColor : qgcPal.buttonText
 
         onValueChanged: {

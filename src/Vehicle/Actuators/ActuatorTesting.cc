@@ -137,13 +137,13 @@ void ActuatorTest::ackHandler(MAV_RESULT commandResult, VehicleTypes::MavCmdResu
         if (!_hadFailure) {
             QString message;
             if (commandResult == MAV_RESULT_TEMPORARILY_REJECTED) {
-                message = tr("Actuator test command temporarily rejected");
+                message = tr("执行器测试指令被临时拒绝");
             } else if (commandResult == MAV_RESULT_DENIED) {
-                message = tr("Actuator test command denied");
+                message = tr("执行器测试指令被拒绝");
             } else if (commandResult == MAV_RESULT_UNSUPPORTED) {
-                message = tr("Actuator test command not supported");
+                message = tr("当前飞控不支持执行器测试指令");
             } else {
-                message = tr("Actuator test command failed");
+                message = tr("执行器测试指令失败");
             }
             qgcApp()->showAppMessage(message);
             _hadFailure = true;

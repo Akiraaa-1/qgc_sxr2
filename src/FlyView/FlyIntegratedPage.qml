@@ -2099,6 +2099,9 @@ Item {
                 root._triggerGuidedPanelAction(guidedActionsController.actionRTL)
             }
             break
+        case "oneKeyRTL":
+            root._confirmOneKeyRTL()
+            break
         case "play":
             if (guidedActionsController.showContinueMission) {
                 guidedActionsController.confirmAction(guidedActionsController.actionContinueMission)
@@ -2175,6 +2178,31 @@ Item {
             function() {
                 if (root._activeVehicle) {
                     root._activeVehicle.armed = arm
+                }
+            })
+    }
+    function _confirmOneKeyRTL() {
+        if (!root._activeVehicle) {
+            root._showMapStripUnavailable("oneKeyRTL", true)
+            return
+        }
+        if (!root._isGuidedPanelActionAvailable(guidedActionsController.actionRTL)) {
+            QGroundControl.showMessageDialog(
+                root,
+                qsTr("一键返航"),
+                root._guidedPanelActionUnavailableMessage(guidedActionsController.actionRTL))
+            return
+        }
+
+        QGroundControl.showMessageDialog(
+            root,
+            qsTr("一键返航"),
+            qsTr("确认执行一键返航？"),
+            Dialog.Yes | Dialog.Cancel,
+            function() {
+                if (root._activeVehicle) {
+                    root._activeVehicle.guidedModeRTL(false)
+                    QGroundControl.showMessageDialog(root, qsTr("一键返航"), qsTr("返航指令已发送。"))
                 }
             })
     }
@@ -2309,6 +2337,8 @@ Item {
             return qsTr("下降")
         case "rtl":
             return qsTr("返航")
+        case "oneKeyRTL":
+            return qsTr("一键返航")
         case "play":
             return qsTr("继续任务")
         case "pause":
@@ -2341,6 +2371,7 @@ Item {
         case "locate":
             return qsTr("当前飞行器还没有有效定位。")
         case "rtl":
+        case "oneKeyRTL":
             if (root._activeVehicle && !root._activeVehicle.armed) {
                 return qsTr("返航仅在飞行器已解锁后可用。")
             }
@@ -2440,7 +2471,8 @@ Item {
                 return qsTr("飞行前检查单尚未通过。")
             }
             if (!guidedActionsController._canStartMission) {
-                return qsTr("飞行器当前尚未准备好开始任务。")
+                const reason = root._compactPrearmReason(root._activeVehicle)
+                return reason !== "" ? qsTr("飞行器当前尚未准备好开始任务：%1").arg(reason) : qsTr("飞行器当前尚未准备好开始任务。")
             }
             return qsTr("飞行器当前状态不允许开始任务。")
         }
@@ -2539,6 +2571,9 @@ Item {
             return root._vehicleHasPosition(root._activeVehicle)
         }
         if (key === "rtl") {
+            return guidedActionsController.showRTL
+        }
+        if (key === "oneKeyRTL") {
             return guidedActionsController.showRTL
         }
         if (key === "pause") {
@@ -6275,19 +6310,15 @@ Item {
                                     model: [
                                 { "key": "traffic",   "icon": "/InstrumentValueIcons/border-outer.svg",   "accent": true,  "requiresVehicle": false, "slashed": false },
                                 { "key": "showPath",  "icon": "/InstrumentValueIcons/view-show.svg",      "accent": false, "requiresVehicle": false, "slashed": false },
-                                { "key": "checklist", "icon": "/InstrumentValueIcons/shield.svg",         "accent": false, "requiresVehicle": false, "slashed": false },
                                 { "key": "armDisarm", "icon": root._activeVehicle && root._activeVehicle.armed ? "/res/LockClosed.svg" : "/res/LockOpen.svg", "accent": false, "requiresVehicle": true, "slashed": false },
                                 { "key": "play",      "icon": "/InstrumentValueIcons/play-outline.svg",   "accent": false, "requiresVehicle": true,  "slashed": false, "visible": guidedActionsController.showContinueMission },
                                 { "key": "pause",     "icon": "/InstrumentValueIcons/pause-outline.svg",  "accent": false, "requiresVehicle": true,  "slashed": false },
-                                { "key": "rtl",       "icon": "/res/rtl.svg",                             "accent": false, "requiresVehicle": true,  "slashed": false },
+                                { "key": "oneKeyRTL", "label": qsTr("一键\n返航"),                         "accent": true,  "requiresVehicle": true,  "slashed": false },
                                 { "key": "land",      "icon": "/res/land.svg",                            "accent": false, "requiresVehicle": true,  "slashed": false },
                                 { "key": "emergencyStop", "icon": "/res/Stop.svg",                        "accent": false, "requiresVehicle": true,  "slashed": false },
                                 { "key": "flightMode","icon": "",                                         "accent": false, "requiresVehicle": true,  "slashed": false },
                                 { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",  "accent": false, "requiresVehicle": true,  "slashed": false },
                                 { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg","accent": false, "requiresVehicle": true,  "slashed": false },
-                                { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": false },
-                                { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",         "accent": false, "requiresVehicle": false, "slashed": true  },
-                                { "key": "pan",       "icon": "/InstrumentValueIcons/map-pan.svg",       "accent": false, "requiresVehicle": false, "slashed": false },
                                 { "key": "locate",    "icon": "/InstrumentValueIcons/map-follow.svg",    "accent": false, "requiresVehicle": true, "slashed": false }
                                     ]
 
@@ -6344,7 +6375,7 @@ Item {
                                     }
 
                                     QGCColoredImage {
-                                        visible: !parent.parent._isFlightMode
+                                        visible: !parent.parent._isFlightMode && !modelData.label
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         anchors.verticalCenter: parent.verticalCenter
                                         anchors.verticalCenterOffset: _isStartMission ? -(ScreenTools.defaultFontPixelHeight * 0.18) : 0
@@ -6353,6 +6384,22 @@ Item {
                                         color: _isStartMission ? "#FFF7ED" : "#FFFFFF"
                                         fillMode: Image.PreserveAspectFit
                                         source: modelData.icon || ""
+                                    }
+
+                                    QGCLabel {
+                                        visible: !parent.parent._isFlightMode && !!modelData.label
+                                        anchors.centerIn: parent
+                                        width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.4)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: modelData.label || ""
+                                        color: "#FFFFFF"
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        lineHeightMode: Text.FixedHeight
+                                        lineHeight: ScreenTools.defaultFontPixelHeight * 0.58
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                        font.bold: true
                                     }
 
                                     QGCLabel {

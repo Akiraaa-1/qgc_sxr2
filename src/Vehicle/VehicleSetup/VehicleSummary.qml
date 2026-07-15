@@ -59,6 +59,7 @@ Rectangle {
     readonly property color _cardIconChipColor: "#3A3A3A"
     readonly property color _cardShadowColor: Qt.rgba(0, 0, 0, 0.22)
     readonly property int _cardStateDuration: 200
+    property bool _healthDetailsVisible: false
 
     readonly property var _primaryBattery: _activeVehicle && _activeVehicle.batteries && _activeVehicle.batteries.count > 0
         ? _activeVehicle.batteries.get(0)
@@ -74,6 +75,9 @@ Rectangle {
         : NaN
     readonly property real _gpsHdop: _activeVehicle && _activeVehicle.gps && _activeVehicle.gps.hdop
         ? Number(_activeVehicle.gps.hdop.rawValue)
+        : NaN
+    readonly property real _gpsVdop: _activeVehicle && _activeVehicle.gps && _activeVehicle.gps.vdop
+        ? Number(_activeVehicle.gps.vdop.rawValue)
         : NaN
     readonly property real _rcRssiPercent: _validRcRssiPercent(_activeVehicle && _activeVehicle.rcRSSI !== undefined
         ? Number(_activeVehicle.rcRSSI)
@@ -278,6 +282,39 @@ Rectangle {
         return isNaN(value) ? "--" : (Math.round(value) + "%")
     }
 
+    function _gpsDopDetail() {
+        const hdopText = isNaN(_gpsHdop) ? "--" : _gpsHdop.toFixed(1)
+        const vdopText = isNaN(_gpsVdop) ? "--" : _gpsVdop.toFixed(1)
+        return qsTr("HDOP %1 / VDOP %2").arg(hdopText).arg(vdopText)
+    }
+
+    function _healthReport() {
+        return _activeVehicle && _activeVehicle.healthAndArmingCheckReport
+            ? _activeVehicle.healthAndArmingCheckReport
+            : null
+    }
+
+    function _healthProblems() {
+        const report = _healthReport()
+        return report && report.problemsForCurrentMode ? report.problemsForCurrentMode : null
+    }
+
+    function _healthProblemCount() {
+        const problems = _healthProblems()
+        return problems ? problems.count : 0
+    }
+
+    function _healthStateSummary() {
+        const report = _healthReport()
+        if (!report || !report.supported) {
+            return qsTr("当前飞控未提供健康与解锁报告，地面站只能使用备用就绪状态。")
+        }
+        return qsTr("解锁：%1\n起飞：%2\n开始任务：%3")
+            .arg(report.canArm ? qsTr("允许") : qsTr("阻止"))
+            .arg(report.canTakeoff ? qsTr("允许") : qsTr("阻止"))
+            .arg(report.canStartMission ? qsTr("允许") : qsTr("阻止"))
+    }
+
     function _componentTitle(component) {
         if (!component) {
             return ""
@@ -348,6 +385,23 @@ Rectangle {
 
     function _statusBadgeColor(component) {
         return _cardIconChipColor
+    }
+
+    function _componentStatusLevel(component) {
+        if (!component) {
+            return 1
+        }
+        if (component.requiresSetup && !component.setupComplete) {
+            return 2
+        }
+        if (component.setupComplete) {
+            return 0
+        }
+        return 1
+    }
+
+    function _componentStatusColor(component) {
+        return _statusColor(_componentStatusLevel(component))
     }
 
     function _statusBadgeIcon(component) {
@@ -513,7 +567,7 @@ Rectangle {
                                 {
                                     "title": qsTr("GPS"),
                                     "value": isNaN(_summaryRoot._gpsSatellites) ? "--" : (Math.round(_summaryRoot._gpsSatellites) + qsTr(" sats")),
-                                    "detail": isNaN(_summaryRoot._gpsHdop) ? qsTr("HDOP --") : qsTr("HDOP %1").arg(_summaryRoot._gpsHdop.toFixed(1)),
+                                    "detail": _summaryRoot._gpsDopDetail(),
                                     "level": _summaryRoot._gpsStatusLevel
                                 },
                                 {
@@ -538,7 +592,8 @@ Rectangle {
                                     "title": qsTr("Arming Check"),
                                     "value": _summaryRoot._canArm ? (_summaryRoot._hasHealthWarnings ? qsTr("Warnings") : qsTr("Pass")) : qsTr("Blocked"),
                                     "detail": _summaryRoot._healthReportSupported ? qsTr("Health and arming report") : qsTr("Fallback readiness"),
-                                    "level": _summaryRoot._armingStatusLevel
+                                    "level": _summaryRoot._armingStatusLevel,
+                                    "action": "health"
                                 }
                             ]
 
@@ -550,6 +605,16 @@ Rectangle {
                                 color: "#252525"
                                 border.width: 1
                                 border.color: _summaryRoot._cardBorderColor
+                                opacity: tileMouseArea.pressed ? 0.82 : 1
+
+                                MouseArea {
+                                    id: tileMouseArea
+                                    anchors.fill: parent
+                                    enabled: modelData.action === "health"
+                                    hoverEnabled: enabled
+                                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: _summaryRoot._healthDetailsVisible = true
+                                }
 
                                 ColumnLayout {
                                     id: tileContent
@@ -637,7 +702,7 @@ Rectangle {
                             { "name": qsTr("GPS quality acceptable"), "level": _summaryRoot._gpsStatusLevel },
                             { "name": isNaN(_summaryRoot._rcRssiPercent) ? qsTr("RC signal unavailable") : qsTr("RC signal quality acceptable"), "level": _summaryRoot._rcStatusLevel },
                             { "name": qsTr("Telemetry link quality acceptable"), "level": _summaryRoot._telemetryStatusLevel },
-                            { "name": qsTr("Arming checks pass"), "level": _summaryRoot._armingStatusLevel }
+                            { "name": qsTr("Arming checks pass"), "level": _summaryRoot._armingStatusLevel, "action": "health" }
                         ]
 
                         Rectangle {
@@ -648,6 +713,16 @@ Rectangle {
                             color: "#252525"
                             border.width: 1
                             border.color: _summaryRoot._cardBorderColor
+                            opacity: rowMouseArea.pressed ? 0.82 : 1
+
+                            MouseArea {
+                                id: rowMouseArea
+                                anchors.fill: parent
+                                enabled: modelData.action === "health"
+                                hoverEnabled: enabled
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: _summaryRoot._healthDetailsVisible = true
+                            }
 
                             RowLayout {
                                 id: rowLayout
@@ -775,8 +850,8 @@ Rectangle {
                                     Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 1.35
                                     Layout.preferredHeight: Layout.preferredWidth
                                     radius: Layout.preferredWidth / 2
-                                    visible: summaryComponent ? (summaryComponent.requiresSetup && summaryComponent.setupSource !== "") : false
-                                    color: summaryComponent && summaryComponent.setupComplete ? _summaryRoot._cardAccentColor : _summaryRoot._cardDisabledTextColor
+                                    visible: !!summaryComponent
+                                    color: _summaryRoot._componentStatusColor(summaryComponent)
                                 }
                             }
 
@@ -817,6 +892,145 @@ Rectangle {
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: _summaryRoot._pageMargins
+            }
+        }
+    }
+
+    Rectangle {
+        visible: _summaryRoot._healthDetailsVisible
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, 0.48)
+        z: 100
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: _summaryRoot._healthDetailsVisible = false
+        }
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - (_summaryRoot._pageMargins * 2), ScreenTools.defaultFontPixelWidth * 72)
+            height: Math.min(parent.height - (_summaryRoot._pageMargins * 2), detailsColumn.implicitHeight + (_summaryRoot._cardPadding * 2))
+            radius: _summaryRoot._cardCornerRadius
+            color: _summaryRoot._cardBaseColor
+            border.width: 1
+            border.color: _summaryRoot._cardBorderColor
+
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            ColumnLayout {
+                id: detailsColumn
+                anchors.fill: parent
+                anchors.margins: _summaryRoot._cardPadding
+                spacing: ScreenTools.defaultFontPixelHeight * 0.55
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("健康与解锁报告")
+                        font.bold: true
+                        font.pointSize: ScreenTools.defaultFontPointSize * 1.16
+                        color: _summaryRoot._cardPrimaryTextColor
+                    }
+
+                    QGCButton {
+                        text: qsTr("关闭")
+                        onClicked: _summaryRoot._healthDetailsVisible = false
+                    }
+                }
+
+                QGCLabel {
+                    Layout.fillWidth: true
+                    text: _summaryRoot._healthStateSummary()
+                    color: _summaryRoot._cardSecondaryTextColor
+                    wrapMode: Text.WordWrap
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                    color: _summaryRoot._cardBorderColor
+                }
+
+                QGCFlickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(
+                        ScreenTools.defaultFontPixelHeight * 22,
+                        Math.max(ScreenTools.defaultFontPixelHeight * 4, healthProblemColumn.implicitHeight))
+                    contentWidth: width
+                    contentHeight: healthProblemColumn.implicitHeight
+                    clip: true
+
+                    ColumnLayout {
+                        id: healthProblemColumn
+                        width: parent.width
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.4
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            visible: _summaryRoot._healthProblemCount() === 0
+                            text: qsTr("当前报告没有返回具体阻止项。")
+                            color: _summaryRoot._cardSecondaryTextColor
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Repeater {
+                            model: _summaryRoot._healthProblems()
+
+                            Rectangle {
+                                required property var object
+                                Layout.fillWidth: true
+                                implicitHeight: problemContent.implicitHeight + ScreenTools.defaultFontPixelHeight * 0.6
+                                radius: _summaryRoot._cardCornerRadius * 0.6
+                                color: "#252525"
+                                border.width: 1
+                                border.color: _summaryRoot._cardBorderColor
+
+                                ColumnLayout {
+                                    id: problemContent
+                                    anchors.fill: parent
+                                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.35
+                                    spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        Rectangle {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            implicitWidth: ScreenTools.defaultFontPixelHeight * 0.62
+                                            implicitHeight: implicitWidth
+                                            radius: width / 2
+                                            color: object.severity === "error"
+                                                ? _summaryRoot._cardDangerColor
+                                                : (object.severity === "warning" ? _summaryRoot._cardWarningColor : _summaryRoot._cardSuccessColor)
+                                        }
+
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: object.message
+                                            color: _summaryRoot._cardPrimaryTextColor
+                                            font.bold: true
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        visible: object.description !== ""
+                                        text: object.description
+                                        textFormat: Text.RichText
+                                        color: _summaryRoot._cardSecondaryTextColor
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

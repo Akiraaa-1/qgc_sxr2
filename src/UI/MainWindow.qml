@@ -1689,6 +1689,9 @@ ApplicationWindow {
                     }
 
                     function _isMapStripActionEnabled(key, requiresVehicle) {
+                        if (key === "oneKeyRTL") {
+                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showRTL)
+                        }
                         if (key === "flightMode") {
                             return !!(_activeVehicle && _activeVehicle.flightModeSetAvailable)
                         }
@@ -1767,6 +1770,8 @@ ApplicationWindow {
                             return qsTr("暂停")
                         case "rtl":
                             return qsTr("返航")
+                        case "oneKeyRTL":
+                            return qsTr("一键返航")
                         case "land":
                             return qsTr("降落")
                         case "emergencyStop":
@@ -1869,6 +1874,9 @@ ApplicationWindow {
                                 guidedController.confirmAction(guidedController.actionRTL)
                             }
                             break
+                        case "oneKeyRTL":
+                            fallbackFlyMapHost._confirmOneKeyRTL()
+                            break
                         case "land":
                             if (guidedController) {
                                 guidedController.confirmAction(guidedController.actionLand)
@@ -1951,6 +1959,26 @@ ApplicationWindow {
                             }
                             break
                         }
+                    }
+
+                    function _confirmOneKeyRTL() {
+                        const guidedController = globals.guidedControllerFlyView
+                        if (!guidedController || !guidedController.showRTL) {
+                            _showMapStripUnavailable("oneKeyRTL", true)
+                            return
+                        }
+
+                        QGroundControl.showMessageDialog(
+                            mainWindow,
+                            qsTr("一键返航"),
+                            qsTr("确认执行一键返航？"),
+                            Dialog.Yes | Dialog.Cancel,
+                            function() {
+                                if (fallbackFlyMapHost._activeVehicle) {
+                                    fallbackFlyMapHost._activeVehicle.guidedModeRTL(false)
+                                    QGroundControl.showMessageDialog(mainWindow, qsTr("一键返航"), qsTr("返航指令已发送。"))
+                                }
+                            })
                     }
 
                     PlanMasterController {
@@ -2070,19 +2098,15 @@ ApplicationWindow {
                                     model: [
                                     { "key": "traffic",   "icon": "/InstrumentValueIcons/border-outer.svg",    "requiresVehicle": false, "slashed": false },
                                     { "key": "showPath",  "icon": "/InstrumentValueIcons/view-show.svg",       "requiresVehicle": false, "slashed": false },
-                                    { "key": "checklist", "icon": "/InstrumentValueIcons/shield.svg",          "requiresVehicle": false, "slashed": false },
                                     { "key": "armDisarm", "icon": fallbackFlyMapHost._activeVehicle && fallbackFlyMapHost._activeVehicle.armed ? "/res/LockClosed.svg" : "/res/LockOpen.svg", "requiresVehicle": true, "slashed": false },
                                     { "key": "play",      "icon": "/InstrumentValueIcons/play-outline.svg",    "requiresVehicle": true,  "slashed": false },
                                     { "key": "pause",     "icon": "/InstrumentValueIcons/pause-outline.svg",   "requiresVehicle": true,  "slashed": false },
-                                    { "key": "rtl",       "icon": "/res/rtl.svg",                              "requiresVehicle": true,  "slashed": false },
+                                    { "key": "oneKeyRTL", "label": qsTr("一键\n返航"),                          "requiresVehicle": true,  "slashed": false },
                                     { "key": "land",      "icon": "/res/land.svg",                             "requiresVehicle": true,  "slashed": false },
                                     { "key": "emergencyStop", "icon": "/res/Stop.svg",                         "requiresVehicle": true,  "slashed": false },
                                     { "key": "flightMode","icon": "",                                          "requiresVehicle": true,  "slashed": false },
                                     { "key": "up",        "icon": "/InstrumentValueIcons/arrow-base-up.svg",   "requiresVehicle": true,  "slashed": false },
                                     { "key": "down",      "icon": "/InstrumentValueIcons/arrow-base-down.svg", "requiresVehicle": true,  "slashed": false },
-                                    { "key": "orbit",     "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": false },
-                                    { "key": "lockOrbit", "icon": "/InstrumentValueIcons/reload.svg",          "requiresVehicle": false, "slashed": true  },
-                                    { "key": "pan",       "icon": "/InstrumentValueIcons/map-pan.svg",         "requiresVehicle": false, "slashed": false },
                                     { "key": "locate",    "icon": "/InstrumentValueIcons/map-follow.svg",      "requiresVehicle": true,  "slashed": false }
                                     ]
 
@@ -2133,13 +2157,29 @@ ApplicationWindow {
                                         }
 
                                         QGCColoredImage {
-                                            visible: !parent.parent._isFlightMode
+                                            visible: !parent.parent._isFlightMode && !modelData.label
                                             anchors.centerIn: parent
                                             width: parent.height * 0.42
                                             height: width
                                             color: "#FFFFFF"
                                             fillMode: Image.PreserveAspectFit
                                             source: modelData.icon || ""
+                                        }
+
+                                        QGCLabel {
+                                            visible: !parent.parent._isFlightMode && !!modelData.label
+                                            anchors.centerIn: parent
+                                            width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.4)
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                            text: modelData.label || ""
+                                            color: "#FFFFFF"
+                                            wrapMode: Text.Wrap
+                                            maximumLineCount: 2
+                                            lineHeightMode: Text.FixedHeight
+                                            lineHeight: ScreenTools.defaultFontPixelHeight * 0.58
+                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                            font.bold: true
                                         }
 
                                         QGCLabel {

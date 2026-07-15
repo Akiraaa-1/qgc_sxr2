@@ -2674,6 +2674,7 @@ bool Vehicle::_commandCanBeDuplicated(MAV_CMD command)
     // MOTOR_TEST in ardusub is a case where we need a constant stream of commands so it doesn't time out.
     switch (command) {
     case MAV_CMD_DO_MOTOR_TEST:
+    case MAV_CMD_ACTUATOR_TEST:
         return true;
     case MAV_CMD_SET_MESSAGE_INTERVAL:
         return true;

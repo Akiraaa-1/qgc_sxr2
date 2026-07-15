@@ -16,6 +16,16 @@ Loader {
 			fact:           loader.fact
 			indexModel:     false
 			sizeToContents: true
+			extraTranslations: ({
+				"Enabled": qsTr("启用"),
+				"Disabled": qsTr("禁用"),
+				"Upwards": qsTr("向上"),
+				"Downwards": qsTr("向下"),
+				"Forwards": qsTr("向前"),
+				"Backwards": qsTr("向后"),
+				"Leftwards": qsTr("向左"),
+				"Rightwards": qsTr("向右")
+			})
 		}
 	}
 	Component {
