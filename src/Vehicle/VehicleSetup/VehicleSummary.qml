@@ -75,9 +75,9 @@ Rectangle {
     readonly property real _gpsHdop: _activeVehicle && _activeVehicle.gps && _activeVehicle.gps.hdop
         ? Number(_activeVehicle.gps.hdop.rawValue)
         : NaN
-    readonly property real _rcRssiPercent: _activeVehicle && _activeVehicle.rcRSSI !== undefined
+    readonly property real _rcRssiPercent: _validRcRssiPercent(_activeVehicle && _activeVehicle.rcRSSI !== undefined
         ? Number(_activeVehicle.rcRSSI)
-        : NaN
+        : NaN)
     readonly property real _telemetryQualityPercent: _calcTelemetryQualityPercent()
     readonly property bool _healthReportSupported: !!(_activeVehicle && _activeVehicle.healthAndArmingCheckReport && _activeVehicle.healthAndArmingCheckReport.supported)
     readonly property bool _canArm: _healthReportSupported
@@ -152,6 +152,14 @@ Rectangle {
             return NaN
         }
         return Math.max(0, Math.min(100, Number(value)))
+    }
+
+    function _validRcRssiPercent(value) {
+        const numeric = Number(value)
+        if (isNaN(numeric) || numeric < 0 || numeric > 100) {
+            return NaN
+        }
+        return numeric
     }
 
     function _telemetryRssiToPercent(rssi) {
@@ -511,7 +519,7 @@ Rectangle {
                                 {
                                     "title": qsTr("RC Link"),
                                     "value": _summaryRoot._formatPercent(_summaryRoot._rcRssiPercent),
-                                    "detail": qsTr("Control signal"),
+                                    "detail": isNaN(_summaryRoot._rcRssiPercent) ? qsTr("RC signal not provided") : qsTr("Control signal"),
                                     "level": _summaryRoot._rcStatusLevel
                                 },
                                 {
@@ -627,7 +635,7 @@ Rectangle {
                             { "name": qsTr("Autopilot configuration completed"), "level": _summaryRoot._configStatusLevel },
                             { "name": qsTr("Battery reserve acceptable"), "level": _summaryRoot._batteryStatusLevel },
                             { "name": qsTr("GPS quality acceptable"), "level": _summaryRoot._gpsStatusLevel },
-                            { "name": qsTr("RC signal quality acceptable"), "level": _summaryRoot._rcStatusLevel },
+                            { "name": isNaN(_summaryRoot._rcRssiPercent) ? qsTr("RC signal unavailable") : qsTr("RC signal quality acceptable"), "level": _summaryRoot._rcStatusLevel },
                             { "name": qsTr("Telemetry link quality acceptable"), "level": _summaryRoot._telemetryStatusLevel },
                             { "name": qsTr("Arming checks pass"), "level": _summaryRoot._armingStatusLevel }
                         ]
