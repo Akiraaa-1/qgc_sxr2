@@ -1102,7 +1102,7 @@ ApplicationWindow {
                             spacing:            _panelMargin
 
                             QGCLabel {
-                                text:           qsTr("Connected Vehicles")
+                                text:           qsTr("已连接飞行器")
                                 font.pointSize: ScreenTools.mediumFontPointSize
                                 font.weight:    Font.DemiBold
                             }
@@ -1110,7 +1110,7 @@ ApplicationWindow {
                             QGCLabel {
                                 Layout.fillWidth:       true
                                 horizontalAlignment:    Text.AlignHCenter
-                                text:                   qsTr("No connected vehicles")
+                                text:                   qsTr("暂无已连接飞行器")
                                 visible:                QGroundControl.multiVehicleManager.vehicles.count === 0
                                 color:                  qgcPal.text
                                 opacity:                0.7
@@ -1406,7 +1406,7 @@ ApplicationWindow {
                         spacing:                _panelMargin
 
                         Rectangle {
-                            id:                 turnCoordinatorCard
+                            id:                 gpsStatusCard
                             Layout.fillWidth:   true
                             Layout.fillHeight:  true
                             color:              qgcPal.windowShade
@@ -1414,10 +1414,10 @@ ApplicationWindow {
                             border.color:       qgcPal.windowShadeLight
                             border.width:       1
 
-                            property bool hasTurnValue: globals.activeVehicle && !isNaN(Number(globals.activeVehicle.roll.rawValue))
-                            // Use roll as a lightweight turn/slip proxy when no dedicated turn coordinator fact is exposed.
-                            property real turnValue: hasTurnValue ? Number(globals.activeVehicle.roll.rawValue) : 0
-                            property real needleRotation: mainWindow._clamp(turnValue, -45, 45)
+                            property var gpsFactGroup: globals.activeVehicle ? globals.activeVehicle.gps : null
+                            property var satelliteFact: gpsFactGroup ? gpsFactGroup.count : null
+                            property var hdopFact: gpsFactGroup ? gpsFactGroup.hdop : null
+                            property var vdopFact: gpsFactGroup ? gpsFactGroup.vdop : null
 
                             ColumnLayout {
                                 anchors.fill:       parent
@@ -1425,51 +1425,68 @@ ApplicationWindow {
                                 spacing:            _panelMargin
 
                                 QGCLabel {
-                                    text:       qsTr("Turn Coordinator")
+                                    text:       qsTr("GPS")
                                     color:      qgcPal.text
                                     opacity:    0.7
                                 }
 
-                                Item {
+                                ColumnLayout {
                                     Layout.fillWidth:   true
                                     Layout.fillHeight:  true
+                                    spacing:            _panelMargin
 
-                                    Rectangle {
-                                        id:                 turnDial
-                                        width:              Math.min(parent.width, parent.height) * 0.8
-                                        height:             width
-                                        radius:             width / 2
-                                        color:              qgcPal.window
-                                        border.color:       qgcPal.windowShadeLight
-                                        border.width:       1
-                                        anchors.centerIn:   parent
+                                    RowLayout {
+                                        Layout.alignment:           Qt.AlignHCenter
+                                        Layout.fillHeight:          true
+                                        spacing:                    ScreenTools.defaultFontPixelWidth
+
+                                        QGCLabel {
+                                            text:                       mainWindow._formatFactValue(gpsStatusCard.satelliteFact, false)
+                                            color:                      qgcPal.text
+                                            font.pointSize:             ScreenTools.largeFontPointSize * 1.7
+                                            font.weight:                Font.DemiBold
+                                            verticalAlignment:          Text.AlignVCenter
+                                        }
+
+                                        QGCLabel {
+                                            text:                       qsTr("Satellites")
+                                            color:                      qgcPal.text
+                                            opacity:                    0.7
+                                            verticalAlignment:          Text.AlignVCenter
+                                        }
                                     }
 
-                                    Rectangle {
-                                        width:                  turnDial.width * 0.34
-                                        height:                 Math.max(2, ScreenTools.defaultFontPixelWidth / 3)
-                                        radius:                 height / 2
-                                        x:                      turnDial.x + (turnDial.width / 2)
-                                        y:                      turnDial.y + ((turnDial.height - height) / 2)
-                                        transformOrigin:        Item.Left
-                                        rotation:               turnCoordinatorCard.needleRotation
-                                        color:                  qgcPal.text
-                                    }
+                                    GridLayout {
+                                        Layout.fillWidth:       true
+                                        columns:                2
+                                        columnSpacing:          ScreenTools.defaultFontPixelWidth
+                                        rowSpacing:             ScreenTools.defaultFontPixelHeight / 3
 
-                                    Rectangle {
-                                        width:                  ScreenTools.defaultFontPixelWidth
-                                        height:                 width
-                                        radius:                 width / 2
-                                        color:                  qgcPal.colorBlue
-                                        anchors.centerIn:       turnDial
-                                    }
+                                        QGCLabel {
+                                            text:       qsTr("HDOP")
+                                            color:      qgcPal.text
+                                            opacity:    0.7
+                                        }
 
-                                    QGCLabel {
-                                        anchors.horizontalCenter:   turnDial.horizontalCenter
-                                        anchors.bottom:             parent.bottom
-                                        text:                       turnCoordinatorCard.hasTurnValue ? mainWindow._formatSignedValue(turnCoordinatorCard.turnValue, 0, "\u00B0") : "--"
-                                        font.pointSize:             ScreenTools.largeFontPointSize
-                                        font.weight:                Font.DemiBold
+                                        QGCLabel {
+                                            Layout.alignment:   Qt.AlignRight
+                                            text:               mainWindow._formatFactValue(gpsStatusCard.hdopFact, false)
+                                            color:              qgcPal.text
+                                            font.weight:        Font.DemiBold
+                                        }
+
+                                        QGCLabel {
+                                            text:       qsTr("VDOP")
+                                            color:      qgcPal.text
+                                            opacity:    0.7
+                                        }
+
+                                        QGCLabel {
+                                            Layout.alignment:   Qt.AlignRight
+                                            text:               mainWindow._formatFactValue(gpsStatusCard.vdopFact, false)
+                                            color:              qgcPal.text
+                                            font.weight:        Font.DemiBold
+                                        }
                                     }
                                 }
                             }
@@ -1985,7 +2002,11 @@ ApplicationWindow {
                         id: fallbackPlanController
                         flyView: true
 
-                        Component.onCompleted: start()
+                        Component.onCompleted: {
+                            if (!flyPageContent) {
+                                start()
+                            }
+                        }
                     }
 
                     QGCToolInsets {
@@ -2018,9 +2039,94 @@ ApplicationWindow {
                         mapName: "FlyFallbackMap"
                         pipMode: false
                         showMissionPaths: flyPageContent ? flyPageContent._showFlightPath : true
-                        planMasterController: fallbackPlanController
+                        planMasterController: flyPageContent ? flyPageContent.planController : fallbackPlanController
                         rightPanelWidth: 0
                         toolInsets: fallbackToolInsets
+                    }
+
+                    Rectangle {
+                        id: fallbackVehicleAlertBanner
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.topMargin: fallbackFlyMapHost._margin * 1.55
+                        width: Math.min(
+                            ScreenTools.defaultFontPixelWidth * 34,
+                            Math.max(ScreenTools.defaultFontPixelWidth * 18, parent.width - (fallbackFlyMapHost._margin * 5))
+                        )
+                        height: ScreenTools.defaultFontPixelHeight * 1.55
+                        visible: fallbackFlyMapHost.visible &&
+                                 !!flyPageContent &&
+                                 flyPageContent._vehicleAlertLevel() > 0
+                        color: flyPageContent && flyPageContent._vehicleAlertLevel() >= 3
+                               ? Qt.rgba(0.45, 0.08, 0.08, 0.72)
+                               : (flyPageContent && flyPageContent._vehicleAlertLevel() >= 2
+                                  ? Qt.rgba(0.42, 0.30, 0.06, 0.68)
+                                  : Qt.rgba(0.06, 0.07, 0.08, 0.64))
+                        border.color: Qt.rgba(1, 1, 1, 0.12)
+                        border.width: 1
+                        opacity: 1.0
+                        radius: ScreenTools.defaultFontPixelHeight * 0.18
+                        z: QGroundControl.zOrderWidgets + 30
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: ScreenTools.defaultFontPixelWidth * 0.22
+                            radius: fallbackVehicleAlertBanner.radius
+                            color: flyPageContent ? flyPageContent._vehicleAlertAccentColor() : "transparent"
+                            opacity: 0.85
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.72
+                            anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.62
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.45
+
+                            QGCColoredImage {
+                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.78
+                                Layout.preferredHeight: Layout.preferredWidth
+                                source: "/res/VehicleMessages.png"
+                                sourceSize.width: width
+                                fillMode: Image.PreserveAspectFit
+                                color: flyPageContent ? flyPageContent._vehicleAlertAccentColor() : "#FFFFFF"
+                                opacity: 0.9
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: Qt.rgba(1, 1, 1, 0.92)
+                                text: flyPageContent ? flyPageContent._vehicleAlertText() : ""
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                                verticalAlignment: Text.AlignVCenter
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
+                                font.weight: flyPageContent && flyPageContent._vehicleAlertLevel() >= 2 ? Font.DemiBold : Font.Normal
+                            }
+
+                            QGCLabel {
+                                color: Qt.rgba(1, 1, 1, 0.62)
+                                text: globals.activeVehicle && globals.activeVehicle.messageCount > 1
+                                      ? qsTr("%1").arg(globals.activeVehicle.messageCount)
+                                      : ""
+                                visible: globals.activeVehicle && globals.activeVehicle.messageCount > 1
+                                verticalAlignment: Text.AlignVCenter
+                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                            }
+                        }
+
+                        QGCMouseArea {
+                            cursorShape: Qt.PointingHandCursor
+                            fillItem: parent
+
+                            onClicked: {
+                                if (flyPageContent) {
+                                    flyPageContent._openVehicleMessages(fallbackVehicleAlertBanner)
+                                }
+                            }
+                        }
                     }
 
                     QGCMenu {
@@ -4718,19 +4824,19 @@ ApplicationWindow {
                             mainWindow._hadConnectedVehicleSession = true
                             mainWindow._clearVehicleDisconnectNotice()
                             if (_activeVehicle && _activeVehicle.id !== undefined && _activeVehicle.id !== null) {
-                                _statusText = qsTr("Vehicle %1 connected. Review settings, then click Connect Vehicle to enter").arg(_activeVehicle.id)
-                                _recentConnectionText = qsTr("Recent connection: Vehicle %1 connected").arg(_activeVehicle.id)
+                                _statusText = qsTr("飞行器 %1 已连接。请检查设置，然后点击“连接飞行器”进入").arg(_activeVehicle.id)
+                                _recentConnectionText = qsTr("最近连接：飞行器 %1 已连接").arg(_activeVehicle.id)
                             } else if (_connectedVehicleCount === 1) {
-                                _statusText = qsTr("1 vehicle connected. Review settings, then click Connect Vehicle to enter")
-                                _recentConnectionText = qsTr("Recent connection: 1 vehicle connected")
+                                _statusText = qsTr("已连接 1 架飞行器。请检查设置，然后点击“连接飞行器”进入")
+                                _recentConnectionText = qsTr("最近连接：1 架飞行器已连接")
                             } else {
-                                _statusText = qsTr("%1 vehicles connected. Review settings, then click Connect Vehicle to enter").arg(_connectedVehicleCount)
-                                _recentConnectionText = qsTr("Recent connection: %1 vehicles connected").arg(_connectedVehicleCount)
+                                _statusText = qsTr("已连接 %1 架飞行器。请检查设置，然后点击“连接飞行器”进入").arg(_connectedVehicleCount)
+                                _recentConnectionText = qsTr("最近连接：%1 架飞行器已连接").arg(_connectedVehicleCount)
                             }
                         } else {
-                            _statusText = qsTr("Select a link and connect the vehicle")
+                            _statusText = qsTr("请选择链路并连接飞行器")
                             if (!_connectionInProgress && !_pendingWorkspaceEntry) {
-                                _recentConnectionText = qsTr("No connected vehicle")
+                                _recentConnectionText = qsTr("暂无已连接飞行器")
                                 _pendingWorkspaceEntry = false
                                 startConnectionCompleteTimer.stop()
                             }
@@ -4755,7 +4861,7 @@ ApplicationWindow {
                         if (wasShowingStartPage) {
                             mainWindow._syncStartPageVisibility()
                         } else if (!_isConnected) {
-                            _appendEvent(qsTr("No connected vehicle available. Staying in current workspace"))
+                            _appendEvent(qsTr("当前没有可用的已连接飞行器，保持在当前工作区"))
                         }
                     }
 
@@ -5922,6 +6028,8 @@ ApplicationWindow {
             { "pattern": /Return to launch/gi, "text": qsTr("正在返航") },
             { "pattern": /Takeoff detected/gi, "text": qsTr("检测到起飞") },
             { "pattern": /Landing detected/gi, "text": qsTr("检测到降落") },
+            { "pattern": /GCS connection regained/gi, "text": qsTr("地面站连接已恢复") },
+            { "pattern": /GCS connection lost/gi, "text": qsTr("地面站连接丢失") },
             { "pattern": /Switching to mode 'Position control' is currently not possible No manual control input/gi, "text": qsTr("当前无法切换到“位置控制”模式：没有手动控制输入") },
             { "pattern": /No manual control input/gi, "text": qsTr("没有手动控制输入") }
         ]

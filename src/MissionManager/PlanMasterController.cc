@@ -557,10 +557,10 @@ void PlanMasterController::removeAllFromVehicle(void)
 {
     if (!offline()) {
         _missionController.removeAllFromVehicle();
-        if (_geoFenceController.supported()) {
+        if (_geoFenceController.supported() && _geoFenceController.containsItems()) {
             _geoFenceController.removeAllFromVehicle();
         }
-        if (_rallyPointController.supported()) {
+        if (_rallyPointController.supported() && _rallyPointController.containsItems()) {
             _rallyPointController.removeAllFromVehicle();
         }
         _setDirtyForUpload(false);

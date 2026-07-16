@@ -20,6 +20,10 @@ Item {
     property var headingFact: vehicle ? vehicle.heading : null
     property var airSpeedFact: vehicle ? vehicle.airSpeed : null
     property var climbRateFact: vehicle ? vehicle.climbRate : null
+    property var gpsFactGroup: vehicle ? vehicle.gps : null
+    property var gpsSatelliteFact: gpsFactGroup ? gpsFactGroup.count : null
+    property var gpsHdopFact: gpsFactGroup ? gpsFactGroup.hdop : null
+    property var gpsVdopFact: gpsFactGroup ? gpsFactGroup.vdop : null
     property var rollFact: vehicle ? vehicle.roll : null
     property var pitchFact: vehicle ? vehicle.pitch : null
     property real extraInset: 0
@@ -45,9 +49,6 @@ Item {
     property real panelRightMargin: ScreenTools.defaultFontPixelHeight * 0.12
     property real panelTopMargin: ScreenTools.defaultFontPixelHeight * 0.16
     property real panelBottomMargin: ScreenTools.defaultFontPixelHeight * 0.35
-    readonly property bool hasTurnValue: vehicle && root._hasFactValue(vehicle.roll)
-    readonly property real turnValue: hasTurnValue ? Number(vehicle.roll.rawValue) : 0
-    readonly property real turnNeedleRotation: Math.max(-45, Math.min(45, turnValue))
     readonly property bool hasClimbRate: root._hasFactValue(climbRateFact)
     readonly property real climbRate: hasClimbRate ? Number(climbRateFact.rawValue) : 0
     readonly property real verticalNeedleRotation: Math.max(-120, Math.min(120, climbRate * 35))
@@ -638,67 +639,77 @@ Item {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
-                        text: qsTr("Turn Coordinator")
+                        text: qsTr("GPS")
                         font.pixelSize: root._labelFontSize
                         elide: Text.ElideRight
                     }
 
-                    Item {
+                    ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        spacing: root._rowSpacing
 
-                        Item {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.bottom: turnValueLabel.top
-                            anchors.bottomMargin: root._dialValueGap
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: root._columnSpacing
 
-                            Rectangle {
-                                id: turnDial
-                                width: Math.min(parent.width, parent.height) * root._simpleDialSizeFactor
-                                height: width
-                                radius: width / 2
-                                color: Qt.rgba(0, 0, 0, 0)
-                                border.color: qgcPal.text
-                                border.width: 2
-                                anchors.centerIn: parent
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: qgcPal.text
+                                font.pixelSize: root._dialValueFontSize * 1.35
+                                fontSizeMode: Text.Fit
+                                minimumPixelSize: 8
+                                font.weight: Font.DemiBold
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                                text: root._formatFactValue(root.gpsSatelliteFact, false, "--")
                             }
 
-                            Rectangle {
-                                width: turnDial.width * 0.34
-                                height: Math.max(2, ScreenTools.defaultFontPixelWidth / 3)
-                                radius: height / 2
-                                x: turnDial.x + (turnDial.width / 2)
-                                y: turnDial.y + ((turnDial.height - height) / 2)
-                                transformOrigin: Item.Left
-                                rotation: root.turnNeedleRotation
-                                color: qgcPal.text
-                            }
-
-                            Rectangle {
-                                width: ScreenTools.defaultFontPixelWidth
-                                height: width
-                                radius: width / 2
-                                color: qgcPal.text
-                                anchors.centerIn: turnDial
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: root._textMutedColor
+                                text: qsTr("星数")
+                                font.pixelSize: root._labelFontSize
+                                verticalAlignment: Text.AlignVCenter
                             }
                         }
 
-                        QGCLabel {
-                            id: turnValueLabel
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: root._dialFooterHeight
-                            color: qgcPal.text
-                            font.pixelSize: root._dialValueFontSize * 0.92
-                            fontSizeMode: Text.Fit
-                            minimumPixelSize: 8
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: root.hasTurnValue ? root._formatSignedValue(root.turnValue, 0, "\u00B0") : "--"
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: root._columnSpacing
+                            rowSpacing: root._rowSpacing
+
+                            QGCLabel {
+                                color: root._textMutedColor
+                                text: qsTr("HDOP")
+                                font.pixelSize: root._labelFontSize
+                            }
+
+                            QGCLabel {
+                                Layout.alignment: Qt.AlignRight
+                                color: qgcPal.text
+                                font.pixelSize: root._dialValueFontSize * 0.82
+                                font.weight: Font.DemiBold
+                                text: root._formatFactValue(root.gpsHdopFact, false, "--")
+                            }
+
+                            QGCLabel {
+                                color: root._textMutedColor
+                                text: qsTr("VDOP")
+                                font.pixelSize: root._labelFontSize
+                            }
+
+                            QGCLabel {
+                                Layout.alignment: Qt.AlignRight
+                                color: qgcPal.text
+                                font.pixelSize: root._dialValueFontSize * 0.82
+                                font.weight: Font.DemiBold
+                                text: root._formatFactValue(root.gpsVdopFact, false, "--")
+                            }
                         }
                     }
                 }

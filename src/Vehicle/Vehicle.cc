@@ -1807,6 +1807,7 @@ void Vehicle::_missionManagerError(int errorCode, const QString& errorMsg)
         return;
     }
 
+    m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_ERROR, message.toHtmlEscaped(), QString());
     qgcApp()->showAppMessage(message);
 }
 
@@ -1819,6 +1820,7 @@ void Vehicle::_geoFenceManagerError(int errorCode, const QString& errorMsg)
         return;
     }
 
+    m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_ERROR, message.toHtmlEscaped(), QString());
     qgcApp()->showAppMessage(message);
 }
 
@@ -1831,6 +1833,7 @@ void Vehicle::_rallyPointManagerError(int errorCode, const QString& errorMsg)
         return;
     }
 
+    m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_ERROR, message.toHtmlEscaped(), QString());
     qgcApp()->showAppMessage(message);
 }
 

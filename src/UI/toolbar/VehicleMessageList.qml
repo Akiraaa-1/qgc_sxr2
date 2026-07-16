@@ -42,6 +42,8 @@ TextArea {
             { "pattern": /Return to launch/gi, "text": qsTr("正在返航") },
             { "pattern": /Takeoff detected/gi, "text": qsTr("检测到起飞") },
             { "pattern": /Landing detected/gi, "text": qsTr("检测到降落") },
+            { "pattern": /GCS connection regained/gi, "text": qsTr("地面站连接已恢复") },
+            { "pattern": /GCS connection lost/gi, "text": qsTr("地面站连接丢失") },
             { "pattern": /Switching to mode 'Position control' is currently not possible No manual control input/gi, "text": qsTr("当前无法切换到“位置控制”模式：没有手动控制输入") },
             { "pattern": /No manual control input/gi, "text": qsTr("没有手动控制输入") }
         ]
