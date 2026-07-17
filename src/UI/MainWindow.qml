@@ -2075,13 +2075,12 @@ ApplicationWindow {
                         anchors.rightMargin: fallbackFlyMapHost._margin
                         width: fallbackVideoOverlay.width
                         height: Math.min(
-                            ScreenTools.defaultFontPixelHeight * 7.4,
+                            ScreenTools.defaultFontPixelHeight * 10.5,
                             alertStackColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.72)
                         )
                         visible: fallbackFlyMapHost.visible &&
                                  !!flyPageContent &&
-                                 flyPageContent._vehicleAlertLevel() > 0 &&
-                                 flyPageContent._vehicleAlertMessagesForDisplay().length > 0
+                                 flyPageContent._vehicleAlertMessagesForDisplay(8, false).length > 0
                         color: flyPageContent &&
                                flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
                                !flyPageContent._vehicleAlertUrgentAcknowledged
@@ -2158,7 +2157,7 @@ ApplicationWindow {
                                 spacing: ScreenTools.defaultFontPixelHeight * 0.22
 
                                 Repeater {
-                                    model: flyPageContent ? flyPageContent._vehicleAlertMessagesForDisplay(6) : []
+                                    model: flyPageContent ? flyPageContent._vehicleAlertMessagesForDisplay(8, false) : []
 
                                     delegate: RowLayout {
                                         required property var modelData
@@ -2174,13 +2173,13 @@ ApplicationWindow {
                                             source: "/res/VehicleMessages.png"
                                             sourceSize.width: width
                                             fillMode: Image.PreserveAspectFit
-                                            color: Qt.rgba(1, 1, 1, 0.78)
-                                            opacity: 0.82
+                                            color: Qt.rgba(1, 1, 1, 0.9)
+                                            opacity: 0.95
                                         }
 
                                         QGCLabel {
                                             Layout.fillWidth: true
-                                            color: Qt.rgba(1, 1, 1, 0.9)
+                                            color: Number(modelData.level) >= 2 ? "#FF5A5F" : Qt.rgba(1, 1, 1, 0.9)
                                             text: fallbackFlyMapHost._formatVehicleAlertMessage(modelData)
                                             textFormat: Text.RichText
                                             maximumLineCount: 2
@@ -2189,7 +2188,7 @@ ApplicationWindow {
                                             lineHeight: 0.95
                                             lineHeightMode: Text.ProportionalHeight
                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
-                                            font.weight: flyPageContent && flyPageContent._vehicleAlertLevel() >= 2 ? Font.DemiBold : Font.Normal
+                                            font.weight: Number(modelData.level) >= 2 ? Font.DemiBold : Font.Normal
                                         }
                                     }
                                 }
@@ -6122,12 +6121,10 @@ ApplicationWindow {
 
     function showCriticalVehicleMessage(message) {
         closeIndicatorDrawer()
+        criticalVehicleMessagePopup.addMessage(message)
         if (criticalVehicleMessagePopup.visible || QGroundControl.videoManager.fullScreen) {
-            // We received additional warning message while an older warning message was still displayed.
-            // When the user close the older one drop the message indicator tool so they can see the rest of them.
             criticalVehicleMessagePopup.additionalCriticalMessagesReceived = true
         } else {
-            criticalVehicleMessagePopup.criticalVehicleMessage      = _localizedVehicleMessage(message)
             criticalVehicleMessagePopup.additionalCriticalMessagesReceived = false
             criticalVehicleMessagePopup.open()
         }
@@ -6143,8 +6140,32 @@ ApplicationWindow {
         focus:              true
         padding:            0
 
-        property string criticalVehicleMessage:             ""
+        property int    maxVisibleCriticalMessages:         8
         property bool   additionalCriticalMessagesReceived: false
+
+        function _escapeRichText(text) {
+            let safeText = (text || "").toString()
+            safeText = safeText.replace(/&/g, "&amp;")
+            safeText = safeText.replace(/</g, "&lt;")
+            safeText = safeText.replace(/>/g, "&gt;")
+            return safeText
+        }
+
+        function _isHighPriorityMessage(text) {
+            return /\b(Emergency|Alert|Critical|Error|Warning)\b/i.test(text || "")
+        }
+
+        function addMessage(message) {
+            const localizedMessage = _localizedVehicleMessage(message)
+            const highPriority = _isHighPriorityMessage(message) || _isHighPriorityMessage(localizedMessage)
+            criticalVehicleMessageModel.insert(0, {
+                                                   "message": _escapeRichText(localizedMessage),
+                                                   "highPriority": highPriority
+                                               })
+            while (criticalVehicleMessageModel.count > maxVisibleCriticalMessages) {
+                criticalVehicleMessageModel.remove(criticalVehicleMessageModel.count - 1)
+            }
+        }
 
         background: Rectangle {
             anchors.fill:   parent
@@ -6152,6 +6173,10 @@ ApplicationWindow {
             radius:         ScreenTools.defaultFontPixelHeight * 0.36
             border.color:   Qt.rgba(1.0, 0.66, 0.20, 0.72)
             border.width:   1
+        }
+
+        ListModel {
+            id: criticalVehicleMessageModel
         }
 
         Column {
@@ -6189,20 +6214,24 @@ ApplicationWindow {
                 }
             }
 
-            QGCLabel {
-                id:                 criticalVehicleMessageText
-                width:              parent.width
-                wrapMode:           Text.WordWrap
-                color:              "#FDE68A"
-                textFormat:         TextEdit.RichText
-                text:               criticalVehicleMessagePopup.criticalVehicleMessage
-                font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.72
+            Repeater {
+                model: criticalVehicleMessageModel
+
+                QGCLabel {
+                    width:              criticalVehicleMessageContent.width
+                    wrapMode:           Text.WordWrap
+                    color:              highPriority ? "#FF5A5F" : "#FDE68A"
+                    textFormat:         TextEdit.RichText
+                    text:               message
+                    font.bold:          highPriority
+                    font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.68
+                }
             }
 
             QGCLabel {
                 width:              parent.width
-                visible:            criticalVehicleMessagePopup.additionalCriticalMessagesReceived
-                text:               qsTr("还有新的告警信息，请打开消息列表查看。")
+                visible:            criticalVehicleMessageModel.count >= criticalVehicleMessagePopup.maxVisibleCriticalMessages
+                text:               qsTr("已显示最近 %1 条告警，完整记录请打开消息列表。").arg(criticalVehicleMessagePopup.maxVisibleCriticalMessages)
                 color:              Qt.rgba(1, 1, 1, 0.62)
                 wrapMode:           Text.WordWrap
                 font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.62
@@ -6225,6 +6254,7 @@ ApplicationWindow {
                         activeVehicle.resetErrorLevelMessages();
                     }
                 }
+                criticalVehicleMessageModel.clear()
             }
         }
     }

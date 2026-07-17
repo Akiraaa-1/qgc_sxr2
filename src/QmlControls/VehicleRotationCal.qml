@@ -77,7 +77,7 @@ Rectangle {
             anchors.top: parent.top
             anchors.bottom: modernStyle ? statusPill.top : parent.bottom
             anchors.margins: modernStyle ? ScreenTools.defaultFontPixelHeight * 0.34 : 0
-            source:     imageSource
+            source:     control.imageSource
             fillMode:   Image.PreserveAspectFit
             smooth: true
             visible: !modernStyle
@@ -86,7 +86,7 @@ Rectangle {
         Image {
             id: modernAircraftSource
             anchors.fill: aircraftImage
-            source: imageSource
+            source: control.imageSource
             fillMode: Image.PreserveAspectFit
             smooth: true
             visible: false
@@ -95,7 +95,7 @@ Rectangle {
         MultiEffect {
             anchors.fill: modernAircraftSource
             source: modernAircraftSource
-            visible: modernStyle
+            visible: control.modernStyle
             saturation: -0.72
             brightness: -0.16
             contrast: 0.28
@@ -110,10 +110,10 @@ Rectangle {
 
         QGCColoredImage {
             anchors.fill: modernAircraftSource
-            source: imageSource
+            source: control.imageSource
             fillMode: Image.PreserveAspectFit
             color: control._modelTintColor
-            opacity: modernStyle ? 0.18 : 0
+            opacity: control.modernStyle ? 0.18 : 0
         }
 
         Rectangle {

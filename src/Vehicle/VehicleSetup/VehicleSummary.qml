@@ -742,6 +742,12 @@ Rectangle {
                                         }
                                     }
 
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 1
+                                        color: _summaryRoot._cardBorderColor
+                                    }
+
                                     QGCLabel {
                                         Layout.fillWidth: true
                                         text: modelData.value

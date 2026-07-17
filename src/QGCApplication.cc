@@ -270,7 +270,11 @@ bool QGCApplication::_initVideo()
     } else {
         QOpenGLContext testCtx;
         if (testCtx.create()) {
+#if defined(Q_OS_LINUX)
+            qCDebug(QGCApplicationLog) << "OpenGL is available; keeping Qt default RHI graphics API for Qt Quick 3D views.";
+#else
             QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
         } else {
             qCWarning(QGCApplicationLog) << "OpenGL not available; GStreamer video will be disabled."
                                          << "Using default graphics API (Metal/Vulkan).";

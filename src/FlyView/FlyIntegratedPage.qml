@@ -3464,7 +3464,7 @@ Item {
         return "";
     }
 
-    function _vehicleAlertMessagesForDisplay(maxCount = 4) {
+    function _vehicleAlertMessagesForDisplay(maxCount = 4, urgentOnly = false) {
         const vehicle = root._activeVehicle;
         const messages = [];
 
@@ -3479,6 +3479,9 @@ Item {
                 return;
             }
             const alertLevel = Number(level) > 0 ? Number(level) : root._vehicleMessageLevelFromText(message);
+            if (urgentOnly && alertLevel < 2) {
+                return;
+            }
             for (let i = 0; i < messages.length; i++) {
                 if (messages[i].text === cleanMessage) {
                     return;
@@ -3525,7 +3528,7 @@ Item {
     }
 
     function _vehicleAlertDisplayHasUrgentMessage() {
-        const messages = root._vehicleAlertMessagesForDisplay(6);
+        const messages = root._vehicleAlertMessagesForDisplay(6, true);
         for (let i = 0; i < messages.length; i++) {
             if (messages[i] && Number(messages[i].level) >= 2) {
                 return true;
@@ -4748,7 +4751,7 @@ Item {
                             "title": qsTr("安全")
                         },
                         {
-                            "icon": "/InstrumentValueIcons/volume-up.svg",
+                            "icon": "/InstrumentValueIcons/drone-swarm.svg",
                             "title": qsTr("集群")
                         }
                     ]
