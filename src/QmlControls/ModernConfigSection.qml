@@ -28,6 +28,7 @@ ColumnLayout {
     Rectangle {
         id: cardBackground
         Layout.fillWidth: true
+        Layout.fillHeight: true
         implicitWidth: Math.max(_headerRow.implicitWidth, _controlsColumn.implicitWidth) + (_margins * 2)
         implicitHeight: _contentColumn.implicitHeight + (_margins * 2)
         radius: cornerRadius

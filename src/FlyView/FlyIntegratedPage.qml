@@ -1,4 +1,5 @@
 import QGroundControl
+import QGroundControl.Cluster
 import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.FlightMap
@@ -30,6 +31,9 @@ Item {
     property int _latestVehicleMessageLevel: 0
     property string _latestVehicleMessageText: ""
     property bool _latestVehicleMessageVisible: false
+    property var _recentVehicleAlertMessages: []
+    property bool _vehicleAlertUrgentAcknowledged: false
+    property bool _vehicleAlertFlashActive: false
     readonly property real _leftPaneMaxWidth: ScreenTools.defaultFontPixelWidth * 42
     readonly property real _leftPaneMinWidth: ScreenTools.defaultFontPixelWidth * 20
     readonly property real _leftPaneWidth: {
@@ -111,6 +115,10 @@ Item {
     property real _vehicleClimbRate: NaN
     property bool _vehicleIsFlying: _activeVehicle !== null && _activeVehicle.flying === true
     property string _vehicleSearchText: ""
+
+    ClusterManager {
+        id: clusterManager
+    }
     readonly property real _vehicleStatusExtraHeight: ScreenTools.realPixelDensity * 15
     property var _vehicleStatusIconMap: ({})
     readonly property var _vehicleStatusIconOptions: [
@@ -455,6 +463,60 @@ Item {
         text = text.replace(/GCS connection regained/gi, qsTr("地面站连接已恢复"));
         text = text.replace(/GCS connection lost/gi, qsTr("地面站连接丢失"));
         return text;
+    }
+
+    function _vehicleMessageLevelFromText(message) {
+        const text = (message || "").toString();
+        if (/\b(Emergency|Alert|Critical|Error)\b/i.test(text)) {
+            return 3;
+        }
+        if (/\bWarning\b/i.test(text)) {
+            return 2;
+        }
+        return 1;
+    }
+
+    function _rememberVehicleAlertMessage(message, level = -1) {
+        const cleanMessage = root._cleanVehicleMessageText(message);
+        if (cleanMessage === "") {
+            return;
+        }
+        const alertLevel = Number(level) > 0 ? Number(level) : root._vehicleMessageLevelFromText(message);
+
+        const nextMessages = [
+            {
+                "text": cleanMessage,
+                "level": alertLevel
+            }
+        ];
+        for (let i = 0; i < root._recentVehicleAlertMessages.length && nextMessages.length < 8; i++) {
+            const existingMessage = root._recentVehicleAlertMessages[i];
+            const existingText = existingMessage && existingMessage.text !== undefined ? existingMessage.text : existingMessage;
+            if (existingText !== cleanMessage) {
+                nextMessages.push(existingMessage);
+            }
+        }
+        root._recentVehicleAlertMessages = nextMessages;
+    }
+
+    function _triggerVehicleAlertFlash(level) {
+        if (Number(level) < 2) {
+            return;
+        }
+        root._vehicleAlertUrgentAcknowledged = false;
+        root._vehicleAlertFlashActive = false;
+        root._vehicleAlertFlashActive = true;
+        vehicleAlertFlashTimer.restart();
+    }
+
+    function _stopVehicleAlertFlash() {
+        root._vehicleAlertFlashActive = false;
+        vehicleAlertFlashTimer.stop();
+    }
+
+    function _acknowledgeVehicleAlertMessages() {
+        root._vehicleAlertUrgentAcknowledged = true;
+        root._stopVehicleAlertFlash();
     }
 
     function _clearClusterVehicleState(vehicle) {
@@ -3402,6 +3464,76 @@ Item {
         return "";
     }
 
+    function _vehicleAlertMessagesForDisplay(maxCount = 4) {
+        const vehicle = root._activeVehicle;
+        const messages = [];
+
+        function addMessage(message, level = -1) {
+            if (message && message.text !== undefined) {
+                const objectLevel = Number(message.level) > 0 ? Number(message.level) : Number(level);
+                addMessage(message.text, objectLevel);
+                return;
+            }
+            const cleanMessage = root._cleanVehicleMessageText(message);
+            if (cleanMessage === "") {
+                return;
+            }
+            const alertLevel = Number(level) > 0 ? Number(level) : root._vehicleMessageLevelFromText(message);
+            for (let i = 0; i < messages.length; i++) {
+                if (messages[i].text === cleanMessage) {
+                    return;
+                }
+            }
+            messages.push({
+                "text": cleanMessage,
+                "level": alertLevel
+            });
+        }
+
+        if (!vehicle) {
+            return messages;
+        }
+        if (vehicle.communicationLost) {
+            addMessage(qsTr("通信丢失"), 3);
+        }
+        addMessage(root._latestVehicleMessageText, root._latestVehicleMessageLevel);
+
+        for (let recentIndex = 0; recentIndex < root._recentVehicleAlertMessages.length && messages.length < maxCount; recentIndex++) {
+            addMessage(root._recentVehicleAlertMessages[recentIndex]);
+        }
+
+        const rawFormattedMessages = vehicle.formattedMessages || "";
+        const rawMessageParts = rawFormattedMessages
+                .replace(/<font/gi, "\n<font")
+                .split(/<br\s*\/?>|\n/gi);
+        for (let i = 0; i < rawMessageParts.length && messages.length < maxCount; i++) {
+            addMessage(rawMessageParts[i]);
+        }
+
+        addMessage(root._firstHealthProblemText(vehicle), root._healthProblemAlertLevel(vehicle));
+        if (!vehicle.armed && vehicle.prearmError) {
+            addMessage(vehicle.prearmError, 2);
+        }
+        if (messages.length === 0 && vehicle.messageCount > 0) {
+            addMessage(qsTr("飞行器消息 %1 条").arg(vehicle.messageCount));
+        }
+        if (messages.length === 0 && vehicle.healthAndArmingCheckReport && vehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
+            addMessage(qsTr("飞行器状态存在警告"), 2);
+        }
+
+        return messages.slice(0, maxCount);
+    }
+
+    function _vehicleAlertDisplayHasUrgentMessage() {
+        const messages = root._vehicleAlertMessagesForDisplay(6);
+        for (let i = 0; i < messages.length; i++) {
+            if (messages[i] && Number(messages[i].level) >= 2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function _vehicleConfigComponentByKeywords(keywords, vehicle = _activeVehicle) {
         const autopilotPlugin = vehicle ? vehicle.autopilotPlugin : null;
         if (!autopilotPlugin || !keywords || keywords.length === 0) {
@@ -3568,7 +3700,43 @@ Item {
     }
 
     function _vehicleStatusStackIndex(pageIndex) {
+        if (pageIndex === 9) {
+            return 8;
+        }
         return pageIndex === 0 ? 1 : pageIndex;
+    }
+
+    function _clusterGroupText(groupId) {
+        const numericGroup = Number(groupId);
+        return !isNaN(numericGroup) && numericGroup >= 0 ? qsTr("%1 组").arg(numericGroup + 1) : qsTr("未分组");
+    }
+
+    function _clusterRoleText(vehicle) {
+        if (!vehicle) {
+            return qsTr("离线");
+        }
+        const groupId = clusterManager.vehicleGroup(vehicle.id);
+        if (groupId < 0) {
+            return qsTr("未分组");
+        }
+        return clusterManager.vehicleLeader(vehicle.id) ? qsTr("领机") : qsTr("僚机");
+    }
+
+    function _clusterVehicleSubtitle(vehicle) {
+        if (!vehicle) {
+            return qsTr("未连接");
+        }
+        return qsTr("%1 | %2").arg(_clusterGroupText(clusterManager.vehicleGroup(vehicle.id))).arg(_clusterRoleText(vehicle));
+    }
+
+    function _clusterLastResultText() {
+        if (clusterManager.lastCommandMessage && clusterManager.lastCommandMessage !== "") {
+            return clusterManager.lastCommandMessage;
+        }
+        if (clusterManager.lastAckMessage && clusterManager.lastAckMessage !== "") {
+            return clusterManager.lastAckMessage;
+        }
+        return qsTr("等待集群操作");
     }
 
     function _vehicleTitle(vehicle) {
@@ -3827,6 +3995,7 @@ Item {
 
     Connections {
         function onNewFormattedMessage(formattedMessage) {
+            root._rememberVehicleAlertMessage(formattedMessage);
             if (root._latestVehicleMessageText === "") {
                 root._latestVehicleMessageText = root._cleanVehicleMessageText(formattedMessage);
                 root._latestVehicleMessageLevel = 1;
@@ -3846,6 +4015,8 @@ Item {
 
             root._latestVehicleMessageText = messageText;
             root._latestVehicleMessageLevel = root._vehicleMessageLevelFromSeverity(severity);
+            root._rememberVehicleAlertMessage(messageText, root._latestVehicleMessageLevel);
+            root._triggerVehicleAlertFlash(root._latestVehicleMessageLevel);
             root._latestVehicleMessageVisible = true;
             vehicleAlertMessageTimer.interval = root._latestVehicleMessageLevel >= 2 ? 30000 : 10000;
             vehicleAlertMessageTimer.restart();
@@ -3868,6 +4039,15 @@ Item {
                 root._latestVehicleMessageLevel = 0;
             }
         }
+    }
+
+    Timer {
+        id: vehicleAlertFlashTimer
+
+        interval: 10000
+        repeat: false
+
+        onTriggered: root._stopVehicleAlertFlash()
     }
 
     Connections {
@@ -4320,37 +4500,6 @@ Item {
                             }
                         }
 
-                        Rectangle {
-                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.42
-                            Layout.preferredWidth: swarmEntryLabel.implicitWidth + (ScreenTools.defaultFontPixelWidth * 1.4)
-                            color: swarmEntryMouseArea.pressed ? qgcPal.buttonHighlight : (swarmEntryMouseArea.containsMouse ? qgcPal.windowShade : qgcPal.windowShadeDark)
-                            radius: ScreenTools.defaultFontPixelHeight * 0.12
-
-                            MouseArea {
-                                id: swarmEntryMouseArea
-
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                hoverEnabled: true
-
-                                onClicked: {
-                                    if (typeof root._openClusterWorkspaceWindow === "function") {
-                                        root._openClusterWorkspaceWindow();
-                                    } else if (typeof mainWindow !== "undefined" && mainWindow && typeof mainWindow.showSwarmView === "function") {
-                                        mainWindow.showSwarmView();
-                                    }
-                                }
-                            }
-
-                            QGCLabel {
-                                id: swarmEntryLabel
-
-                                anchors.centerIn: parent
-                                color: "#FFFFFF"
-                                font.bold: true
-                                text: qsTr("Swarm")
-                            }
-                        }
                     }
                 }
 
@@ -4509,6 +4658,7 @@ Item {
                                     }
                                 }
                             }
+
                         }
                     }
                 }
@@ -4599,7 +4749,7 @@ Item {
                         },
                         {
                             "icon": "/InstrumentValueIcons/volume-up.svg",
-                            "title": qsTr("音频")
+                            "title": qsTr("集群")
                         }
                     ]
                     readonly property color _textDisabledColor: "#666666"
@@ -6871,9 +7021,10 @@ Item {
                                         }
 
                                         Repeater {
-                                            model: vehicleStatusCard._statusPages.slice(7)
+                                            model: vehicleStatusCard._statusPages.slice(7, 9)
 
                                             delegate: Item {
+                                                readonly property bool _isClusterPage: modelData.title === qsTr("集群")
                                                 clip: true
 
                                                 Flickable {
@@ -6892,9 +7043,9 @@ Item {
                                                         id: placeholderColumn
 
                                                         anchors.horizontalCenter: parent.horizontalCenter
-                                                        spacing: ScreenTools.defaultFontPixelHeight * 0.35
-                                                        width: Math.min(parent.width - (ScreenTools.defaultFontPixelWidth * 1.8), ScreenTools.defaultFontPixelWidth * 18)
-                                                        y: Math.max(ScreenTools.defaultFontPixelHeight * 0.72, (parent.height - implicitHeight) * 0.5)
+                                                        spacing: _isClusterPage ? ScreenTools.defaultFontPixelHeight * 0.18 : ScreenTools.defaultFontPixelHeight * 0.35
+                                                        width: _isClusterPage ? parent.width : Math.min(parent.width - (ScreenTools.defaultFontPixelWidth * 1.8), ScreenTools.defaultFontPixelWidth * 18)
+                                                        y: _isClusterPage ? 0 : Math.max(ScreenTools.defaultFontPixelHeight * 0.72, (parent.height - implicitHeight) * 0.5)
 
                                                         QGCColoredImage {
                                                             Layout.alignment: Qt.AlignHCenter
@@ -6903,6 +7054,7 @@ Item {
                                                             color: vehicleStatusCard._highlightColor
                                                             fillMode: Image.PreserveAspectFit
                                                             source: modelData.icon
+                                                            visible: !_isClusterPage
                                                         }
 
                                                         QGCLabel {
@@ -6910,6 +7062,7 @@ Item {
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.weight: Font.DemiBold
                                                             text: modelData.title
+                                                            visible: !_isClusterPage
                                                         }
 
                                                         QGCLabel {
@@ -6917,13 +7070,819 @@ Item {
                                                             color: vehicleStatusCard._textSecondaryColor
                                                             horizontalAlignment: Text.AlignHCenter
                                                             text: qsTr("此区域预留给%1").arg(modelData.title)
+                                                            visible: !_isClusterPage
                                                             wrapMode: Text.WordWrap
+                                                        }
+
+                                                        RowLayout {
+                                                            Layout.fillWidth: true
+                                                            Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
+                                                            spacing: vehicleStatusCard._sectionHeaderSpacing
+                                                            visible: _isClusterPage
+
+                                                            QGCLabel {
+                                                                Layout.fillWidth: true
+                                                                color: vehicleStatusCard._textPrimaryColor
+                                                                font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
+                                                                font.weight: Font.DemiBold
+                                                                text: qsTr("集群快捷")
+                                                                verticalAlignment: Text.AlignVCenter
+                                                            }
+
+                                                            Rectangle {
+                                                                Layout.preferredHeight: vehicleStatusCard._sectionHeaderButtonSize
+                                                                Layout.preferredWidth: Math.max(openClusterLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 1.0, ScreenTools.defaultFontPixelWidth * 5.8)
+                                                                border.color: vehicleStatusCard._controlBorderColor
+                                                                border.width: vehicleStatusCard._controlBorderWidth
+                                                                color: openClusterMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (openClusterMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
+                                                                radius: vehicleStatusCard._controlRadius
+
+                                                                QGCLabel {
+                                                                    id: openClusterLabel
+
+                                                                    anchors.centerIn: parent
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                    font.weight: Font.DemiBold
+                                                                    text: qsTr("完整界面")
+                                                                }
+
+                                                                QGCMouseArea {
+                                                                    id: openClusterMouseArea
+
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+
+                                                                    onClicked: root._openClusterWorkspaceWindow()
+                                                                }
+                                                            }
+                                                        }
+
+                                                        GridLayout {
+                                                            Layout.fillWidth: true
+                                                            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                                            columns: 3
+                                                            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+                                                            visible: _isClusterPage
+
+                                                            Repeater {
+                                                                model: [
+                                                                    {
+                                                                        "label": qsTr("在线"),
+                                                                        "value": QGroundControl.multiVehicleManager.vehicles ? QGroundControl.multiVehicleManager.vehicles.count : 0
+                                                                    },
+                                                                    {
+                                                                        "label": qsTr("已分配"),
+                                                                        "value": clusterManager.assignedVehicleCount
+                                                                    },
+                                                                    {
+                                                                        "label": qsTr("领机"),
+                                                                        "value": clusterManager.leaderCount
+                                                                    }
+                                                                ]
+
+                                                                delegate: Rectangle {
+                                                                    Layout.fillWidth: true
+                                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.15
+                                                                    border.color: vehicleStatusCard._controlBorderColor
+                                                                    border.width: vehicleStatusCard._controlBorderWidth
+                                                                    color: vehicleStatusCard._blockColor
+                                                                    radius: vehicleStatusCard._controlRadius
+
+                                                                    ColumnLayout {
+                                                                        anchors.centerIn: parent
+                                                                        spacing: ScreenTools.defaultFontPixelHeight * 0.02
+                                                                        width: parent.width - ScreenTools.defaultFontPixelWidth * 0.3
+
+                                                                        QGCLabel {
+                                                                            Layout.alignment: Qt.AlignHCenter
+                                                                            color: vehicleStatusCard._textPrimaryColor
+                                                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
+                                                                            font.weight: Font.DemiBold
+                                                                            text: modelData.value
+                                                                        }
+
+                                                                        QGCLabel {
+                                                                            Layout.alignment: Qt.AlignHCenter
+                                                                            color: vehicleStatusCard._textSecondaryColor
+                                                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                                                            text: modelData.label
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        Rectangle {
+                                                            Layout.fillWidth: true
+                                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.52
+                                                            border.color: vehicleStatusCard._controlBorderColor
+                                                            border.width: vehicleStatusCard._controlBorderWidth
+                                                            color: vehicleStatusCard._fieldColor
+                                                            radius: vehicleStatusCard._controlRadius
+                                                            visible: _isClusterPage
+
+                                                            RowLayout {
+                                                                anchors.fill: parent
+                                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
+                                                                spacing: ScreenTools.defaultFontPixelWidth * 0.18
+
+                                                                QGCLabel {
+                                                                    color: vehicleStatusCard._textSecondaryColor
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.54
+                                                                    text: qsTr("当前")
+                                                                }
+
+                                                                QGCLabel {
+                                                                    Layout.fillWidth: true
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    elide: Text.ElideRight
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                                                    font.weight: Font.DemiBold
+                                                                    text: root._activeVehicle ? root._clusterVehicleSubtitle(root._activeVehicle) : qsTr("未连接飞行器")
+                                                                }
+                                                            }
+                                                        }
+
+                                                        QGCListView {
+                                                            Layout.fillWidth: true
+                                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 7.2
+                                                            boundsBehavior: Flickable.StopAtBounds
+                                                            clip: true
+                                                            model: _isClusterPage ? QGroundControl.multiVehicleManager.vehicles : null
+                                                            spacing: ScreenTools.defaultFontPixelHeight * 0.1
+                                                            visible: _isClusterPage
+
+                                                            ScrollBar.vertical: ScrollBar {
+                                                                policy: ScrollBar.AsNeeded
+                                                            }
+
+                                                            delegate: Rectangle {
+                                                                required property var object
+                                                                readonly property bool _current: object === root._activeVehicle
+
+                                                                width: ListView.view.width
+                                                                height: ScreenTools.defaultFontPixelHeight * 1.62
+                                                                border.color: _current ? "#5B8FD6" : vehicleStatusCard._controlBorderColor
+                                                                border.width: vehicleStatusCard._controlBorderWidth
+                                                                color: _current ? Qt.rgba(0.12, 0.22, 0.35, 0.96) : vehicleStatusCard._blockColor
+                                                                radius: vehicleStatusCard._controlRadius
+
+                                                                RowLayout {
+                                                                    anchors.fill: parent
+                                                                    anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                                                    anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                                                    spacing: ScreenTools.defaultFontPixelWidth * 0.22
+
+                                                                    Rectangle {
+                                                                        Layout.preferredHeight: Layout.preferredWidth
+                                                                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.46
+                                                                        color: clusterManager.vehicleGroup(object.id) >= 0 ? "#65D4A7" : "#7E8792"
+                                                                        radius: Layout.preferredWidth * 0.5
+                                                                    }
+
+                                                                    QGCLabel {
+                                                                        Layout.fillWidth: true
+                                                                        color: vehicleStatusCard._textPrimaryColor
+                                                                        elide: Text.ElideRight
+                                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                                                        font.weight: Font.DemiBold
+                                                                        text: root._vehicleTitle(object)
+                                                                    }
+
+                                                                    QGCLabel {
+                                                                        color: vehicleStatusCard._textSecondaryColor
+                                                                        elide: Text.ElideRight
+                                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                                                        text: root._clusterVehicleSubtitle(object)
+                                                                    }
+                                                                }
+
+                                                                QGCMouseArea {
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+
+                                                                    onClicked: root._setActiveVehicle(object)
+                                                                }
+                                                            }
+                                                        }
+
+                                                        GridLayout {
+                                                            Layout.fillWidth: true
+                                                            columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                                            columns: 2
+                                                            rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+                                                            visible: _isClusterPage
+
+                                                            Repeater {
+                                                                model: [
+                                                                    {
+                                                                        "label": qsTr("暂停本组"),
+                                                                        "enabled": clusterManager.activeVehicleGroup >= 0,
+                                                                        "action": function () { clusterManager.pauseGroup(clusterManager.activeVehicleGroup); }
+                                                                    },
+                                                                    {
+                                                                        "label": qsTr("继续本组"),
+                                                                        "enabled": clusterManager.activeVehicleGroup >= 0,
+                                                                        "action": function () { clusterManager.resumeGroup(clusterManager.activeVehicleGroup); }
+                                                                    },
+                                                                    {
+                                                                        "label": qsTr("清除当前"),
+                                                                        "enabled": !!root._activeVehicle && clusterManager.activeVehicleGroup >= 0,
+                                                                        "action": function () { clusterManager.clearActiveVehicleAssignment(); }
+                                                                    },
+                                                                    {
+                                                                        "label": qsTr("完整界面"),
+                                                                        "enabled": true,
+                                                                        "action": function () { root._openClusterWorkspaceWindow(); }
+                                                                    }
+                                                                ]
+
+                                                                delegate: Rectangle {
+                                                                    readonly property bool _enabled: modelData.enabled
+
+                                                                    Layout.fillWidth: true
+                                                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.58
+                                                                    border.color: vehicleStatusCard._controlBorderColor
+                                                                    border.width: vehicleStatusCard._controlBorderWidth
+                                                                    color: !_enabled ? vehicleStatusCard._buttonSecondaryColor : (clusterActionMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterActionMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryColor))
+                                                                    opacity: _enabled ? 1 : 0.45
+                                                                    radius: vehicleStatusCard._controlRadius
+
+                                                                    QGCLabel {
+                                                                        anchors.centerIn: parent
+                                                                        color: vehicleStatusCard._textPrimaryColor
+                                                                        elide: Text.ElideRight
+                                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                        font.weight: Font.DemiBold
+                                                                        horizontalAlignment: Text.AlignHCenter
+                                                                        text: modelData.label
+                                                                        width: parent.width - ScreenTools.defaultFontPixelWidth * 0.5
+                                                                    }
+
+                                                                    QGCMouseArea {
+                                                                        id: clusterActionMouseArea
+
+                                                                        anchors.fill: parent
+                                                                        enabled: parent._enabled
+                                                                        hoverEnabled: true
+
+                                                                        onClicked: modelData.action()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        QGCLabel {
+                                                            Layout.fillWidth: true
+                                                            color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
+                                                            elide: Text.ElideRight
+                                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
+                                                            text: root._clusterLastResultText()
+                                                            visible: _isClusterPage
                                                         }
                                                     }
                                                 }
                                             }
                                         }
+
+                                        Item {
+                                            id: clusterQuickPage
+
+                                            clip: true
+
+                                            Flickable {
+                                                anchors.fill: parent
+                                                boundsBehavior: Flickable.StopAtBounds
+                                                clip: true
+                                                contentHeight: clusterQuickColumn.implicitHeight
+                                                contentWidth: width
+                                                flickableDirection: Flickable.VerticalFlick
+
+                                                ScrollBar.vertical: ScrollBar {
+                                                    policy: ScrollBar.AsNeeded
+                                                }
+
+                                                ColumnLayout {
+                                                    id: clusterQuickColumn
+
+                                                    spacing: ScreenTools.defaultFontPixelHeight * 0.18
+                                                    width: parent.width
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
+                                                        spacing: vehicleStatusCard._sectionHeaderSpacing
+
+                                                        QGCLabel {
+                                                            Layout.fillWidth: true
+                                                            color: vehicleStatusCard._textPrimaryColor
+                                                            font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
+                                                            font.weight: Font.DemiBold
+                                                            text: qsTr("集群快捷")
+                                                            verticalAlignment: Text.AlignVCenter
+                                                        }
+
+                                                        Rectangle {
+                                                            Layout.preferredHeight: vehicleStatusCard._sectionHeaderButtonSize
+                                                            Layout.preferredWidth: Math.max(clusterOpenLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 1.0, ScreenTools.defaultFontPixelWidth * 5.8)
+                                                            border.color: vehicleStatusCard._controlBorderColor
+                                                            border.width: vehicleStatusCard._controlBorderWidth
+                                                            color: clusterOpenMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterOpenMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
+                                                            radius: vehicleStatusCard._controlRadius
+
+                                                            QGCLabel {
+                                                                id: clusterOpenLabel
+
+                                                                anchors.centerIn: parent
+                                                                color: vehicleStatusCard._textPrimaryColor
+                                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                font.weight: Font.DemiBold
+                                                                text: qsTr("完整界面")
+                                                            }
+
+                                                            QGCMouseArea {
+                                                                id: clusterOpenMouseArea
+
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+
+                                                                onClicked: root._openClusterWorkspaceWindow()
+                                                            }
+                                                        }
+                                                    }
+
+                                                    GridLayout {
+                                                        Layout.fillWidth: true
+                                                        columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                                        columns: 3
+                                                        rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+
+                                                        Repeater {
+                                                            model: [
+                                                                {
+                                                                    "label": qsTr("在线"),
+                                                                    "value": QGroundControl.multiVehicleManager.vehicles ? QGroundControl.multiVehicleManager.vehicles.count : 0
+                                                                },
+                                                                {
+                                                                    "label": qsTr("已分配"),
+                                                                    "value": clusterManager.assignedVehicleCount
+                                                                },
+                                                                {
+                                                                    "label": qsTr("领机"),
+                                                                    "value": clusterManager.leaderCount
+                                                                }
+                                                            ]
+
+                                                            delegate: Rectangle {
+                                                                Layout.fillWidth: true
+                                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.15
+                                                                border.color: vehicleStatusCard._controlBorderColor
+                                                                border.width: vehicleStatusCard._controlBorderWidth
+                                                                color: vehicleStatusCard._blockColor
+                                                                radius: vehicleStatusCard._controlRadius
+
+                                                                ColumnLayout {
+                                                                    anchors.centerIn: parent
+                                                                    spacing: ScreenTools.defaultFontPixelHeight * 0.02
+                                                                    width: parent.width - ScreenTools.defaultFontPixelWidth * 0.3
+
+                                                                    QGCLabel {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        color: vehicleStatusCard._textPrimaryColor
+                                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
+                                                                        font.weight: Font.DemiBold
+                                                                        text: modelData.value
+                                                                    }
+
+                                                                    QGCLabel {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        color: vehicleStatusCard._textSecondaryColor
+                                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                                                        text: modelData.label
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Rectangle {
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.52
+                                                        border.color: vehicleStatusCard._controlBorderColor
+                                                        border.width: vehicleStatusCard._controlBorderWidth
+                                                        color: vehicleStatusCard._fieldColor
+                                                        radius: vehicleStatusCard._controlRadius
+
+                                                        RowLayout {
+                                                            anchors.fill: parent
+                                                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                                            anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
+                                                            spacing: ScreenTools.defaultFontPixelWidth * 0.18
+
+                                                            QGCLabel {
+                                                                color: vehicleStatusCard._textSecondaryColor
+                                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.54
+                                                                text: qsTr("当前")
+                                                            }
+
+                                                            QGCLabel {
+                                                                Layout.fillWidth: true
+                                                                color: vehicleStatusCard._textPrimaryColor
+                                                                elide: Text.ElideRight
+                                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                                                font.weight: Font.DemiBold
+                                                                text: root._activeVehicle ? root._clusterVehicleSubtitle(root._activeVehicle) : qsTr("未连接飞行器")
+                                                            }
+                                                        }
+                                                    }
+
+                                                    QGCListView {
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 7.2
+                                                        boundsBehavior: Flickable.StopAtBounds
+                                                        clip: true
+                                                        model: QGroundControl.multiVehicleManager.vehicles
+                                                        spacing: ScreenTools.defaultFontPixelHeight * 0.1
+
+                                                        ScrollBar.vertical: ScrollBar {
+                                                            policy: ScrollBar.AsNeeded
+                                                        }
+
+                                                        delegate: Rectangle {
+                                                            required property var object
+                                                            readonly property bool _current: object === root._activeVehicle
+
+                                                            border.color: _current ? "#5B8FD6" : vehicleStatusCard._controlBorderColor
+                                                            border.width: vehicleStatusCard._controlBorderWidth
+                                                            color: _current ? Qt.rgba(0.12, 0.22, 0.35, 0.96) : vehicleStatusCard._blockColor
+                                                            height: ScreenTools.defaultFontPixelHeight * 1.62
+                                                            radius: vehicleStatusCard._controlRadius
+                                                            width: ListView.view.width
+
+                                                            RowLayout {
+                                                                anchors.fill: parent
+                                                                anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                                                anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                                                spacing: ScreenTools.defaultFontPixelWidth * 0.22
+
+                                                                Rectangle {
+                                                                    Layout.preferredHeight: Layout.preferredWidth
+                                                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.46
+                                                                    color: clusterManager.vehicleGroup(object.id) >= 0 ? "#65D4A7" : "#7E8792"
+                                                                    radius: Layout.preferredWidth * 0.5
+                                                                }
+
+                                                                QGCLabel {
+                                                                    Layout.fillWidth: true
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    elide: Text.ElideRight
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                                                    font.weight: Font.DemiBold
+                                                                    text: root._vehicleTitle(object)
+                                                                }
+
+                                                                QGCLabel {
+                                                                    color: vehicleStatusCard._textSecondaryColor
+                                                                    elide: Text.ElideRight
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                                                    text: root._clusterVehicleSubtitle(object)
+                                                                }
+                                                            }
+
+                                                            QGCMouseArea {
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+
+                                                                onClicked: root._setActiveVehicle(object)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    GridLayout {
+                                                        Layout.fillWidth: true
+                                                        columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                                        columns: 2
+                                                        rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+
+                                                        Repeater {
+                                                            model: [
+                                                                {
+                                                                    "label": qsTr("暂停本组"),
+                                                                    "enabled": clusterManager.activeVehicleGroup >= 0,
+                                                                    "action": function () { clusterManager.pauseGroup(clusterManager.activeVehicleGroup); }
+                                                                },
+                                                                {
+                                                                    "label": qsTr("继续本组"),
+                                                                    "enabled": clusterManager.activeVehicleGroup >= 0,
+                                                                    "action": function () { clusterManager.resumeGroup(clusterManager.activeVehicleGroup); }
+                                                                },
+                                                                {
+                                                                    "label": qsTr("清除当前"),
+                                                                    "enabled": !!root._activeVehicle && clusterManager.activeVehicleGroup >= 0,
+                                                                    "action": function () { clusterManager.clearActiveVehicleAssignment(); }
+                                                                },
+                                                                {
+                                                                    "label": qsTr("完整界面"),
+                                                                    "enabled": true,
+                                                                    "action": function () { root._openClusterWorkspaceWindow(); }
+                                                                }
+                                                            ]
+
+                                                            delegate: Rectangle {
+                                                                readonly property bool _enabled: modelData.enabled
+
+                                                                Layout.fillWidth: true
+                                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.58
+                                                                border.color: vehicleStatusCard._controlBorderColor
+                                                                border.width: vehicleStatusCard._controlBorderWidth
+                                                                color: !_enabled ? vehicleStatusCard._buttonSecondaryColor : (quickClusterActionMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (quickClusterActionMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryColor))
+                                                                opacity: _enabled ? 1 : 0.45
+                                                                radius: vehicleStatusCard._controlRadius
+
+                                                                QGCLabel {
+                                                                    anchors.centerIn: parent
+                                                                    color: vehicleStatusCard._textPrimaryColor
+                                                                    elide: Text.ElideRight
+                                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                                    font.weight: Font.DemiBold
+                                                                    horizontalAlignment: Text.AlignHCenter
+                                                                    text: modelData.label
+                                                                    width: parent.width - ScreenTools.defaultFontPixelWidth * 0.5
+                                                                }
+
+                                                                QGCMouseArea {
+                                                                    id: quickClusterActionMouseArea
+
+                                                                    anchors.fill: parent
+                                                                    enabled: parent._enabled
+                                                                    hoverEnabled: true
+
+                                                                    onClicked: modelData.action()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    QGCLabel {
+                                                        Layout.fillWidth: true
+                                                        color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
+                                                        elide: Text.ElideRight
+                                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
+                                                        text: root._clusterLastResultText()
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            anchors.left: parent.left
+                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 3.95
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            border.color: vehicleStatusCard._controlBorderColor
+                            border.width: vehicleStatusCard._controlBorderWidth
+                            clip: true
+                            color: vehicleStatusCard._contentColor
+                            visible: root._vehicleStatusPageIndex === 9
+                            z: 100
+
+                            ColumnLayout {
+                                anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.44
+                                anchors.fill: parent
+                                anchors.leftMargin: ScreenTools.defaultFontPixelHeight * 0.46
+                                anchors.rightMargin: ScreenTools.defaultFontPixelHeight * 0.46
+                                anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.46
+                                spacing: ScreenTools.defaultFontPixelHeight * 0.2
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
+
+                                    QGCLabel {
+                                        Layout.fillWidth: true
+                                        color: vehicleStatusCard._textPrimaryColor
+                                        font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
+                                        font.weight: Font.DemiBold
+                                        text: qsTr("集群快捷")
+                                    }
+
+                                    Rectangle {
+                                        Layout.preferredHeight: vehicleStatusCard._sectionHeaderButtonSize
+                                        Layout.preferredWidth: Math.max(clusterCardOpenLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 1.0, ScreenTools.defaultFontPixelWidth * 5.8)
+                                        border.color: vehicleStatusCard._controlBorderColor
+                                        border.width: vehicleStatusCard._controlBorderWidth
+                                        color: clusterCardOpenMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterCardOpenMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
+                                        radius: vehicleStatusCard._controlRadius
+
+                                        QGCLabel {
+                                            id: clusterCardOpenLabel
+
+                                            anchors.centerIn: parent
+                                            color: vehicleStatusCard._textPrimaryColor
+                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                            font.weight: Font.DemiBold
+                                            text: qsTr("完整界面")
+                                        }
+
+                                        QGCMouseArea {
+                                            id: clusterCardOpenMouseArea
+
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+
+                                            onClicked: root._openClusterWorkspaceWindow()
+                                        }
+                                    }
+                                }
+
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                    columns: 3
+                                    rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+
+                                    Repeater {
+                                        model: [
+                                            { "label": qsTr("在线"), "value": QGroundControl.multiVehicleManager.vehicles ? QGroundControl.multiVehicleManager.vehicles.count : 0 },
+                                            { "label": qsTr("已分配"), "value": clusterManager.assignedVehicleCount },
+                                            { "label": qsTr("领机"), "value": clusterManager.leaderCount }
+                                        ]
+
+                                        delegate: Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.15
+                                            border.color: vehicleStatusCard._controlBorderColor
+                                            border.width: vehicleStatusCard._controlBorderWidth
+                                            color: vehicleStatusCard._blockColor
+                                            radius: vehicleStatusCard._controlRadius
+
+                                            ColumnLayout {
+                                                anchors.centerIn: parent
+                                                spacing: 0
+
+                                                QGCLabel {
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    color: vehicleStatusCard._textPrimaryColor
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
+                                                    font.weight: Font.DemiBold
+                                                    text: modelData.value
+                                                }
+
+                                                QGCLabel {
+                                                    Layout.alignment: Qt.AlignHCenter
+                                                    color: vehicleStatusCard._textSecondaryColor
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
+                                                    text: modelData.label
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.52
+                                    border.color: vehicleStatusCard._controlBorderColor
+                                    border.width: vehicleStatusCard._controlBorderWidth
+                                    color: vehicleStatusCard._fieldColor
+                                    radius: vehicleStatusCard._controlRadius
+
+                                    QGCLabel {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                        anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
+                                        color: vehicleStatusCard._textPrimaryColor
+                                        elide: Text.ElideRight
+                                        font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                        text: root._activeVehicle ? qsTr("当前：%1").arg(root._clusterVehicleSubtitle(root._activeVehicle)) : qsTr("当前：未连接飞行器")
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                QGCListView {
+                                    Layout.fillHeight: true
+                                    Layout.fillWidth: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    clip: true
+                                    model: QGroundControl.multiVehicleManager.vehicles
+                                    spacing: ScreenTools.defaultFontPixelHeight * 0.1
+
+                                    ScrollBar.vertical: ScrollBar {
+                                        policy: ScrollBar.AsNeeded
+                                    }
+
+                                    delegate: Rectangle {
+                                        required property var object
+                                        readonly property bool _current: object === root._activeVehicle
+
+                                        border.color: _current ? "#5B8FD6" : vehicleStatusCard._controlBorderColor
+                                        border.width: vehicleStatusCard._controlBorderWidth
+                                        color: _current ? Qt.rgba(0.12, 0.22, 0.35, 0.96) : vehicleStatusCard._blockColor
+                                        height: ScreenTools.defaultFontPixelHeight * 1.62
+                                        radius: vehicleStatusCard._controlRadius
+                                        width: ListView.view.width
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
+                                            anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
+                                            spacing: ScreenTools.defaultFontPixelWidth * 0.22
+
+                                            Rectangle {
+                                                Layout.preferredHeight: Layout.preferredWidth
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.46
+                                                color: clusterManager.vehicleGroup(object.id) >= 0 ? "#65D4A7" : "#7E8792"
+                                                radius: Layout.preferredWidth * 0.5
+                                            }
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                color: vehicleStatusCard._textPrimaryColor
+                                                elide: Text.ElideRight
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
+                                                font.weight: Font.DemiBold
+                                                text: root._vehicleTitle(object)
+                                            }
+
+                                            QGCLabel {
+                                                color: vehicleStatusCard._textSecondaryColor
+                                                elide: Text.ElideRight
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                                text: root._clusterVehicleSubtitle(object)
+                                            }
+                                        }
+
+                                        QGCMouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+
+                                            onClicked: root._setActiveVehicle(object)
+                                        }
+                                    }
+                                }
+
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columnSpacing: ScreenTools.defaultFontPixelWidth * 0.18
+                                    columns: 2
+                                    rowSpacing: ScreenTools.defaultFontPixelHeight * 0.12
+
+                                    Repeater {
+                                        model: [
+                                            { "label": qsTr("暂停本组"), "enabled": clusterManager.activeVehicleGroup >= 0, "action": function () { clusterManager.pauseGroup(clusterManager.activeVehicleGroup); } },
+                                            { "label": qsTr("继续本组"), "enabled": clusterManager.activeVehicleGroup >= 0, "action": function () { clusterManager.resumeGroup(clusterManager.activeVehicleGroup); } },
+                                            { "label": qsTr("清除当前"), "enabled": !!root._activeVehicle && clusterManager.activeVehicleGroup >= 0, "action": function () { clusterManager.clearActiveVehicleAssignment(); } },
+                                            { "label": qsTr("完整界面"), "enabled": true, "action": function () { root._openClusterWorkspaceWindow(); } }
+                                        ]
+
+                                        delegate: Rectangle {
+                                            readonly property bool _enabled: modelData.enabled
+
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.58
+                                            border.color: vehicleStatusCard._controlBorderColor
+                                            border.width: vehicleStatusCard._controlBorderWidth
+                                            color: !_enabled ? vehicleStatusCard._buttonSecondaryColor : (clusterCardActionMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterCardActionMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._buttonSecondaryColor))
+                                            opacity: _enabled ? 1 : 0.45
+                                            radius: vehicleStatusCard._controlRadius
+
+                                            QGCLabel {
+                                                anchors.centerIn: parent
+                                                color: vehicleStatusCard._textPrimaryColor
+                                                elide: Text.ElideRight
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
+                                                font.weight: Font.DemiBold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                text: modelData.label
+                                                width: parent.width - ScreenTools.defaultFontPixelWidth * 0.5
+                                            }
+
+                                            QGCMouseArea {
+                                                id: clusterCardActionMouseArea
+
+                                                anchors.fill: parent
+                                                enabled: parent._enabled
+                                                hoverEnabled: true
+
+                                                onClicked: modelData.action()
+                                            }
+                                        }
+                                    }
+                                }
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
+                                    elide: Text.ElideRight
+                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
+                                    text: root._clusterLastResultText()
                                 }
                             }
                         }
@@ -7605,7 +8564,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     color: "#5FB5FF"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.46
-                                    text: trafficViewPanel.trafficCount > 0 ? qsTr("%1 LIVE").arg(trafficViewPanel.trafficCount) : qsTr("LIVE")
+                                    text: trafficViewPanel.trafficCount > 0 ? qsTr("实时 %1").arg(trafficViewPanel.trafficCount) : qsTr("实时")
                                 }
                             }
 
@@ -7694,7 +8653,7 @@ Item {
                                 color: "#9CA3AF"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.64
                                 horizontalAlignment: Text.AlignHCenter
-                                text: trafficViewPanel.trafficCount === 0 ? qsTr("Waiting for live traffic data") : qsTr("Traffic detected. Waiting for vehicle position")
+                                text: trafficViewPanel.trafficCount === 0 ? qsTr("等待实时交通数据") : qsTr("已检测到交通目标，等待飞行器位置")
                                 visible: trafficViewPanel.trafficCount === 0 || !trafficViewPanel._referenceCoordinate
                                 width: trafficViewPanel.width * 0.68
                                 wrapMode: Text.WordWrap

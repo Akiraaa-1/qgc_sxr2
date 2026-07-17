@@ -98,6 +98,7 @@ class SectionDef:
     controls: list[ControlDef] = field(default_factory=list)
     component: str = ""        # escape hatch: hand-written QML component name
     showWhen: str = ""
+    compact: bool = False      # true: keep generated two-column card at content height
     repeat: RepeatDef | None = None  # repeat for indexed params
     keywords: list[str] = field(default_factory=list)  # extra search terms for section filtering
 
@@ -203,6 +204,7 @@ def load_page_def(json_path: Path) -> PageDef:
             controls=controls,
             component=sec_data.get("component", ""),
             showWhen=sec_data.get("showWhen", ""),
+            compact=sec_data.get("compact", False),
             repeat=repeat_def,
             keywords=sec_data.get("keywords", []),
         ))
@@ -807,7 +809,12 @@ def _qml_generated_section(
         lines.append(f'{ind}    Layout.columnSpan: sectionNameFilter === "" ? 1 : 2')
         lines.append(f'{ind}    Layout.preferredWidth: sectionNameFilter === "" ? _twoColumnSectionWidth : _singleColumnSectionWidth')
         lines.append(f'{ind}    Layout.alignment: Qt.AlignTop | Qt.AlignHCenter')
-        lines.append(f'{ind}    Layout.preferredHeight: visible ? implicitHeight : 0')
+        if sec.compact:
+            lines.append(f'{ind}    Layout.preferredHeight: visible ? implicitHeight : 0')
+            lines.append(f'{ind}    Layout.fillHeight: false')
+        else:
+            lines.append(f'{ind}    Layout.preferredHeight: visible ? (sectionNameFilter === "" ? Math.max(_twoColumnSectionHeight, implicitHeight) : implicitHeight) : 0')
+            lines.append(f'{ind}    Layout.fillHeight: sectionNameFilter === ""')
         lines.append(f'{ind}    Layout.minimumHeight: 0')
     lines.append(f'{ind}    visible: {show_vis}')
     lines.append(f'{ind}    heading: {qml_tr(sec.title, tr_context)}')
@@ -1302,10 +1309,11 @@ def generate_config_page_qml(page: PageDef) -> str:
         lines.append("            }")
         lines.append("")
     if two_column_layout:
-        lines.append("            property real _sectionSpacingX: _margins * 0.9")
-        lines.append("            property real _sectionSpacingY: _margins * 1.25")
+        lines.append("            property real _sectionSpacingX: _margins * 0.55")
+        lines.append("            property real _sectionSpacingY: _margins * 0.55")
         lines.append("            property real _singleColumnSectionWidth: Math.min(parent.width - (_margins * 2), ScreenTools.defaultFontPixelWidth * 86)")
         lines.append("            property real _twoColumnSectionWidth: Math.max(ScreenTools.defaultFontPixelWidth * 36, Math.min(ScreenTools.defaultFontPixelWidth * 62, (parent.width - (_margins * 2) - _sectionSpacingX) / 2))")
+        lines.append("            property real _twoColumnSectionHeight: ScreenTools.defaultFontPixelHeight * 13.6")
         lines.append("            property real _safetyGridWidth: (_twoColumnSectionWidth * 2) + _sectionSpacingX")
         lines.append("            property real _safetyContentWidth: sectionNameFilter === \"\" ? _safetyGridWidth : _singleColumnSectionWidth")
     elif wide_single_column_layout:

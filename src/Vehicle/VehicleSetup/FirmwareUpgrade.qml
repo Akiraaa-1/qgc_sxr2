@@ -28,6 +28,9 @@ SetupPage {
             readonly property real _outerMargin:       ScreenTools.defaultFontPixelHeight
             readonly property real _panelPadding:      ScreenTools.defaultFontPixelHeight * 1.1
             readonly property real _sectionSpacing:    ScreenTools.defaultFontPixelHeight * 0.8
+            readonly property real _cardInnerMargin:   ScreenTools.defaultFontPixelHeight * 0.55
+            readonly property real _pairedCardHeight:  Math.max(ScreenTools.defaultFontPixelHeight * 14.4, recommendationColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.1), checksColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.1))
+            readonly property real _versionTileHeight: ScreenTools.defaultFontPixelHeight * 3.05
             readonly property real _contentMinWidth:   ScreenTools.defaultFontPixelWidth * 36
             readonly property real _contentMaxWidth:   ScreenTools.defaultFontPixelWidth * 86
             readonly property real _availableWidth:    Math.max(ScreenTools.defaultFontPixelWidth * 34, firmwarePage.availableWidth - (_outerMargin * 2))
@@ -596,7 +599,7 @@ SetupPage {
                     ColumnLayout {
                         id: headerColumn
                         anchors.fill: parent
-                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                        anchors.margins: firmwareContent._cardInnerMargin
                         spacing: ScreenTools.defaultFontPixelHeight * 0.3
 
                         QGCLabel {
@@ -627,7 +630,7 @@ SetupPage {
                     ColumnLayout {
                         id: versionCardColumn
                         anchors.fill: parent
-                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                        anchors.margins: firmwareContent._cardInnerMargin
                         spacing: firmwareContent._infoSpacing
 
                         QGCLabel {
@@ -640,7 +643,7 @@ SetupPage {
 
                         GridLayout {
                             Layout.fillWidth: true
-                            columns: width >= ScreenTools.defaultFontPixelWidth * 62 ? 3 : 2
+                            columns: 3
                             rowSpacing: ScreenTools.defaultFontPixelHeight * 0.45
                             columnSpacing: ScreenTools.defaultFontPixelWidth * 0.6
 
@@ -651,7 +654,7 @@ SetupPage {
                                     required property var modelData
 
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: versionItemColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.7)
+                                    Layout.preferredHeight: firmwareContent._versionTileHeight
                                     radius: popupStyle.cornerRadius
                                     color: popupStyle.inputBackground
                                     border.color: popupStyle.borderColor
@@ -672,6 +675,8 @@ SetupPage {
 
                                         QGCLabel {
                                             Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 2
                                             wrapMode: Text.WordWrap
                                             text: modelData.value
                                             color: popupStyle.primaryTextColor
@@ -690,7 +695,7 @@ SetupPage {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignTop
-                        Layout.preferredHeight: recommendationColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.9)
+                        Layout.preferredHeight: firmwareContent._pairedCardHeight
                         radius: popupStyle.cornerRadius
                         color: popupStyle.panelBackground
                         border.color: popupStyle.borderColor
@@ -699,7 +704,7 @@ SetupPage {
                         ColumnLayout {
                             id: recommendationColumn
                             anchors.fill: parent
-                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                            anchors.margins: firmwareContent._cardInnerMargin
                             spacing: firmwareContent._infoSpacing
 
                             QGCLabel {
@@ -742,7 +747,7 @@ SetupPage {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignTop
-                        Layout.preferredHeight: checksColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.9)
+                        Layout.preferredHeight: firmwareContent._pairedCardHeight
                         radius: popupStyle.cornerRadius
                         color: popupStyle.panelBackground
                         border.color: popupStyle.borderColor
@@ -751,7 +756,7 @@ SetupPage {
                         ColumnLayout {
                             id: checksColumn
                             anchors.fill: parent
-                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                            anchors.margins: firmwareContent._cardInnerMargin
                             spacing: firmwareContent._infoSpacing
 
                             QGCLabel {
@@ -817,7 +822,7 @@ SetupPage {
                     ColumnLayout {
                         id: actionColumn
                         anchors.fill: parent
-                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                        anchors.margins: firmwareContent._cardInnerMargin
                         spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
                         RowLayout {

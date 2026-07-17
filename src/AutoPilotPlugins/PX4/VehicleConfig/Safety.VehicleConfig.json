@@ -93,6 +93,7 @@
         },
         {
             "title": "RC/Joystick Loss Failsafe",
+            "compact": true,
             "keywords": [
                 "radio",
                 "receiver",
@@ -116,6 +117,7 @@
         },
         {
             "title": "Data Link Loss Failsafe",
+            "compact": true,
             "keywords": [
                 "telemetry",
                 "link loss",
@@ -226,6 +228,7 @@
         },
         {
             "title": "Land Mode Settings",
+            "compact": true,
             "keywords": [
                 "landing",
                 "descent",

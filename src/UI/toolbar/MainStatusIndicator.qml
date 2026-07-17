@@ -23,6 +23,15 @@ RowLayout {
         mainWindow.showIndicatorDrawer(overallStatusComponent, control)
     }
 
+    function translatedHealthText(text) {
+        let translated = (text || "").toString()
+        translated = translated.replace(/No manual control input/gi, qsTr("没有手动控制输入"))
+        translated = translated.replace(/Connect and enable stick input or use autonomous mode\./gi, qsTr("连接并启用摇杆输入，或使用自主模式。"))
+        translated = translated.replace(/Sticks can be enabled via\s*(<a[^>]*>)?COM_RC_IN_MODE(<\/a>)?\s*parameter\./gi, qsTr("可通过 COM_RC_IN_MODE 参数启用摇杆输入。"))
+        translated = translated.replace(/Switching to mode 'Position control' is currently not possible/gi, qsTr("当前无法切换到“位置控制”模式"))
+        return translated
+    }
+
     QGCPalette { id: qgcPal }
 
     QGCLabel {
@@ -298,7 +307,7 @@ RowLayout {
 
                         QGCLabel {
                             id:           message
-                            text:         object.message
+                            text:         control.translatedHealthText(object.message)
                             textFormat:   TextEdit.RichText
                             color:        object.severity == 'error' ? qgcPal.colorRed : object.severity == 'warning' ? qgcPal.colorOrange : qgcPal.text
                             MouseArea {
@@ -327,7 +336,7 @@ RowLayout {
 
                     QGCLabel {
                         id:                 description
-                        text:               object.description
+                        text:               control.translatedHealthText(object.description)
                         textFormat:         TextEdit.RichText
                         clip:               true
                         visible:            object.expanded

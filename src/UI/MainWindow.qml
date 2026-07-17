@@ -1998,6 +1998,29 @@ ApplicationWindow {
                             })
                     }
 
+                    function _formatVehicleAlertMessage(message) {
+                        const messageText = message && message.text !== undefined ? message.text : message
+                        const messageLevel = message && message.level !== undefined ? Number(message.level) : 0
+                        let text = (messageText || "").toString()
+                        text = text.replace(/&/g, "&amp;")
+                        text = text.replace(/</g, "&lt;")
+                        text = text.replace(/>/g, "&gt;")
+                        const criticalText = /\b(Emergency|Alert|Critical|Error)\b/i.test(messageText || "")
+                        const warningText = /\bWarning\b/i.test(messageText || "")
+                        if (messageLevel >= 3 || criticalText) {
+                            if (!criticalText) {
+                                text = qsTr("错误：") + text
+                            }
+                            text = "<span style=\"color:#FF5A5F; font-weight:600\">" + text + "</span>"
+                        } else if (messageLevel === 2 || warningText) {
+                            if (!warningText) {
+                                text = qsTr("警告：") + text
+                            }
+                            text = "<span style=\"color:#FF5A5F; font-weight:600\">" + text + "</span>"
+                        }
+                        return text
+                    }
+
                     PlanMasterController {
                         id: fallbackPlanController
                         flyView: true
@@ -2045,75 +2068,131 @@ ApplicationWindow {
                     }
 
                     Rectangle {
-                        id: fallbackVehicleAlertBanner
-                        anchors.top: parent.top
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.topMargin: fallbackFlyMapHost._margin * 1.55
-                        width: Math.min(
-                            ScreenTools.defaultFontPixelWidth * 34,
-                            Math.max(ScreenTools.defaultFontPixelWidth * 18, parent.width - (fallbackFlyMapHost._margin * 5))
+                        id: fallbackVehicleAlertStack
+                        anchors.top: fallbackVideoOverlay.bottom
+                        anchors.right: parent.right
+                        anchors.topMargin: fallbackFlyMapHost._margin * 0.85
+                        anchors.rightMargin: fallbackFlyMapHost._margin
+                        width: fallbackVideoOverlay.width
+                        height: Math.min(
+                            ScreenTools.defaultFontPixelHeight * 7.4,
+                            alertStackColumn.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.72)
                         )
-                        height: ScreenTools.defaultFontPixelHeight * 1.55
                         visible: fallbackFlyMapHost.visible &&
                                  !!flyPageContent &&
-                                 flyPageContent._vehicleAlertLevel() > 0
-                        color: flyPageContent && flyPageContent._vehicleAlertLevel() >= 3
-                               ? Qt.rgba(0.45, 0.08, 0.08, 0.72)
-                               : (flyPageContent && flyPageContent._vehicleAlertLevel() >= 2
-                                  ? Qt.rgba(0.42, 0.30, 0.06, 0.68)
-                                  : Qt.rgba(0.06, 0.07, 0.08, 0.64))
-                        border.color: Qt.rgba(1, 1, 1, 0.12)
+                                 flyPageContent._vehicleAlertLevel() > 0 &&
+                                 flyPageContent._vehicleAlertMessagesForDisplay().length > 0
+                        color: flyPageContent &&
+                               flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
+                               !flyPageContent._vehicleAlertUrgentAcknowledged
+                               ? Qt.rgba(0.46, 0.05, 0.06, 0.48)
+                               : Qt.rgba(0.08, 0.09, 0.10, 0.38)
+                        border.color: flyPageContent &&
+                                      flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
+                                      !flyPageContent._vehicleAlertUrgentAcknowledged
+                                      ? Qt.rgba(1.0, 0.26, 0.28, 0.38)
+                                      : Qt.rgba(1, 1, 1, 0.08)
                         border.width: 1
-                        opacity: 1.0
                         radius: ScreenTools.defaultFontPixelHeight * 0.18
+                        clip: true
                         z: QGroundControl.zOrderWidgets + 30
+
+                        SequentialAnimation on opacity {
+                            running: fallbackVehicleAlertStack.visible &&
+                                     !!flyPageContent &&
+                                     flyPageContent._vehicleAlertFlashActive
+                            loops: Animation.Infinite
+
+                            NumberAnimation {
+                                from: 1.0
+                                to: 0.72
+                                duration: 520
+                                easing.type: Easing.InOutQuad
+                            }
+
+                            NumberAnimation {
+                                from: 0.72
+                                to: 1.0
+                                duration: 520
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+
+                        onVisibleChanged: {
+                            if (!visible) {
+                                opacity = 1.0
+                                if (flyPageContent) {
+                                    flyPageContent._acknowledgeVehicleAlertMessages()
+                                }
+                            }
+                        }
 
                         Rectangle {
                             anchors.left: parent.left
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
-                            width: ScreenTools.defaultFontPixelWidth * 0.22
-                            radius: fallbackVehicleAlertBanner.radius
-                            color: flyPageContent ? flyPageContent._vehicleAlertAccentColor() : "transparent"
-                            opacity: 0.85
+                            width: ScreenTools.defaultFontPixelWidth * 0.2
+                            radius: parent.radius
+                            color: Qt.rgba(1, 1, 1, 0.42)
+                            opacity: 0.72
                         }
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.72
-                            anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.62
-                            spacing: ScreenTools.defaultFontPixelWidth * 0.45
+                        Flickable {
+                            id: alertStackFlickable
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.75
+                            anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.68
+                            anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.34
+                            anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.34
+                            clip: true
+                            contentWidth: width
+                            contentHeight: alertStackColumn.implicitHeight
+                            interactive: contentHeight > height
 
-                            QGCColoredImage {
-                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.78
-                                Layout.preferredHeight: Layout.preferredWidth
-                                source: "/res/VehicleMessages.png"
-                                sourceSize.width: width
-                                fillMode: Image.PreserveAspectFit
-                                color: flyPageContent ? flyPageContent._vehicleAlertAccentColor() : "#FFFFFF"
-                                opacity: 0.9
-                            }
+                            Column {
+                                id: alertStackColumn
+                                width: alertStackFlickable.width
+                                spacing: ScreenTools.defaultFontPixelHeight * 0.22
 
-                            QGCLabel {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                color: Qt.rgba(1, 1, 1, 0.92)
-                                text: flyPageContent ? flyPageContent._vehicleAlertText() : ""
-                                elide: Text.ElideRight
-                                maximumLineCount: 1
-                                verticalAlignment: Text.AlignVCenter
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
-                                font.weight: flyPageContent && flyPageContent._vehicleAlertLevel() >= 2 ? Font.DemiBold : Font.Normal
-                            }
+                                Repeater {
+                                    model: flyPageContent ? flyPageContent._vehicleAlertMessagesForDisplay(6) : []
 
-                            QGCLabel {
-                                color: Qt.rgba(1, 1, 1, 0.62)
-                                text: globals.activeVehicle && globals.activeVehicle.messageCount > 1
-                                      ? qsTr("%1").arg(globals.activeVehicle.messageCount)
-                                      : ""
-                                visible: globals.activeVehicle && globals.activeVehicle.messageCount > 1
-                                verticalAlignment: Text.AlignVCenter
-                                font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                    delegate: RowLayout {
+                                        required property var modelData
+
+                                        width: alertStackColumn.width
+                                        spacing: ScreenTools.defaultFontPixelWidth * 0.42
+
+                                        QGCColoredImage {
+                                            Layout.alignment: Qt.AlignTop
+                                            Layout.topMargin: ScreenTools.defaultFontPixelHeight * 0.1
+                                            Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.62
+                                            Layout.preferredHeight: Layout.preferredWidth
+                                            source: "/res/VehicleMessages.png"
+                                            sourceSize.width: width
+                                            fillMode: Image.PreserveAspectFit
+                                            color: Qt.rgba(1, 1, 1, 0.78)
+                                            opacity: 0.82
+                                        }
+
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            color: Qt.rgba(1, 1, 1, 0.9)
+                                            text: fallbackFlyMapHost._formatVehicleAlertMessage(modelData)
+                                            textFormat: Text.RichText
+                                            maximumLineCount: 2
+                                            wrapMode: Text.WordWrap
+                                            verticalAlignment: Text.AlignVCenter
+                                            lineHeight: 0.95
+                                            lineHeightMode: Text.ProportionalHeight
+                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
+                                            font.weight: flyPageContent && flyPageContent._vehicleAlertLevel() >= 2 ? Font.DemiBold : Font.Normal
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -2123,7 +2202,8 @@ ApplicationWindow {
 
                             onClicked: {
                                 if (flyPageContent) {
-                                    flyPageContent._openVehicleMessages(fallbackVehicleAlertBanner)
+                                    flyPageContent._acknowledgeVehicleAlertMessages()
+                                    flyPageContent._openVehicleMessages(fallbackVehicleAlertStack)
                                 }
                             }
                         }
@@ -2489,7 +2569,7 @@ ApplicationWindow {
                                 color: "#E8E8E8"
                                 font.weight: Font.DemiBold
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
-                                text: qsTr("TRAFFIC VIEW")
+                                text: qsTr("交通视图")
                             }
 
                             QGCLabel {
@@ -2499,8 +2579,8 @@ ApplicationWindow {
                                 color: "#5FB5FF"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
                                 text: fallbackTrafficViewPanel.trafficCount > 0
-                                    ? qsTr("%1 LIVE").arg(fallbackTrafficViewPanel.trafficCount)
-                                    : qsTr("LIVE")
+                                    ? qsTr("实时 %1").arg(fallbackTrafficViewPanel.trafficCount)
+                                    : qsTr("实时")
                             }
                         }
 
@@ -2580,7 +2660,7 @@ ApplicationWindow {
                             anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                             color: "#7C8794"
                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.46
-                            text: qsTr("Range %1 km").arg((fallbackTrafficViewPanel.displayRangeMeters / 1000).toFixed(1))
+                            text: qsTr("范围 %1 km").arg((fallbackTrafficViewPanel.displayRangeMeters / 1000).toFixed(1))
                         }
 
                         QGCLabel {
@@ -2593,8 +2673,8 @@ ApplicationWindow {
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.WordWrap
                             text: fallbackTrafficViewPanel.trafficCount === 0
-                                ? qsTr("Waiting for live traffic data")
-                                : qsTr("Traffic detected. Waiting for vehicle position")
+                                ? qsTr("等待实时交通数据")
+                                : qsTr("已检测到交通目标，等待飞行器位置")
                         }
                     }
 

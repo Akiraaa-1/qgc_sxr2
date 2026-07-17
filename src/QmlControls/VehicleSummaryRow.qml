@@ -8,7 +8,7 @@ import QGroundControl.Controls
 RowLayout {
     id: root
     Layout.fillWidth: true
-    spacing: ScreenTools.defaultFontPixelWidth * 2.4
+    spacing: ScreenTools.defaultFontPixelWidth * 1.0
 
     property string labelText: "Label"
     property string valueText: "value"
@@ -19,8 +19,8 @@ RowLayout {
     property real   valuePointSize: ScreenTools.defaultFontPointSize * 1.02
     property real labelColumnMinWidth: ScreenTools.defaultFontPixelWidth * 10
     property real valueColumnMinWidth: ScreenTools.defaultFontPixelWidth * 10
-    property real valueColumnMaxWidth: ScreenTools.defaultFontPixelWidth * 30
-    readonly property real _valueColumnWidthCap: Math.min(valueColumnMaxWidth, width * 0.40)
+    property real valueColumnMaxWidth: ScreenTools.defaultFontPixelWidth * 34
+    readonly property real _valueColumnWidthCap: Math.min(valueColumnMaxWidth, width * 0.48)
 
     function _displayText(text) {
         if (text === undefined || text === null) {
@@ -89,7 +89,7 @@ RowLayout {
         Layout.fillWidth: true
         Layout.minimumWidth: root.labelColumnMinWidth
         text: root._displayText(root.labelText)
-        elide: Text.ElideNone
+        elide: Text.ElideRight
         clip: true
         horizontalAlignment: Text.AlignLeft
         verticalAlignment: Text.AlignVCenter
@@ -103,7 +103,7 @@ RowLayout {
         Layout.alignment: Qt.AlignRight
         text: root._displayText(root.valueText)
         color: root.valueColor !== "" ? root.valueColor : root.defaultValueColor
-        elide: Text.ElideNone
+        elide: Text.ElideRight
         clip: true
         horizontalAlignment: Text.AlignRight
         verticalAlignment: Text.AlignVCenter
