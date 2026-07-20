@@ -69,6 +69,8 @@ Item {
     property bool   _boardOrientationChangeAllowed:     !_sensorsHaveFixedOrientation && setOrientationsDialogShowBoardOrientation
     property bool   _compassOrientationChangeAllowed:   !_sensorsHaveFixedOrientation
     property int    _arbitrarilyLargeMaxMagIndex:       50
+    property string _selectedCalibrationType:            "accel"
+    property var    _activeVehicle:                      QGroundControl.multiVehicleManager.activeVehicle
 
     function currentMagParamCount() {
         if (_allMagsDisabled) {
@@ -161,6 +163,10 @@ Item {
     }
 
     Component.onDestruction: globals.navigationBlockedReason = ""
+
+    Component.onCompleted: _applySectionFilterSelection()
+
+    onSectionNameFilterChanged: _applySectionFilterSelection()
 
     QGCPopupDialogFactory {
         id: waitForCancelDialogFactory
@@ -535,6 +541,441 @@ Item {
         preCalibrationDialogFactory.open({ title: title })
     }
 
+    function _factNumber(fact) {
+        if (!fact) {
+            return NaN
+        }
+        const value = Number(fact.rawValue)
+        return isNaN(value) ? Number(fact.value) : value
+    }
+
+    function _formatTelemetryValue(fact, decimals, suffix) {
+        const value = _factNumber(fact)
+        if (isNaN(value)) {
+            return "--"
+        }
+        return value.toFixed(decimals) + (suffix || "")
+    }
+
+    function _factNumberOrZero(fact) {
+        const value = _factNumber(fact)
+        return isNaN(value) ? 0 : value
+    }
+
+    function _telemetryHealthText() {
+        return _activeVehicle ? qsTr("数据通信正常") : qsTr("等待飞控连接")
+    }
+
+    function _selectCalibrationPage(type) {
+        _selectedCalibrationType = type
+    }
+
+    function _applySectionFilterSelection() {
+        if (_sectionMatches(sectionNameFilter, "Compass") || _sectionMatches(sectionNameFilter, "磁力计")) {
+            _selectedCalibrationType = "compass"
+        } else if (_sectionMatches(sectionNameFilter, "Gyroscope") || _sectionMatches(sectionNameFilter, "陀螺仪")) {
+            _selectedCalibrationType = "gyro"
+        } else if (_sectionMatches(sectionNameFilter, "Accelerometer") || _sectionMatches(sectionNameFilter, "加速度计")) {
+            _selectedCalibrationType = "accel"
+        } else if (_sectionMatches(sectionNameFilter, "Level Horizon") || _sectionMatches(sectionNameFilter, "地平线")) {
+            _selectedCalibrationType = "level"
+        } else if (_sectionMatches(sectionNameFilter, "Airspeed") || _sectionMatches(sectionNameFilter, "空速")) {
+            _selectedCalibrationType = "airspeed"
+        }
+    }
+
+    function _calibrationVisible(type) {
+        if (type === "compass") return sectionVisible(qsTr("磁力计"))
+        if (type === "gyro") return sectionVisible(qsTr("陀螺仪"))
+        if (type === "accel") return sectionVisible(qsTr("加速度计"))
+        if (type === "level") return sectionVisible(qsTr("地平线"))
+        if (type === "airspeed") return sectionVisible(qsTr("空速"))
+        return false
+    }
+
+    function _calibrationReady(type) {
+        if (type === "compass") return !_allMagsDisabled
+        if (type === "gyro") return cal_gyro0_id.value !== 0
+        if (type === "accel") return cal_acc0_id.value !== 0
+        if (type === "level") return cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
+        if (type === "airspeed") return vehicleComponent.airspeedCalSupported
+        return false
+    }
+
+    function _calibrationStateText(type) {
+        if (!_calibrationReady(type)) {
+            return qsTr("不可用")
+        }
+        if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
+            return qsTr("需校准")
+        }
+        return qsTr("可校准")
+    }
+
+    function _calibrationAccent(type) {
+        if (!_calibrationReady(type)) {
+            return "#FF5A5F"
+        }
+        if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
+            return "#F59E0B"
+        }
+        return "#22C55E"
+    }
+
+    function _calibrationTitleForType(type) {
+        if (type === "compass") return qsTr("磁力计校准")
+        if (type === "gyro") return qsTr("陀螺仪校准")
+        if (type === "accel") return qsTr("加速度计校准")
+        if (type === "level") return qsTr("地平线校准")
+        if (type === "airspeed") return qsTr("空速校准")
+        return qsTr("传感器校准")
+    }
+
+    function _calibrationHelpForType(type) {
+        if (type === "compass") return compassHelp
+        if (type === "gyro") return gyroHelp
+        if (type === "accel") return accelHelp
+        if (type === "level") return levelHelp
+        if (type === "airspeed") return airspeedHelp
+        return statusTextAreaDefaultText
+    }
+
+    function _calibrationActionTitle(type) {
+        if (type === "compass") return qsTr("开始磁力计校准")
+        if (type === "gyro") return qsTr("开始陀螺仪校准")
+        if (type === "accel") return qsTr("开始加速度计校准")
+        if (type === "level") return qsTr("开始地平线校准")
+        if (type === "airspeed") return qsTr("开始空速校准")
+        return qsTr("开始校准")
+    }
+
+    function _calibrationSteps(type) {
+        if (type === "accel") {
+            return [
+                qsTr("水平放置"),
+                qsTr("倒置"),
+                qsTr("机头朝下"),
+                qsTr("机头朝上"),
+                qsTr("左侧朝下"),
+                qsTr("右侧朝下")
+            ]
+        }
+        if (type === "compass") {
+            return [
+                qsTr("水平放置"),
+                qsTr("倒置"),
+                qsTr("机头向下"),
+                qsTr("机头向上"),
+                qsTr("左侧朝下"),
+                qsTr("右侧朝下")
+            ]
+        }
+        if (type === "gyro") {
+            return [
+                qsTr("静止放置"),
+                qsTr("采集零偏"),
+                qsTr("完成确认")
+            ]
+        }
+        if (type === "level") {
+            return [
+                qsTr("水平放置"),
+                qsTr("保持静止"),
+                qsTr("完成校平")
+            ]
+        }
+        if (type === "airspeed") {
+            return [
+                qsTr("避开气流"),
+                qsTr("采集零点"),
+                qsTr("吹气验证")
+            ]
+        }
+        return []
+    }
+
+    function _selectedCalibrationStepText() {
+        const steps = _calibrationSteps(_selectedCalibrationType)
+        return steps.length > 0 ? steps[0] : qsTr("准备校准")
+    }
+
+    function _calibrationPreviewImage(type) {
+        if (type === "gyro" || type === "level") return "qrc:///qmlimages/VehicleDown.png"
+        if (type === "airspeed") return "qrc:///qmlimages/VehicleNoseDown.png"
+        if (type === "compass") return "qrc:///qmlimages/VehicleLeftRotate.png"
+        return "qrc:///qmlimages/VehicleLeft.png"
+    }
+
+    function _calibrationStepImage(type, stepIndex) {
+        if (type === "accel" || type === "compass") {
+            const images = [
+                "qrc:///qmlimages/VehicleDown.png",
+                "qrc:///qmlimages/VehicleUpsideDown.png",
+                "qrc:///qmlimages/VehicleNoseDown.png",
+                "qrc:///qmlimages/VehicleTailDown.png",
+                "qrc:///qmlimages/VehicleLeft.png",
+                "qrc:///qmlimages/VehicleRight.png"
+            ]
+            return images[Math.max(0, Math.min(stepIndex, images.length - 1))]
+        }
+        return _calibrationPreviewImage(type)
+    }
+
+    function _orientationCalStepState(index) {
+        const states = [
+            {
+                text: qsTr("水平放置"),
+                visible: controller.orientationCalDownSideVisible,
+                done: controller.orientationCalDownSideDone,
+                inProgress: controller.orientationCalDownSideInProgress,
+                rotate: controller.orientationCalDownSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleDown.png",
+                rotateImage: "qrc:///qmlimages/VehicleDownRotate.png"
+            },
+            {
+                text: qsTr("倒置"),
+                visible: controller.orientationCalUpsideDownSideVisible,
+                done: controller.orientationCalUpsideDownSideDone,
+                inProgress: controller.orientationCalUpsideDownSideInProgress,
+                rotate: controller.orientationCalUpsideDownSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleUpsideDown.png",
+                rotateImage: "qrc:///qmlimages/VehicleUpsideDownRotate.png"
+            },
+            {
+                text: qsTr("机头朝下"),
+                visible: controller.orientationCalNoseDownSideVisible,
+                done: controller.orientationCalNoseDownSideDone,
+                inProgress: controller.orientationCalNoseDownSideInProgress,
+                rotate: controller.orientationCalNoseDownSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleNoseDown.png",
+                rotateImage: "qrc:///qmlimages/VehicleNoseDownRotate.png"
+            },
+            {
+                text: qsTr("机头朝上"),
+                visible: controller.orientationCalTailDownSideVisible,
+                done: controller.orientationCalTailDownSideDone,
+                inProgress: controller.orientationCalTailDownSideInProgress,
+                rotate: controller.orientationCalTailDownSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleTailDown.png",
+                rotateImage: "qrc:///qmlimages/VehicleTailDownRotate.png"
+            },
+            {
+                text: qsTr("左侧朝下"),
+                visible: controller.orientationCalLeftSideVisible,
+                done: controller.orientationCalLeftSideDone,
+                inProgress: controller.orientationCalLeftSideInProgress,
+                rotate: controller.orientationCalLeftSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleLeft.png",
+                rotateImage: "qrc:///qmlimages/VehicleLeftRotate.png"
+            },
+            {
+                text: qsTr("右侧朝下"),
+                visible: controller.orientationCalRightSideVisible,
+                done: controller.orientationCalRightSideDone,
+                inProgress: controller.orientationCalRightSideInProgress,
+                rotate: controller.orientationCalRightSideRotate,
+                stillImage: "qrc:///qmlimages/VehicleRight.png",
+                rotateImage: "qrc:///qmlimages/VehicleRightRotate.png"
+            }
+        ]
+        return states[Math.max(0, Math.min(index, states.length - 1))]
+    }
+
+    function _orientationCalVisibleSteps() {
+        const visibleSteps = []
+        for (let i = 0; i < 6; i++) {
+            const state = _orientationCalStepState(i)
+            if (state.visible) {
+                state.rawIndex = i
+                visibleSteps.push(state)
+            }
+        }
+        return visibleSteps
+    }
+
+    function _displaySteps() {
+        if (controller.calibrationActive && controller.showOrientationCalArea) {
+            const visibleSteps = _orientationCalVisibleSteps()
+            return visibleSteps.length > 0 ? visibleSteps : _calibrationSteps(_selectedCalibrationType)
+        }
+        return _calibrationSteps(_selectedCalibrationType)
+    }
+
+    function _activeOrientationRawIndex() {
+        if (!controller.calibrationActive || !controller.showOrientationCalArea) {
+            return 0
+        }
+        for (let i = 0; i < 6; i++) {
+            const state = _orientationCalStepState(i)
+            if (state.visible && state.inProgress) {
+                return i
+            }
+        }
+        for (let j = 0; j < 6; j++) {
+            const orderedState = _orientationCalStepState(j)
+            if (orderedState.visible && !orderedState.done) {
+                return j
+            }
+        }
+        const visibleSteps = _orientationCalVisibleSteps()
+        if (visibleSteps.length > 0) {
+            return visibleSteps[visibleSteps.length - 1].rawIndex
+        }
+        return 0
+    }
+
+    function _completedOrientationCount() {
+        let completeCount = 0
+        for (let i = 0; i < 6; i++) {
+            const state = _orientationCalStepState(i)
+            if (state.visible && state.done) {
+                completeCount++
+            }
+        }
+        return completeCount
+    }
+
+    function _activeOrientationStepIndex() {
+        const rawIndex = _activeOrientationRawIndex()
+        const visibleSteps = _orientationCalVisibleSteps()
+        for (let i = 0; i < visibleSteps.length; i++) {
+            if (visibleSteps[i].rawIndex === rawIndex) {
+                return i
+            }
+        }
+        return 0
+    }
+
+    function _orientationHasActiveDetection() {
+        if (!controller.calibrationActive || !controller.showOrientationCalArea) {
+            return false
+        }
+        for (let i = 0; i < 6; i++) {
+            const state = _orientationCalStepState(i)
+            if (state.visible && state.inProgress) {
+                return true
+            }
+        }
+        return false
+    }
+
+    function _displayStepCount() {
+        return _displaySteps().length
+    }
+
+    function _displayStepIndex() {
+        return controller.calibrationActive && controller.showOrientationCalArea ? _activeOrientationStepIndex() : 0
+    }
+
+    function _displayStepImage() {
+        if (controller.calibrationActive && controller.showOrientationCalArea) {
+            const state = _orientationCalStepState(_activeOrientationRawIndex())
+            if (!_orientationHasActiveDetection()) {
+                return state.stillImage
+            }
+            return state.rotate ? state.rotateImage : state.stillImage
+        }
+        return _calibrationStepImage(_selectedCalibrationType, 0)
+    }
+
+    function _displayStepText() {
+        const steps = _displaySteps()
+        const step = steps[Math.max(0, Math.min(_displayStepIndex(), steps.length - 1))]
+        return step && step.text !== undefined ? step.text : step
+    }
+
+    function _orientationInstructionText(index, rotate) {
+        const instructions = [
+            rotate ? qsTr("按箭头方向水平顺时针旋转") : qsTr("水平放置并保持静止"),
+            rotate ? qsTr("按箭头方向倒置逆时针旋转") : qsTr("倒置放置并保持静止"),
+            rotate ? qsTr("机头朝下，按箭头方向俯仰旋转") : qsTr("机头朝下并保持静止"),
+            rotate ? qsTr("机头朝上，按箭头方向俯仰旋转") : qsTr("机头朝上并保持静止"),
+            rotate ? qsTr("左侧朝下，按箭头方向滚转") : qsTr("左侧朝下并保持静止"),
+            rotate ? qsTr("右侧朝下，按箭头方向滚转") : qsTr("右侧朝下并保持静止")
+        ]
+        return instructions[Math.max(0, Math.min(index, instructions.length - 1))]
+    }
+
+    function _rotationGuideText() {
+        const guideText = [
+            qsTr("顺时针"),
+            qsTr("逆时针"),
+            qsTr("向前俯仰"),
+            qsTr("向后俯仰"),
+            qsTr("向左滚转"),
+            qsTr("向右滚转")
+        ]
+        return guideText[Math.max(0, Math.min(_activeOrientationRawIndex(), guideText.length - 1))]
+    }
+
+    function _showRotationGuide() {
+        return controller.calibrationActive &&
+                controller.showOrientationCalArea &&
+                _orientationCalStepState(_activeOrientationRawIndex()).rotate
+    }
+
+    function _displayProgressValue() {
+        if (controller.calibrationActive) {
+            return Math.max(0.03, Math.min(1.0, progressBar.value))
+        }
+        return 1.0 / Math.max(_displayStepCount(), 1)
+    }
+
+    function _latestStatusLine() {
+        const text = statusTextArea.text === undefined || statusTextArea.text === null ? "" : ("" + statusTextArea.text).trim()
+        if (text === "" || text === statusTextAreaDefaultText) {
+            if (controller.calibrationActive && controller.showOrientationCalArea) {
+                if (!_orientationHasActiveDetection()) {
+                    return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+                }
+                const state = _orientationCalStepState(_activeOrientationRawIndex())
+                return _orientationInstructionText(_activeOrientationRawIndex(), state.rotate)
+            }
+            return controller.calibrationActive ? qsTr("正在校准...") : (_activeVehicle ? qsTr("已检测到飞控数据，等待开始校准。") : qsTr("正在等待飞控数据..."))
+        }
+        if (controller.calibrationActive && controller.showOrientationCalArea) {
+            if (!_orientationHasActiveDetection()) {
+                return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+            }
+            const activeState = _orientationCalStepState(_activeOrientationRawIndex())
+            return _orientationInstructionText(_activeOrientationRawIndex(), activeState.rotate)
+        }
+        const lines = text.split(/\r?\n/)
+        return lines[Math.max(0, lines.length - 1)]
+    }
+
+    function _shortCalibrationStateText() {
+        if (!controller.calibrationActive) {
+            return qsTr("等待开始")
+        }
+        if (controller.showOrientationCalArea) {
+            if (!_orientationHasActiveDetection()) {
+                return qsTr("等待识别")
+            }
+            const state = _orientationCalStepState(_activeOrientationRawIndex())
+            if (state.done) {
+                return qsTr("已完成")
+            }
+            if (state.rotate) {
+                return _rotationGuideText()
+            }
+            if (state.inProgress) {
+                return qsTr("保持静止")
+            }
+        }
+        return qsTr("正在校准")
+    }
+
+    function _calibrationImageScale(type, stepIndex) {
+        return 1.0
+    }
+
+    function _startSelectedCalibration() {
+        _startCalibration(_selectedCalibrationType,
+                          _calibrationHelpForType(_selectedCalibrationType),
+                          _calibrationTitleForType(_selectedCalibrationType))
+    }
+
     function _sectionMatches(filterValue, sourceName) {
         const filterText = filterValue === undefined || filterValue === null ? "" : ("" + filterValue).trim()
         if (filterText === "") {
@@ -590,6 +1031,9 @@ Item {
     readonly property real _buttonPointSize:     Math.max(10, ScreenTools.defaultFontPointSize - 2)
     readonly property real _buttonHeightFactor:  0.35
     readonly property real _buttonHPadding:      ScreenTools.defaultFontPixelWidth * 0.75
+    readonly property bool _compactCalibrationLayout: width < ScreenTools.defaultFontPixelWidth * 122 || height < ScreenTools.defaultFontPixelHeight * 42
+    readonly property real _adaptiveContentMargin: ScreenTools.defaultFontPixelHeight * (_compactCalibrationLayout ? 0.28 : 0.45)
+    readonly property real _adaptiveContentGap: ScreenTools.defaultFontPixelWidth * (_compactCalibrationLayout ? 0.55 : 1.0)
 
     readonly property int _visibleCalibrationButtonCount:
         (sectionVisible(qsTr("Compass")) ? 1 : 0) +
@@ -604,181 +1048,888 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // Calibration trigger buttons — one per section, shown based on sectionNameFilter
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            spacing: _buttonRowSpacing
-            visible: !controller.calibrationActive
+            Layout.fillHeight: true
+            visible: true
+            color: _root.useDarkStyle ? "#07111D" : qgcPal.windowShade
+            radius: _root.useDarkStyle ? _cornerRadius : 0
+            border.width: _root.useDarkStyle ? 1 : 0
+            border.color: _root.useDarkStyle ? _borderColor : "transparent"
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("校准磁力计")
-                visible:    sectionVisible(qsTr("磁力计"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("compass", compassHelp, qsTr("校准磁力计"))
-            }
+            Rectangle {
+                id: calibrationTopBar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: ScreenTools.defaultFontPixelHeight * 2.55
+                color: Qt.rgba(0.03, 0.07, 0.11, 0.82)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.08)
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("校准陀螺仪")
-                visible:    sectionVisible(qsTr("陀螺仪"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("gyro", gyroHelp, qsTr("校准陀螺仪"))
-            }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.2
+                    anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 1.0
+                    spacing: ScreenTools.defaultFontPixelWidth
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("校准加速度计")
-                visible:    sectionVisible(qsTr("加速度计"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("accel", accelHelp, qsTr("校准加速度计"))
-            }
+                    Rectangle {
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.55
+                        Layout.preferredHeight: Layout.preferredWidth
+                        radius: width / 2
+                        color: Qt.rgba(0.15, 0.39, 0.92, 0.18)
+                        border.width: 2
+                        border.color: _accentColor
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("校平地平线")
-                enabled:    cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
-                visible:    sectionVisible(qsTr("地平线"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("level", levelHelp, qsTr("校平地平线"))
-            }
+                        QGCLabel {
+                            anchors.centerIn: parent
+                            text: "C"
+                            color: "#60A5FA"
+                            font.bold: true
+                        }
+                    }
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("校准空速")
-                visible:    sectionVisible(qsTr("空速"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _startCalibration("airspeed", airspeedHelp, qsTr("校准空速"))
-            }
+                    QGCLabel {
+                        text: qsTr("传感器校准")
+                        color: _primaryTextColor
+                        font.bold: true
+                        font.pointSize: ScreenTools.defaultFontPointSize * 0.98
+                    }
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("设置方向")
-                visible:    sectionVisible(qsTr("方向设置"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked: {
-                    setOrientationsDialogShowBoardOrientation = true
-                    setOrientationsDialogFactory.open({ title: qsTr("Set Orientations"), showRebootVehicleButton: false })
+                    RowLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.leftMargin: ScreenTools.defaultFontPixelWidth * 2.2
+                        spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                        Repeater {
+                            model: [
+                                { "type": "accel", "title": qsTr("加速度计") },
+                                { "type": "gyro", "title": qsTr("陀螺仪") },
+                                { "type": "compass", "title": qsTr("磁力计") },
+                                { "type": "level", "title": qsTr("地平线") },
+                                { "type": "airspeed", "title": qsTr("空速") }
+                            ]
+
+                            Rectangle {
+                                required property var modelData
+                                readonly property bool selected: _selectedCalibrationType === modelData.type
+
+                                visible: _calibrationVisible(modelData.type)
+                                Layout.preferredWidth: navText.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.0
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.05
+                                radius: _cornerRadius * 0.8
+                                color: selected ? Qt.rgba(0.15, 0.39, 0.92, 0.18) : "transparent"
+                                border.width: selected ? 1 : 0
+                                border.color: selected ? Qt.rgba(0.15, 0.39, 0.92, 0.7) : "transparent"
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: _selectCalibrationPage(modelData.type)
+                                }
+
+                                QGCLabel {
+                                    id: navText
+                                    anchors.centerIn: parent
+                                    text: modelData.title
+                                    color: selected ? "#60A5FA" : _secondaryTextColor
+                                    font.bold: selected
+                                }
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: 0
+
+                        RowLayout {
+                            Layout.alignment: Qt.AlignRight
+                            spacing: ScreenTools.defaultFontPixelWidth * 0.35
+
+                            QGCLabel {
+                                text: _activeVehicle ? qsTr("已连接") : qsTr("未连接")
+                                color: _activeVehicle ? "#22C55E" : "#FF5A5F"
+                                font.bold: true
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.45
+                                Layout.preferredHeight: Layout.preferredWidth
+                                radius: width / 2
+                                color: _activeVehicle ? "#22C55E" : "#FF5A5F"
+                            }
+                        }
+
+                        QGCLabel {
+                            text: _telemetryHealthText()
+                            color: Qt.rgba(1, 1, 1, 0.58)
+                            font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.78)
+                        }
+                    }
+
+                    QGCButton {
+                        text: "×"
+                        width: ScreenTools.defaultFontPixelHeight * 2.0
+                        height: width
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: "transparent"
+                        borderColor: "transparent"
+                        textColor: _primaryTextColor
+                        overlayColor: "#FFFFFF"
+                        hoverOverlayOpacity: 0.10
+                        pressedOverlayOpacity: 0.18
+                        backRadius: width / 2
+                        showBorder: false
+                    }
                 }
             }
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Factory Reset")
-                visible:    sectionVisible(qsTr("Orientations"))
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _buttonColor : qgcPal.button
-                borderColor: _root.useDarkStyle ? _dropdownBorderColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.buttonText
-                overlayColor: _buttonHoverColor
-                hoverOverlayOpacity: 0.28
-                pressedOverlayOpacity: 0.42
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  controller.resetFactoryParameters()
+            Rectangle {
+                id: calibrationBottomBar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: ScreenTools.defaultFontPixelHeight * 3.25
+                color: Qt.rgba(0.03, 0.07, 0.11, 0.72)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.08)
+                z: 10
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.4
+                    anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 1.0
+                    spacing: ScreenTools.defaultFontPixelWidth * 1.4
+
+                    ColumnLayout {
+                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 22
+                        Layout.minimumWidth: Layout.preferredWidth
+                        Layout.maximumWidth: Layout.preferredWidth
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("总体进度")
+                                color: _secondaryTextColor
+                                font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.82)
+                            }
+
+                            QGCLabel {
+                                text: qsTr("%1/%2").arg(_displayStepIndex() + 1).arg(_displayStepCount())
+                                color: _primaryTextColor
+                                font.bold: true
+                                font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.82)
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.38
+                            radius: height / 2
+                            color: Qt.rgba(1, 1, 1, 0.12)
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: parent.width * _displayProgressValue()
+                                radius: height / 2
+                                color: _accentColor
+                            }
+                        }
+                    }
+
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        text: _latestStatusLine()
+                        color: _secondaryTextColor
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 1
+                        elide: Text.ElideRight
+                    }
+
+                    QGCButton {
+                        text: qsTr("设置方向")
+                        visible: orientationsButtonVisible()
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: _buttonColor
+                        borderColor: _dropdownBorderColor
+                        textColor: _primaryTextColor
+                        overlayColor: _buttonHoverColor
+                        hoverOverlayOpacity: 0.28
+                        pressedOverlayOpacity: 0.42
+                        backRadius: _cornerRadius
+                        showBorder: true
+                        onClicked: {
+                            setOrientationsDialogShowBoardOrientation = true
+                            setOrientationsDialogFactory.open({ title: qsTr("Set Orientations"), showRebootVehicleButton: false })
+                        }
+                    }
+
+                    QGCButton {
+                        text: qsTr("恢复出厂校准参数")
+                        visible: sectionVisible(qsTr("方向设置"))
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: _buttonColor
+                        borderColor: _dropdownBorderColor
+                        textColor: _primaryTextColor
+                        overlayColor: _buttonHoverColor
+                        hoverOverlayOpacity: 0.28
+                        pressedOverlayOpacity: 0.42
+                        backRadius: _cornerRadius
+                        showBorder: true
+                        onClicked: controller.resetFactoryParameters()
+                    }
+
+                    QGCButton {
+                        text: qsTr("取消校准")
+                        enabled: controller.calibrationActive
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: _buttonColor
+                        borderColor: _dropdownBorderColor
+                        textColor: _primaryTextColor
+                        overlayColor: _buttonHoverColor
+                        hoverOverlayOpacity: 0.28
+                        pressedOverlayOpacity: 0.42
+                        backRadius: _cornerRadius
+                        showBorder: true
+                        onClicked: controller.cancelCalibration()
+                    }
+
+                    QGCButton {
+                        text: controller.calibrationActive ? qsTr("校准中") : qsTr("开始校准")
+                        enabled: !controller.calibrationActive && _calibrationReady(_selectedCalibrationType)
+                        primary: true
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: _accentColor
+                        borderColor: _accentColor
+                        textColor: _primaryTextColor
+                        overlayColor: "#FFFFFF"
+                        hoverOverlayOpacity: 0.10
+                        pressedOverlayOpacity: 0.18
+                        backRadius: _cornerRadius
+                        showBorder: true
+                        onClicked: {
+                            if (!controller.calibrationActive) {
+                                _startSelectedCalibration()
+                            }
+                        }
+                    }
+                }
             }
 
-            QGCButton {
-                Layout.fillWidth: true
-                Layout.preferredWidth: parent.width / Math.max(_visibleCalibrationButtonCount, 1)
-                text:       qsTr("Next")
-                visible:    showNextButton
-                pointSize:  _buttonPointSize
-                heightFactor: _buttonHeightFactor
-                _horizontalPadding: _buttonHPadding
-                useExplicitPopupColors: _root.useDarkStyle
-                backgroundColor: _root.useDarkStyle ? _accentColor : qgcPal.primaryButton
-                borderColor: _root.useDarkStyle ? _accentColor : qgcPal.buttonBorder
-                textColor: _root.useDarkStyle ? _primaryTextColor : qgcPal.primaryButtonText
-                overlayColor: "#FFFFFF"
-                hoverOverlayOpacity: 0.10
-                pressedOverlayOpacity: 0.18
-                backRadius: _root.useDarkStyle ? _cornerRadius : ScreenTools.defaultBorderRadius
-                showBorder: _root.useDarkStyle ? true : (qgcPal.globalTheme === QGCPalette.Light)
-                onClicked:  _root.nextButtonClicked()
+            RowLayout {
+                id: calibrationContentLayout
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: calibrationTopBar.bottom
+                anchors.bottom: calibrationBottomBar.top
+                anchors.margins: _adaptiveContentMargin
+                anchors.bottomMargin: _adaptiveContentMargin
+                spacing: _adaptiveContentGap
+                clip: true
+                z: 1
+
+                    ColumnLayout {
+                        Layout.preferredWidth: Math.min(ScreenTools.defaultFontPixelWidth * 24,
+                                                        Math.max(ScreenTools.defaultFontPixelWidth * 16,
+                                                                 calibrationContentLayout.width * 0.20))
+                        Layout.minimumWidth: Math.min(ScreenTools.defaultFontPixelWidth * 14,
+                                                      Math.max(0, calibrationContentLayout.width * 0.16))
+                        Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 25
+                    Layout.fillWidth: false
+                    Layout.fillHeight: true
+                    spacing: ScreenTools.defaultFontPixelHeight * 0.75
+
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.55
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
+                        text: _calibrationTitleForType(_selectedCalibrationType)
+                        color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                        font.bold: true
+                        font.pointSize: ScreenTools.defaultFontPointSize * 1.0
+                    }
+
+                    Item {
+                        id: stepListArea
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 16.0
+                        Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 10.0
+
+                        QGCLabel {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            text: qsTr("步骤 %1/%2").arg(_displayStepIndex() + 1).arg(_displayStepCount())
+                            color: _secondaryTextColor
+                            font.bold: true
+                            font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.86)
+                        }
+
+                        Repeater {
+                            model: _displaySteps()
+
+                            RowLayout {
+                                id: stepRow
+                                required property var modelData
+                                required property int index
+                                readonly property bool stepDone: modelData && modelData.done !== undefined ? modelData.done : false
+                                readonly property bool stepActive: controller.calibrationActive &&
+                                    controller.showOrientationCalArea &&
+                                    modelData &&
+                                    modelData.rawIndex !== undefined &&
+                                    modelData.rawIndex === _activeOrientationRawIndex()
+                                readonly property string stepText: modelData && modelData.text !== undefined ? modelData.text : modelData
+                                readonly property real rowPitch: Math.min(ScreenTools.defaultFontPixelHeight * 2.35,
+                                                                          Math.max(ScreenTools.defaultFontPixelHeight * 1.85,
+                                                                                   (stepListArea.height - ScreenTools.defaultFontPixelHeight * 2.4) / Math.max(_displayStepCount(), 1)))
+                                x: 0
+                                y: ScreenTools.defaultFontPixelHeight * 2.1 + (index * rowPitch)
+                                width: stepListArea.width
+                                height: Math.min(ScreenTools.defaultFontPixelHeight * 2.1, rowPitch)
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.5
+
+                                Rectangle {
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 1.72
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    radius: width / 2
+                                    color: stepRow.stepActive ? _accentColor : (stepRow.stepDone ? "#22C55E" : "transparent")
+                                    border.width: 1
+                                    border.color: stepRow.stepActive ? _accentColor : (stepRow.stepDone ? "#22C55E" : Qt.rgba(1, 1, 1, 0.24))
+
+                                    QGCLabel {
+                                        anchors.centerIn: parent
+                                        text: index + 1
+                                        color: _primaryTextColor
+                                        font.bold: true
+                                        font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.86)
+                                    }
+                                }
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: stepRow.stepText
+                                    color: stepRow.stepActive || stepRow.stepDone ? _primaryTextColor : _secondaryTextColor
+                                    font.bold: stepRow.stepActive
+                                    font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.86)
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.1
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 3.9
+                        Layout.minimumHeight: Layout.preferredHeight
+                        Layout.maximumHeight: Layout.preferredHeight
+                        radius: _cornerRadius
+                        color: Qt.rgba(0.15, 0.39, 0.92, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(0.15, 0.39, 0.92, 0.28)
+
+                        ColumnLayout {
+                            id: leftProgressColumn
+                            anchors.fill: parent
+                            anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.35
+
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: qsTr("当前状态")
+                                    color: _secondaryTextColor
+                                }
+
+                                QGCLabel {
+                                    text: qsTr("等待操作")
+                                    color: "#F59E0B"
+                                    font.bold: true
+                                }
+                            }
+
+                            QGCLabel {
+                                Layout.fillWidth: true
+                                text: qsTr("校准进度 %1/%2").arg(_displayStepIndex() + 1).arg(_displayStepCount())
+                                color: _primaryTextColor
+                                font.bold: true
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.fillHeight: true
+                    radius: _cornerRadius
+                    color: _root.useDarkStyle ? "#111820" : qgcPal.window
+                    border.width: 1
+                    border.color: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                    clip: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.32
+                        spacing: ScreenTools.defaultFontPixelHeight * 0.06
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.05
+                            Layout.minimumHeight: Layout.preferredHeight
+                            Layout.maximumHeight: Layout.preferredHeight
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: _calibrationTitleForType(_selectedCalibrationType)
+                                    color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                                    font.bold: true
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 1.08
+                                }
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: _calibrationHelpForType(_selectedCalibrationType)
+                                    color: _root.useDarkStyle ? _secondaryTextColor : qgcPal.text
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 1
+                                    elide: Text.ElideRight
+                                    font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.86)
+                                }
+                            }
+
+                            Rectangle {
+                                radius: height / 2
+                                implicitHeight: ScreenTools.defaultFontPixelHeight * 1.35
+                                implicitWidth: detailStateText.implicitWidth + ScreenTools.defaultFontPixelWidth * 1.8
+                                color: Qt.rgba(1, 1, 1, 0.05)
+                                border.width: 1
+                                border.color: _calibrationAccent(_selectedCalibrationType)
+
+                                QGCLabel {
+                                    id: detailStateText
+                                    anchors.centerIn: parent
+                                    text: _calibrationStateText(_selectedCalibrationType)
+                                    color: _calibrationAccent(_selectedCalibrationType)
+                                    font.bold: true
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 14.0, parent.height * 0.72)
+                            Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 12.0
+                            Layout.alignment: Qt.AlignTop
+                            Layout.topMargin: 0
+                            spacing: _adaptiveContentGap
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.fillHeight: true
+                                Layout.preferredHeight: parent.height
+                                Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 12.0
+                                Layout.alignment: Qt.AlignTop
+                                radius: _cornerRadius
+                                color: Qt.rgba(0.02, 0.08, 0.14, _root.useDarkStyle ? 0.86 : 0.08)
+                                border.width: 1
+                                border.color: Qt.rgba(0.15, 0.39, 0.92, _root.useDarkStyle ? 0.55 : 0.25)
+                                clip: true
+
+                                Item {
+                                    id: aircraftDisplayBox
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.verticalCenterOffset: -Math.min(ScreenTools.defaultFontPixelHeight * 0.8, parent.height * 0.06)
+                                    width: Math.min(parent.width * 0.90, ScreenTools.defaultFontPixelWidth * 47)
+                                    height: Math.min(parent.height * 0.76, ScreenTools.defaultFontPixelHeight * 12.8)
+
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: aircraftDisplayBox.width
+                                        height: aircraftDisplayBox.height
+                                        source: _displayStepImage()
+                                        fillMode: Image.PreserveAspectFit
+                                        smooth: true
+                                        opacity: 0.92
+                                    }
+
+                                    Canvas {
+                                        id: rotationGuideCanvas
+                                        anchors.centerIn: parent
+                                        anchors.verticalCenterOffset: ScreenTools.defaultFontPixelHeight * 0.18
+                                        width: aircraftDisplayBox.width * 0.68
+                                        height: aircraftDisplayBox.height * 0.88
+                                        visible: _showRotationGuide()
+                                        opacity: 0.95
+
+                                        property int guideIndex: _activeOrientationRawIndex()
+                                        onGuideIndexChanged: requestPaint()
+                                        onVisibleChanged: requestPaint()
+                                        onWidthChanged: requestPaint()
+                                        onHeightChanged: requestPaint()
+
+                                        onPaint: {
+                                            const ctx = getContext("2d")
+                                            ctx.clearRect(0, 0, width, height)
+                                            if (!visible) {
+                                                return
+                                            }
+
+                                            const cx = width / 2
+                                            const cy = height / 2
+                                            const rx = width * 0.42
+                                            const ryByStep = [0.26, 0.26, 0.52, 0.52, 0.36, 0.36]
+                                            const tiltByStep = [-0.28, -0.28, 1.08, 1.08, 0.18, 0.18]
+                                            const clockwiseByStep = [true, false, true, false, true, false]
+                                            const ry = height * ryByStep[Math.max(0, Math.min(guideIndex, ryByStep.length - 1))]
+                                            const tilt = tiltByStep[Math.max(0, Math.min(guideIndex, tiltByStep.length - 1))]
+                                            const clockwise = clockwiseByStep[Math.max(0, Math.min(guideIndex, clockwiseByStep.length - 1))]
+                                            const start = clockwise ? -0.88 * Math.PI : 0.12 * Math.PI
+                                            const end = clockwise ? 0.82 * Math.PI : -1.58 * Math.PI
+
+                                            function point(angle) {
+                                                const x = Math.cos(angle) * rx
+                                                const y = Math.sin(angle) * ry
+                                                return {
+                                                    x: cx + x * Math.cos(tilt) - y * Math.sin(tilt),
+                                                    y: cy + x * Math.sin(tilt) + y * Math.cos(tilt)
+                                                }
+                                            }
+
+                                            function tangent(angle) {
+                                                const dir = clockwise ? 1 : -1
+                                                const dx = -Math.sin(angle) * rx * dir
+                                                const dy = Math.cos(angle) * ry * dir
+                                                return Math.atan2(dx * Math.sin(tilt) + dy * Math.cos(tilt),
+                                                                  dx * Math.cos(tilt) - dy * Math.sin(tilt))
+                                            }
+
+                                            ctx.save()
+                                            ctx.lineCap = "round"
+                                            ctx.shadowColor = "rgba(37, 99, 235, 0.9)"
+                                            ctx.shadowBlur = 14
+
+                                            for (let pass = 0; pass < 2; pass++) {
+                                                ctx.beginPath()
+                                                const steps = 72
+                                                for (let i = 0; i <= steps; i++) {
+                                                    const t = i / steps
+                                                    const angle = start + (end - start) * t
+                                                    const p = point(angle)
+                                                    if (i === 0) {
+                                                        ctx.moveTo(p.x, p.y)
+                                                    } else {
+                                                        ctx.lineTo(p.x, p.y)
+                                                    }
+                                                }
+                                                ctx.strokeStyle = pass === 0 ? "rgba(96, 165, 250, 0.24)" : "#60A5FA"
+                                                ctx.lineWidth = pass === 0 ? Math.max(9, width * 0.036) : Math.max(4, width * 0.017)
+                                                ctx.stroke()
+                                            }
+
+                                            const tip = point(end)
+                                            const heading = tangent(end)
+                                            const size = Math.max(14, width * 0.052)
+                                            ctx.fillStyle = "#93C5FD"
+                                            ctx.beginPath()
+                                            ctx.moveTo(tip.x, tip.y)
+                                            ctx.lineTo(tip.x - Math.cos(heading - 0.52) * size, tip.y - Math.sin(heading - 0.52) * size)
+                                            ctx.lineTo(tip.x - Math.cos(heading + 0.52) * size, tip.y - Math.sin(heading + 0.52) * size)
+                                            ctx.closePath()
+                                            ctx.fill()
+                                            ctx.restore()
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: -ScreenTools.defaultFontPixelHeight * 0.35
+                                        visible: _showRotationGuide()
+                                        width: rotationGuideLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.0
+                                        height: ScreenTools.defaultFontPixelHeight * 1.65
+                                        radius: height / 2
+                                        color: Qt.rgba(0.15, 0.39, 0.92, 0.22)
+                                        border.width: 1
+                                        border.color: "#60A5FA"
+
+                                        QGCLabel {
+                                            id: rotationGuideLabel
+                                            anchors.centerIn: parent
+                                            text: _rotationGuideText()
+                                            color: "#E0F2FE"
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+
+                                QGCLabel {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.top: parent.top
+                                    anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.45
+                                    text: qsTr("步骤 %1/%2  %3").arg(_displayStepIndex() + 1).arg(_displayStepCount()).arg(_displayStepText())
+                                    color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                                    font.bold: true
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 1.05
+                                }
+
+                                Rectangle {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.top: aircraftDisplayBox.top
+                                    anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.35
+                                    visible: !_showRotationGuide()
+                                    width: detectingLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 2.2
+                                    height: ScreenTools.defaultFontPixelHeight * 1.65
+                                    radius: _cornerRadius
+                                    color: Qt.rgba(0.15, 0.39, 0.92, 0.14)
+                                    border.width: 1
+                                    border.color: Qt.rgba(0.15, 0.39, 0.92, 0.62)
+
+                                    QGCLabel {
+                                        id: detectingLabel
+                                        anchors.centerIn: parent
+                                        text: _shortCalibrationStateText()
+                                        color: "#60A5FA"
+                                        font.bold: true
+                                    }
+                                }
+
+                            }
+
+                            ColumnLayout {
+                                Layout.preferredWidth: Math.min(ScreenTools.defaultFontPixelWidth * 31,
+                                                                Math.max(ScreenTools.defaultFontPixelWidth * 22, parent.width * 0.30))
+                                Layout.minimumWidth: Math.min(ScreenTools.defaultFontPixelWidth * 20, parent.width * 0.24)
+                                Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 36
+                                Layout.alignment: Qt.AlignTop
+                                spacing: ScreenTools.defaultFontPixelHeight * (_compactCalibrationLayout ? 0.32 : 0.5)
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 4.7, parent.height * 0.23)
+                                    Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 4.2
+                                    Layout.maximumHeight: ScreenTools.defaultFontPixelHeight * 6.2
+                                    radius: _cornerRadius
+                                    color: _root.useDarkStyle ? _inputColor : qgcPal.windowShade
+                                    border.width: 1
+                                    border.color: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+
+                                    ColumnLayout {
+                                        id: statusPanelColumn
+                                        anchors.fill: parent
+                                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.38
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: qsTr("设备状态")
+                                            color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                                            font.bold: true
+                                        }
+
+                                        Repeater {
+                                            model: [
+                                                { "name": qsTr("加速度计"), "type": "accel" },
+                                                { "name": qsTr("陀螺仪"), "type": "gyro" },
+                                                { "name": qsTr("磁力计"), "type": "compass" },
+                                                { "name": qsTr("空速"), "type": "airspeed" }
+                                            ]
+
+                                            RowLayout {
+                                                required property var modelData
+                                                visible: _calibrationVisible(modelData.type)
+                                                Layout.fillWidth: true
+
+                                                QGCLabel {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.name
+                                                    color: _root.useDarkStyle ? _secondaryTextColor : qgcPal.text
+                                                }
+
+                                                QGCLabel {
+                                                    text: _calibrationStateText(modelData.type)
+                                                    color: _calibrationAccent(modelData.type)
+                                                    font.bold: true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 10.0, parent.height * 0.47)
+                                    Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 9.0
+                                    Layout.maximumHeight: ScreenTools.defaultFontPixelHeight * 14.0
+                                    radius: _cornerRadius
+                                    color: _root.useDarkStyle ? _inputColor : qgcPal.windowShade
+                                    border.width: 1
+                                    border.color: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: ScreenTools.defaultFontPixelHeight * 0.38
+                                        spacing: ScreenTools.defaultFontPixelHeight * 0.18
+
+                                        QGCLabel {
+                                            Layout.fillWidth: true
+                                            text: qsTr("实时数据")
+                                            color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                                            font.bold: true
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Roll"
+                                                color: "#FF5A5F"
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _formatTelemetryValue(_activeVehicle ? _activeVehicle.roll : null, 1, "°")
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Pitch"
+                                                color: "#22C55E"
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _formatTelemetryValue(_activeVehicle ? _activeVehicle.pitch : null, 1, "°")
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Yaw Rate"
+                                                color: "#3B82F6"
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _formatTelemetryValue(_activeVehicle ? _activeVehicle.yawRate : null, 2, "°/s")
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 1
+                                            color: _root.useDarkStyle ? _borderColor : qgcPal.buttonBorder
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: qsTr("稳定性")
+                                                color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _activeVehicle ? qsTr("稳定") : qsTr("等待数据")
+                                                color: _activeVehicle ? "#22C55E" : "#F59E0B"
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        Canvas {
+                                            id: stabilityCanvas
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.5, parent.height * 0.18)
+                                            Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 1.25
+                                            Layout.maximumHeight: ScreenTools.defaultFontPixelHeight * 2.2
+                                            opacity: 0.9
+
+                                            property real sampleSeed: _factNumberOrZero(_activeVehicle ? _activeVehicle.rollRate : null) +
+                                                                      _factNumberOrZero(_activeVehicle ? _activeVehicle.pitchRate : null) +
+                                                                      _factNumberOrZero(_activeVehicle ? _activeVehicle.yawRate : null)
+                                            onSampleSeedChanged: requestPaint()
+                                            onWidthChanged: requestPaint()
+                                            onHeightChanged: requestPaint()
+
+                                            onPaint: {
+                                                const ctx = getContext("2d")
+                                                ctx.clearRect(0, 0, width, height)
+                                                ctx.strokeStyle = "#22C55E"
+                                                ctx.lineWidth = 2
+                                                ctx.beginPath()
+                                                const mid = height * 0.48
+                                                const amp = Math.max(2, height * 0.18)
+                                                for (let x = 0; x < width; x += 8) {
+                                                    const y = mid + Math.sin((x * 0.08) + sampleSeed) * amp * 0.35 +
+                                                        Math.sin((x * 0.22) + sampleSeed * 0.4) * amp * 0.18
+                                                    if (x === 0) {
+                                                        ctx.moveTo(x, y)
+                                                    } else {
+                                                        ctx.lineTo(x, y)
+                                                    }
+                                                }
+                                                ctx.stroke()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                }
             }
         }
 
         // Active calibration area — visible during calibration
         RowLayout {
             Layout.fillWidth:   true
-            visible:            controller.calibrationActive
+            visible:            false
             spacing:            ScreenTools.defaultFontPixelWidth
 
             ProgressBar {
@@ -804,7 +1955,7 @@ Item {
         Item {
             Layout.fillWidth:   true
             Layout.fillHeight:  true
-            visible:            controller.calibrationActive || _showOrientationPreview || _showStatusPreview
+            visible:            false
 
             TextArea {
                 id:             statusTextArea

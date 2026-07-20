@@ -22,6 +22,7 @@ public:
     Q_PROPERTY(QQuickItem* orientationCalAreaHelpText MEMBER _orientationCalAreaHelpText)
 
     Q_PROPERTY(bool calibrationActive READ calibrationActive NOTIFY calibrationActiveChanged)
+    Q_PROPERTY(bool magCalInProgress READ magCalInProgress NOTIFY calibrationActiveChanged)
 
     Q_PROPERTY(bool showOrientationCalArea MEMBER _showOrientationCalArea NOTIFY showOrientationCalAreaChanged)
 
@@ -65,6 +66,7 @@ public:
     Q_INVOKABLE void resetFactoryParameters();
 
     bool calibrationActive() const { return _magCalInProgress || _gyroCalInProgress || _accelCalInProgress || _airspeedCalInProgress || _levelCalInProgress; }
+    bool magCalInProgress() const { return _magCalInProgress; }
 
 signals:
     void showGyroCalAreaChanged(void);

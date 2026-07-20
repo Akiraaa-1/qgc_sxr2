@@ -15,7 +15,7 @@ SetupPage {
             width: availableWidth
             height: availableHeight
             property bool _qgcPopupChrome: true
-            property real _margins: ScreenTools.defaultFontPixelHeight
+            property real _margins: ScreenTools.defaultFontPixelHeight * 0.38
 
             property alias sectionNameFilter: sensorsSetup.sectionNameFilter
 
@@ -44,7 +44,7 @@ SetupPage {
                 SensorsSetup {
                     id: sensorsSetup
                     anchors.fill: parent
-                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.5
+                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.22
                     useDarkStyle: true
                 }
             }

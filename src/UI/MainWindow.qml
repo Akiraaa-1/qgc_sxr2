@@ -6120,14 +6120,6 @@ ApplicationWindow {
     }
 
     function showCriticalVehicleMessage(message) {
-        closeIndicatorDrawer()
-        criticalVehicleMessagePopup.addMessage(message)
-        if (criticalVehicleMessagePopup.visible || QGroundControl.videoManager.fullScreen) {
-            criticalVehicleMessagePopup.additionalCriticalMessagesReceived = true
-        } else {
-            criticalVehicleMessagePopup.additionalCriticalMessagesReceived = false
-            criticalVehicleMessagePopup.open()
-        }
     }
 
     Popup {
