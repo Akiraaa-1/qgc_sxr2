@@ -4207,7 +4207,6 @@ ApplicationWindow {
                     property int _selectedDataBits: 8
                     property int _selectedStopBits: 1
                     property int _selectedParity: 0
-                    property int _selectedMavlinkVersion: 1
                     property bool _autoConnectOnBoot: false
                     property bool _linkSelectionLocked: false
                     property bool _serialPortSelectionLocked: false
@@ -4220,24 +4219,19 @@ ApplicationWindow {
                     property bool _isConnected: false
                     readonly property string _connectionStateIdle: "idle"
                     readonly property string _connectionStateConnecting: "connecting"
-                    readonly property string _connectionStateWaitingParams: "waitingParams"
                     readonly property string _connectionStateFinishing: "finishing"
                     property string _manualConnectionState: _connectionStateIdle
-                    readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateWaitingParams || _manualConnectionState === _connectionStateFinishing
+                    readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateFinishing
                     property real _connectionProgress: 0
                     property int _connectionElapsedMs: 0
-                    readonly property int _connectionTimeoutMs: 4000
-                    readonly property int _parameterTimeoutMs: 8000
+                    readonly property int _connectionTimeoutMs: 6000
                     readonly property int _cleanupMinimumWaitMs: 900
                     readonly property int _cleanupTimeoutMs: 2500
+                    readonly property int _startPageInitialMavlinkVersion: 2
                     property bool _pendingWorkspaceEntry: false
                     property bool _manualConnectionArmed: false
                     property string _statusText: qsTr("Select a link and connect the vehicle")
                     property string _recentConnectionText: qsTr("Recent connection: No successful connection yet")
-
-                    function _setSelectedMavlinkVersionIndex(index) {
-                        _selectedMavlinkVersion = index === 0 ? 1 : 2
-                    }
 
                     function _openWorkspaceTab(tabIndex) {
                         if (_hasAnyConnectedVehicle()) {
@@ -4278,7 +4272,9 @@ ApplicationWindow {
                         _connectingConfig = config
                         _lastConnectionWasUdp = !!(config && config.linkType === LinkConfiguration.TypeUdp)
                         startConnectionCompleteTimer.stop()
-                        _statusText = qsTr("正在打开串口并等待 MAVLink 心跳...")
+                        _statusText = _lastConnectionWasUdp
+                            ? qsTr("正在打开 UDP 并等待 MAVLink 心跳...")
+                            : qsTr("正在打开串口并等待 MAVLink 心跳...")
                         _recentConnectionText = _statusText
                     }
 
@@ -4292,28 +4288,10 @@ ApplicationWindow {
                         return !!(parameterManager && parameterManager.parametersReady && parameterManager.missingParameters)
                     }
 
-                    function _waitForVehicleParameters() {
-                        _manualConnectionState = _connectionStateWaitingParams
-                        _parameterWaitTimedOut = false
-                        _connectionElapsedMs = 0
-                        _connectionProgress = Math.max(_connectionProgress, 0.58)
-                        startConnectionCompleteTimer.stop()
-                        _statusText = qsTr("已连接飞控，正在读取参数...")
-                        _recentConnectionText = _statusText
-                    }
-
-                    function _mavlinkRetrySuggestion() {
-                        return _selectedMavlinkVersion <= 1
-                            ? qsTr("当前选择 MAVLink 1，可尝试切换为 MAVLink 2 后重试。")
-                            : qsTr("当前选择 MAVLink 2，可尝试切换为 MAVLink 1 后重试。")
-                    }
-
                     function _showConnectionFailure(reasonText, titleText = qsTr("连接失败")) {
-                        const versionText = qsTr("MAVLink %1").arg(_selectedMavlinkVersion)
                         const portText = _selectedSerialPortDisplayName() !== "" ? _selectedSerialPortDisplayName() : qsTr("未选择")
                         const message = reasonText + "\n\n"
-                            + qsTr("当前选择：%1，端口：%2，波特率：%3。\n请检查 MAVLink 版本、串口、波特率和飞控供电后重新连接。")
-                                .arg(versionText)
+                            + qsTr("当前选择：协议自动识别，端口：%1，波特率：%2。\n请检查串口、波特率和飞控供电后重新连接。")
                                 .arg(portText)
                                 .arg(_selectedBaudRate)
                         QGroundControl.showMessageDialog(mainWindow, titleText, message)
@@ -4331,6 +4309,9 @@ ApplicationWindow {
                     }
 
                     function _activePendingConnectionIsUdp() {
+                        if (_connectingConfig) {
+                            return _connectingConfig.linkType === LinkConfiguration.TypeUdp
+                        }
                         return _lastConnectionWasUdp || _selectedLinkIsUdp()
                     }
 
@@ -4357,37 +4338,52 @@ ApplicationWindow {
                     }
 
                     function _tryFinishAfterParametersReady() {
-                        if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed)) {
+                        if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed || _parameterWaitTimedOut)) {
                             return false
                         }
 
                         if (_activeVehicleParametersReady()) {
                             _finishConnectionProgress(true)
                             if (mainWindow._showStartPage) {
-                                _appendEvent(qsTr("参数读取完成，进入工作区"))
+                                _appendEvent(qsTr("已收到心跳，进入工作区；参数/任务将在后台同步"))
                             }
                             return true
                         }
 
                         if (_activeVehicleHasMissingParameters()) {
-                            if (_activePendingConnectionIsUdp()) {
-                                _finishConnectionProgress(true)
-                                if (mainWindow._showStartPage) {
-                                    _appendEvent(qsTr("UDP 参数读取不完整，继续进入工作区"))
-                                }
-                                return true
+                            _finishConnectionProgress(true)
+                            if (mainWindow._showStartPage) {
+                                _appendEvent(qsTr("已收到心跳，进入工作区；参数/任务将在后台同步"))
                             }
-                            _failParameterConnection(qsTr("连接失败：飞控参数读取不完整，可能是 MAVLink 版本、波特率或链路质量不匹配。%1").arg(_mavlinkRetrySuggestion()))
                             return true
                         }
 
-                        if (_manualConnectionState !== _connectionStateWaitingParams) {
-                            _waitForVehicleParameters()
-                            if (mainWindow._showStartPage) {
-                                _appendEvent(qsTr("已收到飞控心跳，等待参数读取完成"))
-                            }
+                        _finishConnectionProgress(true)
+                        if (mainWindow._showStartPage) {
+                            _appendEvent(qsTr("已收到心跳，进入工作区；参数/任务将在后台同步"))
                         }
                         return true
+                    }
+
+                    function _enterWorkspaceFromActiveLink(enterWorkspace = true) {
+                        _syncConnectionState(false)
+                        mainWindow._hadConnectedVehicleSession = true
+                        _manualConnectionState = _connectionStateIdle
+                        _manualConnectionArmed = false
+                        _parameterWaitTimedOut = false
+                        _connectionProgress = 0
+                        _connectionElapsedMs = 0
+                        _connectingConfig = null
+                        if (_linkManager) {
+                            _linkManager.communicationErrorDisplayPaused = false
+                            _linkManager.showDeferredCommunicationError()
+                        }
+                        if (enterWorkspace) {
+                            _appendEvent(qsTr("Entering main workspace"))
+                            mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
+                        } else {
+                            _appendEvent(qsTr("Vehicle link already active"))
+                        }
                     }
 
                     function _cancelConnectionAttempt() {
@@ -4400,6 +4396,12 @@ ApplicationWindow {
 
                         if (config.link) {
                             config.link.disconnect()
+                        }
+                        if (config === _temporaryStartSerialConfig) {
+                            _temporaryStartSerialConfig = null
+                        }
+                        if (config === _temporaryStartUdpConfig) {
+                            _temporaryStartUdpConfig = null
                         }
                     }
 
@@ -4525,6 +4527,8 @@ ApplicationWindow {
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
+                        _temporaryStartSerialConfig = null
+                        _temporaryStartUdpConfig = null
                         if (_linkManager) {
                             _linkManager.communicationErrorDisplayPaused = false
                             if (clearDeferredErrors) {
@@ -4534,7 +4538,12 @@ ApplicationWindow {
                     }
 
                     function _handleDisconnectDuringManualConnection(vehicleId) {
-                        if (_manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateWaitingParams) {
+                        if (_manualConnectionState === _connectionStateConnecting) {
+                            _resetConnectionUiState()
+                            const failureText = qsTr("连接失败：连接过程中飞行器断开，请检查 MAVLink、端口和波特率后重新连接")
+                            _statusText = failureText
+                            _recentConnectionText = failureText
+                            _appendEvent(failureText)
                             return true
                         }
 
@@ -4576,7 +4585,6 @@ ApplicationWindow {
                             _selectedDataBits = 8
                             _selectedStopBits = 1
                             _selectedParity = 0
-                            _selectedMavlinkVersion = 1
                             return
                         }
 
@@ -4601,11 +4609,6 @@ ApplicationWindow {
                             _selectedParity = 0
                         }
 
-                        if (cfg && cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
-                            _selectedMavlinkVersion = Number(cfg.mavlinkVersion) <= 1 ? 1 : 2
-                        } else {
-                            _selectedMavlinkVersion = 1
-                        }
                     }
 
                     function _selectLinkConfigByName(name) {
@@ -4815,6 +4818,10 @@ ApplicationWindow {
                         const currentPortName = _selectedSerialPortName()
                         const currentDisplayName = _selectedSerialPortDisplayName()
                         if (currentPortName === "") {
+                            if (_udpConnectAvailable && logChanges) {
+                                _statusText = qsTr("未检测到飞控串口，准备使用 UDP 连接")
+                                _recentConnectionText = _statusText
+                            }
                             return false
                         }
 
@@ -4822,6 +4829,7 @@ ApplicationWindow {
                         if (changed && logChanges) {
                             if (_selectedSerialPortScore() >= 80) {
                                 _linkSelectionLocked = false
+                                _lastConnectionWasUdp = false
                             }
                             _statusText = qsTr("Detected serial port %1. Ready to connect").arg(currentDisplayName)
                             _recentConnectionText = _statusText
@@ -4910,9 +4918,6 @@ ApplicationWindow {
                             config.name = _startPageAutoConnectConfigName
                             config.dynamic = false
                             config.autoConnect = true
-                            config.mavlinkVersion = connectionConfig.mavlinkVersion !== undefined && connectionConfig.mavlinkVersion !== null
-                                ? connectionConfig.mavlinkVersion
-                                : _selectedMavlinkVersion
                             _linkManager.endCreateConfiguration(config)
                             _refreshLinks()
                             return true
@@ -4935,7 +4940,7 @@ ApplicationWindow {
                         config.dataBits = _selectedDataBits
                         config.stopBits = _selectedStopBits
                         config.parity = _selectedParity
-                        config.mavlinkVersion = _selectedMavlinkVersion
+                        config.mavlinkVersion = _startPageInitialMavlinkVersion
                         config.autoConnect = true
                         _linkManager.endCreateConfiguration(config)
                         _refreshLinks()
@@ -4986,7 +4991,7 @@ ApplicationWindow {
                         config.dataBits = _selectedDataBits
                         config.stopBits = _selectedStopBits
                         config.parity = _selectedParity
-                        config.mavlinkVersion = _selectedMavlinkVersion
+                        config.mavlinkVersion = _startPageInitialMavlinkVersion
                         config.autoConnect = _autoConnectOnBoot
                         if (!_temporaryStartSerialConfig) {
                             _linkManager.endCreateConfiguration(config)
@@ -5020,7 +5025,7 @@ ApplicationWindow {
                         config.name = qsTr("Start Page UDP (%1)").arg(_udpListenPort())
                         config.autoConnect = false
                         config.localPort = _udpListenPort()
-                        config.mavlinkVersion = _selectedMavlinkVersion
+                        config.mavlinkVersion = _startPageInitialMavlinkVersion
                         if (!_temporaryStartUdpConfig) {
                             _linkManager.endCreateConfiguration(config)
                             _temporaryStartUdpConfig = config
@@ -5174,15 +5179,11 @@ ApplicationWindow {
                         }
 
                         if (_parameterWaitTimedOut || (_isConnected && !_activeVehicleParametersReady())) {
-                            if (_isConnected && _activePendingConnectionIsUdp()) {
-                                _syncConnectionState(false)
-                                mainWindow._hadConnectedVehicleSession = true
-                                if (enterWorkspace) {
-                                    _appendEvent(qsTr("Entering main workspace"))
-                                    mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
-                                } else {
-                                    _appendEvent(qsTr("Vehicle link already active"))
+                            if (_isConnected) {
+                                if (!_activeVehicleParametersReady()) {
+                                    _appendEvent(qsTr("参数仍在读取，保持当前连接并进入工作区"))
                                 }
+                                _enterWorkspaceFromActiveLink(enterWorkspace)
                                 return
                             }
                             _startReconnectAfterCleanup()
@@ -5214,7 +5215,9 @@ ApplicationWindow {
                             && _selectedSerialPortIndex < _serialPortNames.length
                             && _selectedSerialPortScore() >= 80
 
-                        if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp && (_linkSelectionLocked || !highConfidenceSerialSelected)) {
+                        if (highConfidenceSerialSelected && !_linkSelectionLocked) {
+                            cfg = _temporarySerialConfig()
+                        } else if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp && (_linkSelectionLocked || !highConfidenceSerialSelected)) {
                             cfg = _temporaryUdpConfig()
                         } else if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
                             cfg = selectedLinkConfig
@@ -5238,7 +5241,7 @@ ApplicationWindow {
                         }
 
                         if (cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
-                            cfg.mavlinkVersion = _selectedMavlinkVersion
+                            cfg.mavlinkVersion = _startPageInitialMavlinkVersion
                         }
                         _applyStartPagePersistentSettings(cfg)
                         _beginConnectionProgress(cfg)
@@ -5278,41 +5281,13 @@ ApplicationWindow {
                             }
 
                             startPageOverlay._connectionElapsedMs += interval
-                            const waitingForParameters = startPageOverlay._manualConnectionState === startPageOverlay._connectionStateWaitingParams
-                            const timeoutMs = waitingForParameters ? startPageOverlay._parameterTimeoutMs : startPageOverlay._connectionTimeoutMs
-                            if (startPageOverlay._connectionElapsedMs >= timeoutMs) {
-                                if (waitingForParameters) {
-                                    const wasUdpParameterWait = startPageOverlay._connectingConfig
-                                        && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
-                                    if (wasUdpParameterWait) {
-                                        startPageOverlay._finishConnectionProgress(true)
-                                        startPageOverlay._appendEvent(qsTr("已收到 UDP 心跳，但参数读取超时，继续进入工作区"))
-                                        return
-                                    }
-
-                                    const closedVehicle = startPageOverlay._resetStartPageConnectionAttempt(true)
-                                    startPageOverlay._cleanupBeforeNextConnect = true
-                                    startPageOverlay._cleanupElapsedMs = 0
-                                    startPageOverlay._manualConnectionState = startPageOverlay._connectionStateIdle
-                                    startPageOverlay._manualConnectionArmed = false
-                                    startPageOverlay._parameterWaitTimedOut = true
-                                    startPageOverlay._connectionProgress = 0
-                                    startPageOverlay._recentConnectionText = startPageOverlay._statusText
-                                    startPageOverlay._connectionElapsedMs = 0
-                                    startPageOverlay._statusText = closedVehicle
-                                        ? qsTr("已收到心跳，但参数暂未完成。已关闭本次连接，请修改 MAVLink/端口/波特率后重新连接")
-                                        : qsTr("已收到心跳，但参数暂未完成。请修改 MAVLink/端口/波特率后重新连接")
-                                    startPageOverlay._recentConnectionText = startPageOverlay._statusText
-                                    startPageOverlay._appendEvent(startPageOverlay._statusText)
-                                    return
-                                }
+                            if (startPageOverlay._connectionElapsedMs >= startPageOverlay._connectionTimeoutMs) {
                                 const wasUdpConnection = startPageOverlay._connectingConfig
                                     && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
                                 startPageOverlay._timeoutConnectionProgress()
                                 const failureText = wasUdpConnection
                                     ? qsTr("连接失败：UDP 未收到 MAVLink 心跳，请确认仿真或飞控正在发送数据。")
-                                    : qsTr("连接失败：未收到 MAVLink 心跳，可能是 MAVLink 版本、波特率或端口选择错误。%1")
-                                        .arg(startPageOverlay._mavlinkRetrySuggestion())
+                                    : qsTr("连接失败：未收到 MAVLink 心跳，可能是波特率、端口选择错误或飞控未发送数据。")
                                 startPageOverlay._appendEvent(failureText)
                                 const portChanged = wasUdpConnection ? false : startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
                                 startPageOverlay._statusText = failureText
@@ -5328,12 +5303,8 @@ ApplicationWindow {
                                 return
                             }
 
-                            if (waitingForParameters) {
-                                startPageOverlay._connectionProgress = Math.min(0.94, 0.58 + (startPageOverlay._connectionElapsedMs / startPageOverlay._parameterTimeoutMs) * 0.34)
-                            } else {
-                                const progressRange = 0.84
-                                startPageOverlay._connectionProgress = Math.min(0.92, 0.08 + (startPageOverlay._connectionElapsedMs / startPageOverlay._connectionTimeoutMs) * progressRange)
-                            }
+                            const progressRange = 0.84
+                            startPageOverlay._connectionProgress = Math.min(0.92, 0.08 + (startPageOverlay._connectionElapsedMs / startPageOverlay._connectionTimeoutMs) * progressRange)
                         }
                     }
 
@@ -6033,30 +6004,6 @@ ApplicationWindow {
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10; sizeToContents: true; model: [qsTr("数据 5"), qsTr("数据 6"), qsTr("数据 7"), qsTr("数据 8")]; currentIndex: Math.max(0, Math.min(3, startPageOverlay._selectedDataBits - 5)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedDataBits = index + 5; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; sizeToContents: true; model: [qsTr("停止 1"), qsTr("停止 2")]; currentIndex: Math.max(0, Math.min(1, startPageOverlay._selectedStopBits - 1)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedStopBits = index + 1; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
                                             QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 11; sizeToContents: true; model: [qsTr("无奇偶"), qsTr("奇"), qsTr("偶")]; currentIndex: startPageOverlay._selectedParity === 3 ? 1 : (startPageOverlay._selectedParity === 2 ? 2 : 0); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedParity = index === 1 ? 3 : (index === 2 ? 2 : 0); startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
-                                            QGCComboBox {
-                                                Layout.fillWidth: true
-                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12
-                                                sizeToContents: true
-                                                model: ["MAVLink 1", "MAVLink 2"]
-                                                currentIndex: startPageOverlay._selectedMavlinkVersion <= 1 ? 0 : 1
-                                                font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
-                                                backgroundColor: startPageOverlay._inputBg
-                                                borderColor: startPageOverlay._borderColor
-                                                focusBorderColor: startPageOverlay._focusColor
-                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
-                                                showFocusBorder: true
-                                                borderRadius: startPageOverlay._uiRadius
-                                                stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onActivated: function(index) {
-                                                    startPageOverlay._setSelectedMavlinkVersionIndex(index)
-                                                    startPageOverlay._connectionSettingChanged(qsTr("MAVLink 设置已更新，请重新连接"))
-                                                }
-                                                onCurrentIndexChanged: {
-                                                    if (activeFocus && currentIndex >= 0) {
-                                                        startPageOverlay._setSelectedMavlinkVersionIndex(currentIndex)
-                                                    }
-                                                }
-                                            }
                                         }
                                         Item {
                                             Layout.fillHeight: true
@@ -6105,9 +6052,7 @@ ApplicationWindow {
 
                                                 QGCButton {
                                                     Layout.fillWidth: true
-                                                    text: startPageOverlay._manualConnectionState === startPageOverlay._connectionStateWaitingParams
-                                                          ? qsTr("读取参数...")
-                                                          : (startPageOverlay._parameterWaitTimedOut ? qsTr("重新连接") : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : (startPageOverlay._isConnected ? qsTr("进入工作区") : qsTr("连接飞行器"))))
+                                                    text: startPageOverlay._isConnected ? qsTr("进入工作区") : (startPageOverlay._parameterWaitTimedOut ? qsTr("重新连接") : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : qsTr("连接飞行器")))
                                                     pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                     enabled: startPageOverlay._canConnect
                                                     showBorder: true

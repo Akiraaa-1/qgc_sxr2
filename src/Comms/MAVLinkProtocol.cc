@@ -106,8 +106,9 @@ void MAVLinkProtocol::receiveBytes(LinkInterface *link, const QByteArray &data)
         //  PX4 defaults to sending V1 then switches to V2 after receiving a V2 message from GCS
         //  ArduPilot always sends both versions
         if (message.msgid != MAVLINK_MSG_ID_HEARTBEAT && (status.flags & MAVLINK_STATUS_FLAG_IN_MAVLINK1)) {
-            link->reportMavlinkV1Traffic();
-            continue;
+            if (!link->reportMavlinkV1Traffic()) {
+                continue;
+            }
         }
 
         _updateCounters(mavlinkChannel, message);

@@ -316,12 +316,6 @@ bool InitialConnectStateMachine::_shouldSkipForPlanLoad()
         return true;
     }
 
-    SharedLinkInterfacePtr sharedLink = vehicle()->vehicleLinkManager()->primaryLink().lock();
-    if (sharedLink && sharedLink->linkConfiguration()->type() == LinkConfiguration::TypeUdp && sharedLink->linkConfiguration()->name().startsWith(QStringLiteral("Start Page UDP"))) {
-        _lastSkipReason = QStringLiteral("(start page UDP simulation link)");
-        return true;
-    }
-
     return false;
 }
 
