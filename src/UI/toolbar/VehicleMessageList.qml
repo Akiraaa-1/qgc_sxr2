@@ -12,7 +12,7 @@ TextArea {
     readOnly:               true
     textFormat:             TextEdit.RichText
     color:                  qgcPal.text
-    placeholderText:        qsTr("No Messages")
+    placeholderText:        qsTr("暂无消息")
     placeholderTextColor:   qgcPal.text
     padding:                0
     wrapMode:               TextEdit.Wrap
@@ -32,6 +32,8 @@ TextArea {
             { "pattern": /Mission transfer failed/gi, "text": qsTr("任务传输失败") },
             { "pattern": /Mission accepted/gi, "text": qsTr("任务已接受") },
             { "pattern": /Mission finished/gi, "text": qsTr("任务已完成") },
+            { "pattern": /Preflight Fail: No connection to the GCS/gi, "text": qsTr("起飞前检查失败：未连接到地面站") },
+            { "pattern": /Preflight Fail/gi, "text": qsTr("起飞前检查失败") },
             { "pattern": /Geofence violation/gi, "text": qsTr("触发地理围栏限制") },
             { "pattern": /Failsafe enabled/gi, "text": qsTr("失效保护已触发") },
             { "pattern": /Failsafe activated/gi, "text": qsTr("失效保护已激活") },

@@ -448,6 +448,8 @@ Item {
         text = text.replace(/Mission transfer failed/gi, qsTr("任务传输失败"));
         text = text.replace(/Mission accepted/gi, qsTr("任务已接受"));
         text = text.replace(/Mission finished/gi, qsTr("任务已完成"));
+        text = text.replace(/Preflight Fail: No connection to the GCS/gi, qsTr("起飞前检查失败：未连接到地面站"));
+        text = text.replace(/Preflight Fail/gi, qsTr("起飞前检查失败"));
         text = text.replace(/Geofence violation/gi, qsTr("触发地理围栏限制"));
         text = text.replace(/Failsafe enabled/gi, qsTr("失效保护已触发"));
         text = text.replace(/Failsafe activated/gi, qsTr("失效保护已激活"));

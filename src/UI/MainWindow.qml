@@ -4190,7 +4190,6 @@ ApplicationWindow {
                                                                     && _autoConnectSettings.autoConnectUDP.rawValue)
                     readonly property bool _canConnect: !_connectionInProgress
                                                            && (_isConnected
-                                                               || _parameterWaitTimedOut
                                                                || (_availableLinkNames.length > 0)
                                                                || _udpConnectAvailable
                                                                || (_serialPortAvailable
@@ -4205,6 +4204,9 @@ ApplicationWindow {
                     property var _temporaryStartSerialConfig: null
                     property var _temporaryStartUdpConfig: null
                     property var _connectingConfig: null
+                    property var _cleanupStartSerialConfig: null
+                    property var _cleanupStartUdpConfig: null
+                    property var _cleanupActiveConfig: null
                     property int _selectedLinkIndex: -1
                     property int _selectedSerialPortIndex: -1
                     property int _selectedBaudRate: 57600
@@ -4215,8 +4217,6 @@ ApplicationWindow {
                     property bool _autoConnectOnBoot: false
                     property bool _linkSelectionLocked: false
                     property bool _serialPortSelectionLocked: false
-                    property bool _parameterWaitTimedOut: false
-                    property bool _cleanupBeforeNextConnect: false
                     property bool _pendingReconnectAfterCleanup: false
                     property bool _lastConnectionWasUdp: false
                     property bool _startPageDisconnectPending: false
@@ -4237,8 +4237,8 @@ ApplicationWindow {
                     readonly property int _startPageInitialMavlinkVersion: 2
                     property bool _pendingWorkspaceEntry: false
                     property bool _manualConnectionArmed: false
-                    property string _statusText: qsTr("Select a link and connect the vehicle")
-                    property string _recentConnectionText: qsTr("Recent connection: No successful connection yet")
+                    property string _statusText: qsTr("请选择链路并连接飞行器")
+                    property string _recentConnectionText: qsTr("暂无成功连接记录")
 
                     function _openWorkspaceTab(tabIndex) {
                         if (_hasAnyConnectedVehicle()) {
@@ -4269,13 +4269,11 @@ ApplicationWindow {
                             _linkManager.clearDeferredCommunicationError()
                             _linkManager.communicationErrorDisplayPaused = true
                         }
-                        _cleanupBeforeNextConnect = false
                         _connectionElapsedMs = 0
                         _connectionProgress = 0.08
                         _manualConnectionState = _connectionStateConnecting
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = true
-                        _parameterWaitTimedOut = false
                         _connectingConfig = config
                         _lastConnectionWasUdp = !!(config && config.linkType === LinkConfiguration.TypeUdp)
                         startConnectionCompleteTimer.stop()
@@ -4304,48 +4302,8 @@ ApplicationWindow {
                         QGroundControl.showMessageDialog(mainWindow, titleText, message)
                     }
 
-                    function _showParameterConnectionFailure(reasonText) {
-                        _showConnectionFailure(reasonText, qsTr("连接失败"))
-                    }
-
-                    function _selectedLinkIsUdp() {
-                        return _selectedLinkIndex >= 0
-                            && _selectedLinkIndex < _availableLinkConfigs.length
-                            && _availableLinkConfigs[_selectedLinkIndex]
-                            && _availableLinkConfigs[_selectedLinkIndex].linkType === LinkConfiguration.TypeUdp
-                    }
-
-                    function _activePendingConnectionIsUdp() {
-                        if (_connectingConfig) {
-                            return _connectingConfig.linkType === LinkConfiguration.TypeUdp
-                        }
-                        return _lastConnectionWasUdp || _selectedLinkIsUdp()
-                    }
-
-                    function _failParameterConnection(reasonText, disconnectLink = true) {
-                        if (disconnectLink) {
-                            _cancelConnectionAttempt()
-                        }
-                        _manualConnectionState = _connectionStateIdle
-                        _pendingWorkspaceEntry = false
-                        _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
-                        _connectionProgress = 0
-                        _connectionElapsedMs = 0
-                        _connectingConfig = null
-                        startConnectionCompleteTimer.stop()
-                        if (_linkManager) {
-                            _linkManager.communicationErrorDisplayPaused = false
-                            _linkManager.clearDeferredCommunicationError()
-                        }
-                        _statusText = reasonText
-                        _recentConnectionText = reasonText
-                        _appendEvent(reasonText)
-                        _showParameterConnectionFailure(reasonText)
-                    }
-
                     function _tryFinishAfterParametersReady() {
-                        if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed || _parameterWaitTimedOut)) {
+                        if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed)) {
                             return false
                         }
 
@@ -4377,7 +4335,6 @@ ApplicationWindow {
                         mainWindow._hadConnectedVehicleSession = true
                         _manualConnectionState = _connectionStateIdle
                         _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
@@ -4386,10 +4343,10 @@ ApplicationWindow {
                             _linkManager.showDeferredCommunicationError()
                         }
                         if (enterWorkspace) {
-                            _appendEvent(qsTr("Entering main workspace"))
+                            _appendEvent(qsTr("进入工作区"))
                             mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
                         } else {
-                            _appendEvent(qsTr("Vehicle link already active"))
+                            _appendEvent(qsTr("飞行器链路已连接"))
                         }
                     }
 
@@ -4432,6 +4389,9 @@ ApplicationWindow {
                         const closedVehicle = disconnectLink ? _closePendingStartPageVehicle() : false
 
                         if (disconnectLink) {
+                            _cleanupStartSerialConfig = serialConfig
+                            _cleanupStartUdpConfig = udpConfig
+                            _cleanupActiveConfig = activeConfig
                             if (activeConfig && activeConfig.link) {
                                 activeConfig.link.disconnect()
                             }
@@ -4446,7 +4406,6 @@ ApplicationWindow {
                         _manualConnectionState = _connectionStateIdle
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
@@ -4460,11 +4419,23 @@ ApplicationWindow {
                         return closedVehicle
                     }
 
-                    function _startReconnectAfterCleanup() {
+                    function _cleanupLinksReleased() {
+                        const activeReleased = !_cleanupActiveConfig || !_cleanupActiveConfig.link
+                        const serialReleased = !_cleanupStartSerialConfig || !_cleanupStartSerialConfig.link
+                        const udpReleased = !_cleanupStartUdpConfig || !_cleanupStartUdpConfig.link
+                        return activeReleased && serialReleased && udpReleased
+                    }
+
+                    function _clearCleanupLinkRefs() {
+                        _cleanupStartSerialConfig = null
+                        _cleanupStartUdpConfig = null
+                        _cleanupActiveConfig = null
+                    }
+
+                    function _requestReconnectAfterCleanup(message = "") {
                         _pendingReconnectAfterCleanup = true
-                        _cleanupBeforeNextConnect = false
                         _cleanupElapsedMs = 0
-                        _statusText = qsTr("正在关闭上一次连接，随后将按当前设置重新连接...")
+                        _statusText = message !== "" ? message : qsTr("正在关闭上一次连接，随后将按当前设置重新连接...")
                         _recentConnectionText = _statusText
                         _appendEvent(_statusText)
                         if (_resetStartPageConnectionAttempt(true)) {
@@ -4475,20 +4446,8 @@ ApplicationWindow {
 
                     function _connectionSettingChanged(message = "") {
                         const connectedButNotReady = _isConnected && !_activeVehicleParametersReady()
-                        if (connectedButNotReady && _activePendingConnectionIsUdp()) {
-                            _statusText = message !== "" ? message : qsTr("连接设置已更新")
-                            _recentConnectionText = _statusText
-                            _appendEvent(_statusText)
-                            return
-                        }
-
-                        if (_connectionInProgress || _manualConnectionArmed || _parameterWaitTimedOut || connectedButNotReady) {
-                            _resetStartPageConnectionAttempt(true)
-                            _cleanupBeforeNextConnect = true
-                            _cleanupElapsedMs = 0
-                            _statusText = message !== "" ? message : qsTr("连接设置已更新，请重新连接")
-                            _recentConnectionText = _statusText
-                            _appendEvent(_statusText)
+                        if (_connectionInProgress || _manualConnectionArmed || connectedButNotReady) {
+                            _requestReconnectAfterCleanup(qsTr("连接设置已更新，将按当前设置重新连接..."))
                         }
                     }
 
@@ -4506,7 +4465,6 @@ ApplicationWindow {
                         _manualConnectionState = _connectionStateIdle
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
                         startConnectionCompleteTimer.stop()
                         if (_linkManager) {
                             _linkManager.communicationErrorDisplayPaused = false
@@ -4518,7 +4476,6 @@ ApplicationWindow {
                         _manualConnectionState = _connectionStateIdle
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
@@ -4531,7 +4488,6 @@ ApplicationWindow {
                         _manualConnectionState = _connectionStateIdle
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = false
-                        _parameterWaitTimedOut = false
                         _startPageDisconnectPending = false
                         _startPageDisconnectVehicleId = ""
                         _connectionProgress = 0
@@ -4539,6 +4495,7 @@ ApplicationWindow {
                         _connectingConfig = null
                         _temporaryStartSerialConfig = null
                         _temporaryStartUdpConfig = null
+                        _clearCleanupLinkRefs()
                         if (_linkManager) {
                             _linkManager.communicationErrorDisplayPaused = false
                             if (clearDeferredErrors) {
@@ -4687,13 +4644,13 @@ ApplicationWindow {
 
                     function _openAddLinkDialog() {
                         if (!_linkManager) {
-                            _appendEvent(qsTr("Link manager unavailable"))
+                            _appendEvent(qsTr("链路管理器不可用"))
                             return
                         }
 
                         const editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
                         if (!editingConfig) {
-                            _appendEvent(qsTr("Unable to create link configuration"))
+                            _appendEvent(qsTr("无法创建链路配置"))
                             return
                         }
 
@@ -4830,17 +4787,17 @@ ApplicationWindow {
                         const currentPortName = _selectedSerialPortName()
                         const currentDisplayName = _selectedSerialPortDisplayName()
                         if (currentPortName === "") {
-                            _appendEvent(qsTr("No serial ports detected after refresh"))
+                            _appendEvent(qsTr("刷新后未检测到串口"))
                             return false
                         }
 
                         if (currentPortName !== previousPortName || currentDisplayName !== previousDisplayName) {
-                            _appendEvent(qsTr("Serial port refreshed: %1").arg(currentDisplayName))
-                            _statusText = qsTr("Serial port changed to %1. Click Connect Vehicle again").arg(currentDisplayName)
+                            _appendEvent(qsTr("串口已刷新：%1").arg(currentDisplayName))
+                            _statusText = qsTr("串口已切换为 %1，请重新点击连接飞行器").arg(currentDisplayName)
                             _recentConnectionText = _statusText
                             return true
                         } else {
-                            _appendEvent(qsTr("Serial port list refreshed"))
+                            _appendEvent(qsTr("串口列表已刷新"))
                         }
 
                         return false
@@ -4894,7 +4851,7 @@ ApplicationWindow {
                                 _linkSelectionLocked = false
                                 _lastConnectionWasUdp = false
                             }
-                            _statusText = qsTr("Detected serial port %1. Ready to connect").arg(currentDisplayName)
+                            _statusText = qsTr("检测到串口 %1，可以连接").arg(currentDisplayName)
                             _recentConnectionText = _statusText
                         } else if (!changed && logChanges && _serialPortSelectionLocked && previousPortName !== "" && _serialPortNames.length > previousPorts.length) {
                             _statusText = qsTr("检测到新串口，当前保持 %1").arg(currentDisplayName)
@@ -5033,7 +4990,7 @@ ApplicationWindow {
 
                         let config = _temporaryStartSerialConfig
                         if (config && config.link) {
-                            _statusText = qsTr("Previous serial link is closing. Please try again in a moment")
+                            _statusText = qsTr("上一次串口链路正在关闭，请稍后重试")
                             _recentConnectionText = _statusText
                             config.link.disconnect()
                             return null
@@ -5071,7 +5028,7 @@ ApplicationWindow {
 
                         let config = _temporaryStartUdpConfig
                         if (config && config.link) {
-                            _statusText = qsTr("Previous UDP link is closing. Please try again in a moment")
+                            _statusText = qsTr("上一次 UDP 链路正在关闭，请稍后重试")
                             _recentConnectionText = _statusText
                             config.link.disconnect()
                             return null
@@ -5097,12 +5054,67 @@ ApplicationWindow {
                         return config
                     }
 
+                    function _hasActiveTemporaryLink() {
+                        return !!((_temporaryStartSerialConfig && _temporaryStartSerialConfig.link)
+                                  || (_temporaryStartUdpConfig && _temporaryStartUdpConfig.link)
+                                  || (_connectingConfig && _connectingConfig.link))
+                    }
+
+                    function _selectedSavedLinkConfig() {
+                        if (_selectedLinkIndex >= 0 && _selectedLinkIndex < _availableLinkConfigs.length) {
+                            return _availableLinkConfigs[_selectedLinkIndex]
+                        }
+
+                        return null
+                    }
+
+                    function _chooseConnectionConfig() {
+                        const selectedLinkConfig = _selectedSavedLinkConfig()
+                        const highConfidenceSerialSelected = _serialPortAvailable
+                            && _selectedSerialPortIndex >= 0
+                            && _selectedSerialPortIndex < _serialPortNames.length
+                            && _selectedSerialPortScore() >= 80
+
+                        if (highConfidenceSerialSelected && !_linkSelectionLocked) {
+                            return _temporarySerialConfig()
+                        }
+
+                        if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp && (_linkSelectionLocked || !highConfidenceSerialSelected)) {
+                            return _temporaryUdpConfig()
+                        }
+
+                        if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
+                            return selectedLinkConfig
+                        }
+
+                        const preferUdp = _udpConnectAvailable && _selectedSerialPortScore() < 80
+                        if (_serialPortAvailable && !preferUdp) {
+                            const serialConfig = _temporarySerialConfig()
+                            if (serialConfig) {
+                                return serialConfig
+                            }
+                        }
+
+                        if (_udpConnectAvailable) {
+                            const udpConfig = _temporaryUdpConfig()
+                            if (udpConfig) {
+                                return udpConfig
+                            }
+                        }
+
+                        if (!_serialPortAvailable) {
+                            return selectedLinkConfig
+                        }
+
+                        return null
+                    }
+
                     function _vehicleKey(vehicle) {
                         return vehicle && vehicle.id !== undefined && vehicle.id !== null ? ("" + vehicle.id) : ""
                     }
 
                     function _vehicleLabel(vehicleIdText) {
-                        return qsTr("Vehicle %1").arg(vehicleIdText)
+                        return qsTr("飞行器 %1").arg(vehicleIdText)
                     }
 
                     function _syncConnectionState(logChanges = true) {
@@ -5134,13 +5146,13 @@ ApplicationWindow {
 
                                 if (previousState === undefined) {
                                     if (isConnected) {
-                                        _appendEvent(qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText)))
+                                        _appendEvent(qsTr("%1 已连接").arg(_vehicleLabel(vehicleIdText)))
                                     }
                                 } else if (previousState !== isConnected && (isConnected || (!_connectionInProgress && !_pendingWorkspaceEntry))) {
                                     _appendEvent(
                                         isConnected
-                                            ? qsTr("%1 connected").arg(_vehicleLabel(vehicleIdText))
-                                            : qsTr("%1 disconnected").arg(_vehicleLabel(vehicleIdText))
+                                            ? qsTr("%1 已连接").arg(_vehicleLabel(vehicleIdText))
+                                            : qsTr("%1 已断开").arg(_vehicleLabel(vehicleIdText))
                                     )
                                 }
                             }
@@ -5149,7 +5161,7 @@ ApplicationWindow {
                         if (logChanges) {
                             for (const vehicleIdText in _vehicleConnectionStateMap) {
                                 if (_vehicleConnectionStateMap[vehicleIdText] && nextStates[vehicleIdText] === undefined && !_connectionInProgress && !_pendingWorkspaceEntry) {
-                                    _appendEvent(qsTr("%1 disconnected").arg(_vehicleLabel(vehicleIdText)))
+                                    _appendEvent(qsTr("%1 已断开").arg(_vehicleLabel(vehicleIdText)))
                                 }
                             }
                         }
@@ -5205,13 +5217,8 @@ ApplicationWindow {
 
                     function _connectSelected(enterWorkspace = true) {
                         if (!_linkManager) {
-                            _appendEvent(qsTr("Link manager unavailable"))
+                            _appendEvent(qsTr("链路管理器不可用"))
                             return
-                        }
-
-                        let selectedLinkConfig = null
-                        if (_selectedLinkIndex >= 0 && _selectedLinkIndex < _availableLinkConfigs.length) {
-                            selectedLinkConfig = _availableLinkConfigs[_selectedLinkIndex]
                         }
 
                         if (_pendingReconnectAfterCleanup) {
@@ -5219,37 +5226,9 @@ ApplicationWindow {
                             return
                         }
 
-                        if (_cleanupBeforeNextConnect) {
-                            _syncConnectionState(false)
-                            if (_isConnected) {
-                                _pendingReconnectAfterCleanup = true
-                                _cleanupBeforeNextConnect = false
-                                _cleanupElapsedMs = 0
-                                _statusText = qsTr("正在等待上一次连接释放，随后将按当前设置重新连接...")
-                                _recentConnectionText = _statusText
-                                _appendEvent(_statusText)
-                                startReconnectCleanupTimer.restart()
-                                return
-                            }
-                            _pendingReconnectAfterCleanup = true
-                            _cleanupBeforeNextConnect = false
-                            _cleanupElapsedMs = 0
-                            _statusText = qsTr("正在等待串口释放，随后将按当前设置重新连接...")
-                            _recentConnectionText = _statusText
-                            _appendEvent(_statusText)
-                            startReconnectCleanupTimer.restart()
-                            return
-                        }
-
-                        if (_parameterWaitTimedOut || (_isConnected && !_activeVehicleParametersReady())) {
-                            if (_isConnected) {
-                                if (!_activeVehicleParametersReady()) {
-                                    _appendEvent(qsTr("参数仍在读取，保持当前连接并进入工作区"))
-                                }
-                                _enterWorkspaceFromActiveLink(enterWorkspace)
-                                return
-                            }
-                            _startReconnectAfterCleanup()
+                        if (_isConnected && !_activeVehicleParametersReady()) {
+                            _appendEvent(qsTr("参数仍在读取，保持当前连接并进入工作区"))
+                            _enterWorkspaceFromActiveLink(enterWorkspace)
                             return
                         }
 
@@ -5258,48 +5237,30 @@ ApplicationWindow {
                         if (_isConnected) {
                             mainWindow._hadConnectedVehicleSession = true
                             if (enterWorkspace) {
-                                _appendEvent(qsTr("Entering main workspace"))
+                                _appendEvent(qsTr("进入工作区"))
                                 mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
                             } else {
-                                _appendEvent(qsTr("Vehicle link already active"))
+                                _appendEvent(qsTr("飞行器链路已连接"))
                             }
                             return
                         }
 
                         if (_manualConnectionArmed && _connectingConfig && _connectingConfig.link) {
                             _beginConnectionProgress(_connectingConfig)
-                            _appendEvent(qsTr("Waiting for existing connection attempt..."))
+                            _appendEvent(qsTr("正在等待当前连接尝试完成..."))
                             return
                         }
 
-                        let cfg = null
-                        const highConfidenceSerialSelected = _serialPortAvailable
-                            && _selectedSerialPortIndex >= 0
-                            && _selectedSerialPortIndex < _serialPortNames.length
-                            && _selectedSerialPortScore() >= 80
-
-                        if (highConfidenceSerialSelected && !_linkSelectionLocked) {
-                            cfg = _temporarySerialConfig()
-                        } else if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp && (_linkSelectionLocked || !highConfidenceSerialSelected)) {
-                            cfg = _temporaryUdpConfig()
-                        } else if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
-                            cfg = selectedLinkConfig
-                        } else {
-                            const preferUdp = _udpConnectAvailable && _selectedSerialPortScore() < 80
-                            if (_serialPortAvailable && !preferUdp) {
-                                cfg = _temporarySerialConfig()
-                            }
-                            if (!cfg && _udpConnectAvailable) {
-                                cfg = _temporaryUdpConfig()
-                            }
-                            if (!cfg && !_serialPortAvailable) {
-                                cfg = selectedLinkConfig
-                            }
+                        if (_hasActiveTemporaryLink()) {
+                            _requestReconnectAfterCleanup(qsTr("正在关闭上一次临时链路，随后将按当前设置重新连接..."))
+                            return
                         }
+
+                        const cfg = _chooseConnectionConfig()
 
                         if (!cfg) {
                             _refreshSerialSelectionAfterConnectionFailure()
-                            _appendEvent(qsTr("No available links or serial ports"))
+                            _appendEvent(qsTr("没有可用的链路或串口"))
                             return
                         }
 
@@ -5308,13 +5269,13 @@ ApplicationWindow {
                         }
                         _applyStartPagePersistentSettings(cfg)
                         _beginConnectionProgress(cfg)
-                        _appendEvent((enterWorkspace ? qsTr("Connecting using %1 ...") : qsTr("Testing %1 ...")).arg(cfg.name))
+                        _appendEvent((enterWorkspace ? qsTr("正在使用 %1 连接...") : qsTr("正在测试 %1 ...")).arg(cfg.name))
                         _linkManager.createConnectedLink(cfg)
                     }
 
                     function _startDemo() {
                         QGroundControl.startPX4MockLink(false, false, false)
-                        _appendEvent(qsTr("Starting demo vehicle..."))
+                        _appendEvent(qsTr("正在启动演示飞行器..."))
                     }
 
                     ListModel {
@@ -5380,10 +5341,13 @@ ApplicationWindow {
                             startPageOverlay._cleanupElapsedMs += interval
                             startPageOverlay._syncConnectionState(false)
 
-                            if (!startPageOverlay._isConnected && startPageOverlay._cleanupElapsedMs >= startPageOverlay._cleanupMinimumWaitMs) {
+                            if (!startPageOverlay._isConnected
+                                    && startPageOverlay._cleanupLinksReleased()
+                                    && startPageOverlay._cleanupElapsedMs >= startPageOverlay._cleanupMinimumWaitMs) {
                                 stop()
                                 startPageOverlay._pendingReconnectAfterCleanup = false
                                 startPageOverlay._cleanupElapsedMs = 0
+                                startPageOverlay._clearCleanupLinkRefs()
                                 startPageOverlay._appendEvent(qsTr("上一次连接已关闭，使用当前设置重新连接"))
                                 startPageOverlay._connectSelected()
                                 return
@@ -5393,6 +5357,7 @@ ApplicationWindow {
                                 stop()
                                 startPageOverlay._pendingReconnectAfterCleanup = false
                                 startPageOverlay._cleanupElapsedMs = 0
+                                startPageOverlay._clearCleanupLinkRefs()
                                 startPageOverlay._statusText = qsTr("上一次连接仍在释放中，请稍后重新连接")
                                 startPageOverlay._recentConnectionText = startPageOverlay._statusText
                                 startPageOverlay._appendEvent(startPageOverlay._statusText)
@@ -5428,7 +5393,7 @@ ApplicationWindow {
                             startPageOverlay._manualConnectionArmed = false
                             startPageOverlay._connectingConfig = null
                             if (mainWindow._showStartPage) {
-                                startPageOverlay._appendEvent(qsTr("Entering main workspace"))
+                                startPageOverlay._appendEvent(qsTr("进入工作区"))
                                 mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
                             }
                             if (startPageOverlay._linkManager) {
@@ -5444,7 +5409,7 @@ ApplicationWindow {
                         _refreshLinks()
                         _autoConnectOnBoot = false
                         _removeStartPageAutoConnectConfig()
-                        _appendEvent(qsTr("Start page initialized"))
+                        _appendEvent(qsTr("开始页已初始化"))
                         _refreshSerialSelectionFromDetection(false)
                         _syncConnectionState(false)
                     }
@@ -5612,7 +5577,7 @@ ApplicationWindow {
                                 }
                                 startPageOverlay._refreshLinks()
                                 startPageOverlay._selectLinkConfigByName(savedConfigName)
-                                startPageOverlay._appendEvent(qsTr("Added link configuration '%1'").arg(savedConfigName))
+                                startPageOverlay._appendEvent(qsTr("已添加链路配置“%1”").arg(savedConfigName))
                                 close()
                             }
 
@@ -6135,7 +6100,7 @@ ApplicationWindow {
 
                                                 QGCButton {
                                                     Layout.fillWidth: true
-                                                    text: startPageOverlay._isConnected ? qsTr("进入工作区") : (startPageOverlay._parameterWaitTimedOut ? qsTr("重新连接") : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : qsTr("连接飞行器")))
+                                                    text: startPageOverlay._isConnected ? qsTr("进入工作区") : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : qsTr("连接飞行器"))
                                                     pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                     enabled: startPageOverlay._canConnect
                                                     showBorder: true
@@ -6419,6 +6384,8 @@ ApplicationWindow {
             { "pattern": /Mission transfer failed/gi, "text": qsTr("任务传输失败") },
             { "pattern": /Mission accepted/gi, "text": qsTr("任务已接受") },
             { "pattern": /Mission finished/gi, "text": qsTr("任务已完成") },
+            { "pattern": /Preflight Fail: No connection to the GCS/gi, "text": qsTr("起飞前检查失败：未连接到地面站") },
+            { "pattern": /Preflight Fail/gi, "text": qsTr("起飞前检查失败") },
             { "pattern": /Geofence violation/gi, "text": qsTr("触发地理围栏限制") },
             { "pattern": /Failsafe enabled/gi, "text": qsTr("失效保护已触发") },
             { "pattern": /Failsafe activated/gi, "text": qsTr("失效保护已激活") },

@@ -1970,9 +1970,12 @@ bool MissionController::showPlanFromManagerVehicle (void)
 
 void MissionController::_managerSendComplete(bool error)
 {
-    // Fly view always reloads on send complete
+    // Fly view should reflect a successful mission upload immediately. The
+    // vehicle mission manager has already been updated with the written items,
+    // and waiting for the full initial plan load can hide the route behind
+    // slower GeoFence/Rally syncs on some UDP simulations.
     if (!error && _flyView) {
-        showPlanFromManagerVehicle();
+        _newMissionItemsAvailableFromVehicle(false /* removeAllRequested */);
     }
 }
 
