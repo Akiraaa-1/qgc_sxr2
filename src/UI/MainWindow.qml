@@ -4219,6 +4219,8 @@ ApplicationWindow {
                     property bool _cleanupBeforeNextConnect: false
                     property bool _pendingReconnectAfterCleanup: false
                     property bool _lastConnectionWasUdp: false
+                    property bool _startPageDisconnectPending: false
+                    property string _startPageDisconnectVehicleId: ""
                     property int _cleanupElapsedMs: 0
                     property int _connectedVehicleCount: 0
                     property bool _isConnected: false
@@ -4525,10 +4527,13 @@ ApplicationWindow {
 
                     function _resetConnectionUiState(clearDeferredErrors = true) {
                         startConnectionCompleteTimer.stop()
+                        startPageDisconnectConfirmTimer.stop()
                         _manualConnectionState = _connectionStateIdle
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = false
                         _parameterWaitTimedOut = false
+                        _startPageDisconnectPending = false
+                        _startPageDisconnectVehicleId = ""
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
@@ -4544,11 +4549,7 @@ ApplicationWindow {
 
                     function _handleDisconnectDuringManualConnection(vehicleId) {
                         if (_manualConnectionState === _connectionStateConnecting) {
-                            _resetConnectionUiState()
-                            const failureText = qsTr("连接失败：连接过程中飞行器断开，请检查 MAVLink、端口和波特率后重新连接")
-                            _statusText = failureText
-                            _recentConnectionText = failureText
-                            _appendEvent(failureText)
+                            _beginStartPageDisconnectConfirm(vehicleId)
                             return true
                         }
 
@@ -4560,6 +4561,59 @@ ApplicationWindow {
                         _syncConnectionState(false)
                         mainWindow._handleVehicleDisconnected(vehicleId)
                         return true
+                    }
+
+                    function _beginStartPageDisconnectConfirm(vehicleId) {
+                        _startPageDisconnectVehicleId = vehicleId !== undefined && vehicleId !== null ? ("" + vehicleId) : ""
+                        if (!_startPageDisconnectPending) {
+                            _startPageDisconnectPending = true
+                            const confirmText = qsTr("MAVLink 心跳暂时中断，正在确认连接状态...")
+                            _statusText = confirmText
+                            _recentConnectionText = confirmText
+                            _appendEvent(confirmText)
+                        }
+                        startPageDisconnectConfirmTimer.restart()
+                    }
+
+                    function _activeVehicleCommunicationLost() {
+                        const vehicle = _activeVehicle
+                        const vehicleLinkManager = vehicle ? vehicle.vehicleLinkManager : null
+                        return !!(vehicleLinkManager && vehicleLinkManager.communicationLost)
+                    }
+
+                    function _serialPortStillPresent() {
+                        const selectedPortName = _selectedSerialPortName()
+                        if (selectedPortName === "") {
+                            return false
+                        }
+
+                        _refreshSerialSelection(true, selectedPortName, _selectedSerialPortDisplayName())
+                        return _serialPortNames.indexOf(selectedPortName) >= 0
+                    }
+
+                    function _finishStartPageDisconnectConfirm() {
+                        if (!_startPageDisconnectPending) {
+                            return
+                        }
+
+                        _startPageDisconnectPending = false
+                        if (_isConnected && !_activeVehicleCommunicationLost()) {
+                            const recoveredText = qsTr("MAVLink 通信已恢复")
+                            _statusText = recoveredText
+                            _recentConnectionText = recoveredText
+                            _appendEvent(recoveredText)
+                            return
+                        }
+
+                        const portLabel = _selectedSerialPortDisplayName()
+                        const portStillPresent = _serialPortStillPresent()
+                        const failureText = portStillPresent && portLabel !== ""
+                            ? qsTr("串口 %1 仍存在，但 MAVLink 心跳已中断，请检查飞控是否重启、波特率或 USB 线是否稳定").arg(portLabel)
+                            : qsTr("飞行器连接已断开，请检查飞控供电、USB 连接或仿真数据发送")
+                        _resetConnectionUiState()
+                        _statusText = failureText
+                        _recentConnectionText = failureText
+                        _appendEvent(failureText)
                     }
 
                     function _refreshLinks() {
@@ -5347,6 +5401,14 @@ ApplicationWindow {
                     }
 
                     Timer {
+                        id: startPageDisconnectConfirmTimer
+                        interval: 1500
+                        repeat: false
+
+                        onTriggered: startPageOverlay._finishStartPageDisconnectConfirm()
+                    }
+
+                    Timer {
                         id: startConnectionCompleteTimer
                         interval: 450
                         repeat: false
@@ -5475,11 +5537,19 @@ ApplicationWindow {
                                 startPageOverlay._syncConnectionState()
                                 if (communicationLost) {
                                     const vehicleId = object && object.id !== undefined && object.id !== null ? object.id : ""
+                                    if (mainWindow._showStartPage) {
+                                        startPageOverlay._beginStartPageDisconnectConfirm(vehicleId)
+                                        return
+                                    }
                                     startPageOverlay._resetConnectionUiState()
                                     if (!mainWindow._showStartPage) {
                                         mainWindow._handleVehicleDisconnected(vehicleId)
                                     }
                                 } else {
+                                    if (startPageOverlay._startPageDisconnectPending) {
+                                        startPageDisconnectConfirmTimer.stop()
+                                        startPageOverlay._finishStartPageDisconnectConfirm()
+                                    }
                                     mainWindow._clearVehicleDisconnectNotice()
                                 }
                             }
