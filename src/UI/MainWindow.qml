@@ -4761,7 +4761,7 @@ ApplicationWindow {
                             }
                             _lastDetectedFlightControllerPortName = bestPortName
                             const bestDisplayName = bestNewIndex < _serialPortDisplayNames.length ? _serialPortDisplayNames[bestNewIndex] : ""
-                            _appendEvent(qsTr("Detected flight controller port: %1").arg(_detectedSerialPortLabel(bestPortName, bestDisplayName)))
+                            _appendEvent(qsTr("检测到飞控串口：%1").arg(_detectedSerialPortLabel(bestPortName, bestDisplayName)))
                         }
                     }
 
