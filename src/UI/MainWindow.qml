@@ -365,6 +365,10 @@ ApplicationWindow {
     }
 
     function _handleVehicleDisconnected(vehicleId) {
+        if (_showStartPage) {
+            return
+        }
+
         if (_vehicleDisconnectNoticeShown || (!_hadConnectedVehicleSession && _hasAnyConnectedVehicle())) {
             return
         }
@@ -4197,6 +4201,7 @@ ApplicationWindow {
                     property var _serialPortNames: []
                     property var _serialPortDisplayNames: []
                     property var _vehicleConnectionStateMap: ({})
+                    property string _lastDetectedFlightControllerPortName: ""
                     property var _temporaryStartSerialConfig: null
                     property var _temporaryStartUdpConfig: null
                     property var _connectingConfig: null
@@ -4751,6 +4756,10 @@ ApplicationWindow {
 
                         if (bestNewIndex >= 0 && bestNewScore >= 80) {
                             const bestPortName = _serialPortNames[bestNewIndex]
+                            if (bestPortName === _lastDetectedFlightControllerPortName) {
+                                return
+                            }
+                            _lastDetectedFlightControllerPortName = bestPortName
                             const bestDisplayName = bestNewIndex < _serialPortDisplayNames.length ? _serialPortDisplayNames[bestNewIndex] : ""
                             _appendEvent(qsTr("Detected flight controller port: %1").arg(_detectedSerialPortLabel(bestPortName, bestDisplayName)))
                         }
@@ -5425,7 +5434,9 @@ ApplicationWindow {
                             }
                             startPageOverlay._resetConnectionUiState()
                             startPageOverlay._syncConnectionState()
-                            mainWindow._handleVehicleDisconnected(vehicleId)
+                            if (!mainWindow._showStartPage) {
+                                mainWindow._handleVehicleDisconnected(vehicleId)
+                            }
                         }
                     }
 
@@ -5465,7 +5476,9 @@ ApplicationWindow {
                                 if (communicationLost) {
                                     const vehicleId = object && object.id !== undefined && object.id !== null ? object.id : ""
                                     startPageOverlay._resetConnectionUiState()
-                                    mainWindow._handleVehicleDisconnected(vehicleId)
+                                    if (!mainWindow._showStartPage) {
+                                        mainWindow._handleVehicleDisconnected(vehicleId)
+                                    }
                                 } else {
                                     mainWindow._clearVehicleDisconnectNotice()
                                 }
