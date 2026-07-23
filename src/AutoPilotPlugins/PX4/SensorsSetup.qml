@@ -55,6 +55,9 @@ Item {
     property Fact cal_acc0_id:      controller.getParameterFact(-1, "CAL_ACC0_ID")
 
     property Fact sens_board_rot:   controller.getParameterFact(-1, "SENS_BOARD_ROT")
+    property Fact sens_board_x_off: controller.getParameterFact(-1, "SENS_BOARD_X_OFF")
+    property Fact sens_board_y_off: controller.getParameterFact(-1, "SENS_BOARD_Y_OFF")
+    property Fact sens_board_z_off: controller.getParameterFact(-1, "SENS_BOARD_Z_OFF")
     property Fact sens_dpres_off:   controller.getParameterFact(-1, "SENS_DPRES_OFF")
 
     // Id > = signals compass available, rot < 0 signals internal compass
@@ -71,6 +74,11 @@ Item {
     property int    _arbitrarilyLargeMaxMagIndex:       50
     property string _selectedCalibrationType:            "accel"
     property var    _activeVehicle:                      QGroundControl.multiVehicleManager.activeVehicle
+    property bool   _calibrationCommandPending:          false
+    property string _pendingCalibrationType:             ""
+    property string _pendingCalibrationStatusText:       ""
+    property string _activeCalibrationType:              ""
+    property var    _calibrationResultByType:            ({})
 
     function currentMagParamCount() {
         if (_allMagsDisabled) {
@@ -118,8 +126,8 @@ Item {
             for (var index=0; index<_arbitrarilyLargeMaxMagIndex; index++) {
                 var magIdParam = _calMagIdParamFormat.replace("#", index)
                 if (controller.parameterExists(-1, magIdParam)) {
-                    var calMagIdFact = controller.parameterExists(-1, magIdParam)
-                    var calMagRotFact = controller.parameterExists(-1, _calMagRotParamFormat.replace("#", index))
+                    var calMagIdFact = controller.getParameterFact(-1, magIdParam)
+                    var calMagRotFact = controller.getParameterFact(-1, _calMagRotParamFormat.replace("#", index))
                     if (calMagIdFact.value > 0 && calMagRotFact.value >= 0) {
                         // Only external compasses can set orientation
                         return true
@@ -155,6 +163,8 @@ Item {
 
         onCalibrationActiveChanged: {
             if (controller.calibrationActive) {
+                _calibrationCommandPending = false
+                calibrationCommandResponseTimer.stop()
                 globals.navigationBlockedReason = qsTr("请先完成或取消当前校准")
             } else {
                 globals.navigationBlockedReason = ""
@@ -167,6 +177,20 @@ Item {
     Component.onCompleted: _applySectionFilterSelection()
 
     onSectionNameFilterChanged: _applySectionFilterSelection()
+
+    Timer {
+        id: calibrationCommandResponseTimer
+        interval: 7000
+        repeat: false
+
+        onTriggered: {
+            if (_calibrationCommandPending && !controller.calibrationActive) {
+                _calibrationCommandPending = false
+                _pendingCalibrationStatusText = qsTr("飞控未响应%1命令，请检查飞控连接、飞控状态和传感器校准条件。").arg(_calibrationTitleForType(_pendingCalibrationType))
+                statusTextArea.append(_pendingCalibrationStatusText)
+            }
+        }
+    }
 
     QGCPopupDialogFactory {
         id: waitForCancelDialogFactory
@@ -241,17 +265,7 @@ Item {
             actionButtonRadius: _cornerRadius
 
             onAccepted: {
-                if (preCalibrationDialogType == "gyro") {
-                    controller.calibrateGyro()
-                } else if (preCalibrationDialogType == "accel") {
-                    controller.calibrateAccel()
-                } else if (preCalibrationDialogType == "level") {
-                    controller.calibrateLevel()
-                } else if (preCalibrationDialogType == "compass") {
-                    controller.calibrateCompass()
-                } else if (preCalibrationDialogType == "airspeed") {
-                    controller.calibrateAirspeed()
-                }
+                _sendCalibrationCommand(preCalibrationDialogType)
             }
 
             ColumnLayout {
@@ -541,12 +555,37 @@ Item {
         preCalibrationDialogFactory.open({ title: title })
     }
 
+    function _sendCalibrationCommand(type) {
+        _pendingCalibrationType = type
+        _activeCalibrationType = type
+        _setCalibrationResult(type, "")
+        _calibrationCommandPending = true
+        _pendingCalibrationStatusText = qsTr("已发送%1命令，等待飞控响应...").arg(_calibrationTitleForType(type))
+        statusTextArea.text = _pendingCalibrationStatusText
+        calibrationCommandResponseTimer.restart()
+
+        if (type == "gyro") {
+            controller.calibrateGyro()
+        } else if (type == "accel") {
+            controller.calibrateAccel()
+        } else if (type == "level") {
+            controller.calibrateLevel()
+        } else if (type == "compass") {
+            controller.calibrateCompass()
+        } else if (type == "airspeed") {
+            controller.calibrateAirspeed()
+        } else {
+            _calibrationCommandPending = false
+            calibrationCommandResponseTimer.stop()
+        }
+    }
+
     function _factNumber(fact) {
         if (!fact) {
             return NaN
         }
-        const value = Number(fact.rawValue)
-        return isNaN(value) ? Number(fact.value) : value
+        const value = Number(fact.value)
+        return isNaN(value) ? Number(fact.rawValue) : value
     }
 
     function _formatTelemetryValue(fact, decimals, suffix) {
@@ -560,6 +599,17 @@ Item {
     function _factNumberOrZero(fact) {
         const value = _factNumber(fact)
         return isNaN(value) ? 0 : value
+    }
+
+    function _attitudeRateMagnitude() {
+        const rollRate = _factNumberOrZero(_activeVehicle ? _activeVehicle.rollRate : null)
+        const pitchRate = _factNumberOrZero(_activeVehicle ? _activeVehicle.pitchRate : null)
+        const yawRate = _factNumberOrZero(_activeVehicle ? _activeVehicle.yawRate : null)
+        return Math.max(Math.abs(rollRate), Math.abs(pitchRate), Math.abs(yawRate))
+    }
+
+    function _attitudeStable() {
+        return _activeVehicle && _attitudeRateMagnitude() < 0.15
     }
 
     function _telemetryHealthText() {
@@ -606,20 +656,26 @@ Item {
         if (!_calibrationReady(type)) {
             return qsTr("不可用")
         }
+        if (_calibrationComplete(type)) {
+            return qsTr("已完成")
+        }
         if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
             return qsTr("需校准")
         }
-        return qsTr("可校准")
+        return qsTr("待校准")
     }
 
     function _calibrationAccent(type) {
         if (!_calibrationReady(type)) {
             return "#FF5A5F"
         }
+        if (_calibrationComplete(type)) {
+            return "#22C55E"
+        }
         if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
             return "#F59E0B"
         }
-        return "#22C55E"
+        return "#60A5FA"
     }
 
     function _calibrationTitleForType(type) {
@@ -672,16 +728,12 @@ Item {
         }
         if (type === "gyro") {
             return [
-                qsTr("静止放置"),
-                qsTr("采集零偏"),
-                qsTr("完成确认")
+                qsTr("静止放置")
             ]
         }
         if (type === "level") {
             return [
-                qsTr("水平放置"),
-                qsTr("保持静止"),
-                qsTr("完成校平")
+                qsTr("水平放置")
             ]
         }
         if (type === "airspeed") {
@@ -863,7 +915,59 @@ Item {
         return _displaySteps().length
     }
 
+    function _statusTextHasCalibrationComplete(statusText) {
+        const statusTextLower = statusText.toLowerCase()
+        return statusText.indexOf("校准完成") !== -1 ||
+                statusTextLower.indexOf("calibration done") !== -1 ||
+                statusTextLower.indexOf("calibration complete") !== -1
+    }
+
+    function _statusTextHasCalibrationFailed(statusText) {
+        const statusTextLower = statusText.toLowerCase()
+        return statusText.indexOf("校准失败") !== -1 ||
+                statusTextLower.indexOf("calibration failed") !== -1
+    }
+
+    function _statusTextHasCalibrationCancelled(statusText) {
+        const statusTextLower = statusText.toLowerCase()
+        return statusText.indexOf("取消") !== -1 ||
+                statusTextLower.indexOf("calibration cancelled") !== -1
+    }
+
+    function _setCalibrationResult(type, result) {
+        if (!type) {
+            return
+        }
+        const results = Object.assign({}, _calibrationResultByType)
+        if (result === "") {
+            delete results[type]
+        } else {
+            results[type] = result
+        }
+        _calibrationResultByType = results
+    }
+
+    function _calibrationResult(type) {
+        const calibrationType = type || _selectedCalibrationType
+        return _calibrationResultByType[calibrationType] || ""
+    }
+
+    function _calibrationComplete(type) {
+        return _calibrationResult(type) === "complete"
+    }
+
+    function _calibrationFailed(type) {
+        return _calibrationResult(type) === "failed"
+    }
+
+    function _calibrationCancelled(type) {
+        return _calibrationResult(type) === "cancelled"
+    }
+
     function _displayStepIndex() {
+        if (_calibrationComplete(_selectedCalibrationType)) {
+            return Math.max(0, _displayStepCount() - 1)
+        }
         return controller.calibrationActive && controller.showOrientationCalArea ? _activeOrientationStepIndex() : 0
     }
 
@@ -915,6 +1019,9 @@ Item {
     }
 
     function _displayProgressValue() {
+        if (_calibrationComplete(_selectedCalibrationType)) {
+            return 1.0
+        }
         if (controller.calibrationActive) {
             return Math.max(0.03, Math.min(1.0, progressBar.value))
         }
@@ -926,16 +1033,19 @@ Item {
         if (text === "" || text === statusTextAreaDefaultText) {
             if (controller.calibrationActive && controller.showOrientationCalArea) {
                 if (!_orientationHasActiveDetection()) {
-                    return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+                    return _orientationWaitDiagnosticText()
                 }
                 const state = _orientationCalStepState(_activeOrientationRawIndex())
                 return _orientationInstructionText(_activeOrientationRawIndex(), state.rotate)
+            }
+            if (_calibrationCommandPending) {
+                return _pendingCalibrationStatusText !== "" ? _pendingCalibrationStatusText : qsTr("校准命令已发送，等待飞控响应...")
             }
             return controller.calibrationActive ? qsTr("正在校准...") : (_activeVehicle ? qsTr("已检测到飞控数据，等待开始校准。") : qsTr("正在等待飞控数据..."))
         }
         if (controller.calibrationActive && controller.showOrientationCalArea) {
             if (!_orientationHasActiveDetection()) {
-                return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+                return _orientationWaitDiagnosticText()
             }
             const activeState = _orientationCalStepState(_activeOrientationRawIndex())
             return _orientationInstructionText(_activeOrientationRawIndex(), activeState.rotate)
@@ -945,6 +1055,18 @@ Item {
     }
 
     function _shortCalibrationStateText() {
+        if (_calibrationFailed(_selectedCalibrationType)) {
+            return qsTr("校准失败")
+        }
+        if (_calibrationComplete(_selectedCalibrationType)) {
+            return qsTr("已完成")
+        }
+        if (_calibrationCancelled(_selectedCalibrationType)) {
+            return qsTr("已取消")
+        }
+        if (_calibrationCommandPending && !controller.calibrationActive) {
+            return qsTr("等待响应")
+        }
         if (!controller.calibrationActive) {
             return qsTr("等待开始")
         }
@@ -966,14 +1088,32 @@ Item {
         return qsTr("正在校准")
     }
 
+    function _orientationWaitDiagnosticText() {
+        const rollText = _formatTelemetryValue(_activeVehicle ? _activeVehicle.roll : null, 1, "°")
+        const pitchText = _formatTelemetryValue(_activeVehicle ? _activeVehicle.pitch : null, 1, "°")
+        if (_selectedCalibrationType === "accel") {
+            const boardX = _factNumber(sens_board_x_off)
+            const boardY = _factNumber(sens_board_y_off)
+            if (controller.calibrationActive && !isNaN(boardX) && !isNaN(boardY) && (Math.abs(boardX) > 1.0 || Math.abs(boardY) > 1.0)) {
+                return qsTr("当前水平偏置较大，建议先点击“清除水平偏置”并重启飞控。当前 Roll %1 / Pitch %2，Board X/Y %3 / %4").arg(rollText).arg(pitchText).arg(_formatTelemetryValue(sens_board_x_off, 1, "°")).arg(_formatTelemetryValue(sens_board_y_off, 1, "°"))
+            }
+            return qsTr("请按当前高亮步骤放置飞机并保持静止。若已放平但仍不识别，请检查飞控方向 SENS_BOARD_ROT。当前 Roll %1 / Pitch %2").arg(rollText).arg(pitchText)
+        }
+        return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+    }
+
     function _calibrationImageScale(type, stepIndex) {
         return 1.0
     }
 
     function _startSelectedCalibration() {
-        _startCalibration(_selectedCalibrationType,
-                          _calibrationHelpForType(_selectedCalibrationType),
-                          _calibrationTitleForType(_selectedCalibrationType))
+        if (_selectedCalibrationType === "gyro") {
+            _sendCalibrationCommand(_selectedCalibrationType)
+        } else {
+            _startCalibration(_selectedCalibrationType,
+                              _calibrationHelpForType(_selectedCalibrationType),
+                              _calibrationTitleForType(_selectedCalibrationType))
+        }
     }
 
     function _sectionMatches(filterValue, sourceName) {
@@ -1007,7 +1147,7 @@ Item {
          _sectionMatches(_effectiveSectionFilter, "Compass") || _sectionMatches(_effectiveSectionFilter, "磁力计"))
 
     property bool _showDownOnlyPreview: _showOrientationPreview &&
-        _sectionMatches(_effectiveSectionFilter, "Gyroscope") || _sectionMatches(_effectiveSectionFilter, "陀螺仪")
+        (_sectionMatches(_effectiveSectionFilter, "Gyroscope") || _sectionMatches(_effectiveSectionFilter, "陀螺仪"))
 
     property bool _showStatusPreview: !controller.calibrationActive &&
         (_effectiveSectionFilter !== "") &&
@@ -1288,6 +1428,20 @@ Item {
                     }
 
                     QGCButton {
+                        text: qsTr("清除水平偏置")
+                        useExplicitPopupColors: _root.useDarkStyle
+                        backgroundColor: _buttonColor
+                        borderColor: _dropdownBorderColor
+                        textColor: _primaryTextColor
+                        overlayColor: _buttonHoverColor
+                        hoverOverlayOpacity: 0.28
+                        pressedOverlayOpacity: 0.42
+                        backRadius: _cornerRadius
+                        showBorder: true
+                        onClicked: controller.clearBoardLevelOffsets()
+                    }
+
+                    QGCButton {
                         text: qsTr("取消校准")
                         enabled: controller.calibrationActive
                         useExplicitPopupColors: _root.useDarkStyle
@@ -1303,8 +1457,8 @@ Item {
                     }
 
                     QGCButton {
-                        text: controller.calibrationActive ? qsTr("校准中") : qsTr("开始校准")
-                        enabled: !controller.calibrationActive && _calibrationReady(_selectedCalibrationType)
+                        text: controller.calibrationActive ? qsTr("校准中") : (_calibrationCommandPending ? qsTr("等待响应") : qsTr("开始校准"))
+                        enabled: !controller.calibrationActive && !_calibrationCommandPending && _calibrationReady(_selectedCalibrationType)
                         primary: true
                         useExplicitPopupColors: _root.useDarkStyle
                         backgroundColor: _accentColor
@@ -1382,7 +1536,8 @@ Item {
                                 id: stepRow
                                 required property var modelData
                                 required property int index
-                                readonly property bool stepDone: modelData && modelData.done !== undefined ? modelData.done : false
+                                readonly property bool stepDone: _calibrationComplete(_selectedCalibrationType) ||
+                                    (modelData && modelData.done !== undefined ? modelData.done : false)
                                 readonly property bool stepActive: controller.calibrationActive &&
                                     controller.showOrientationCalArea &&
                                     modelData &&
@@ -1460,8 +1615,8 @@ Item {
                                 }
 
                                 QGCLabel {
-                                    text: qsTr("等待操作")
-                                    color: "#F59E0B"
+                                    text: _shortCalibrationStateText()
+                                    color: controller.calibrationActive ? "#22C55E" : (_calibrationCommandPending ? "#3B82F6" : "#F59E0B")
                                     font.bold: true
                                 }
                             }
@@ -1737,9 +1892,9 @@ Item {
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 4.7, parent.height * 0.23)
-                                    Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 4.2
-                                    Layout.maximumHeight: ScreenTools.defaultFontPixelHeight * 6.2
+                                    Layout.preferredHeight: Math.max(ScreenTools.defaultFontPixelHeight * 6.8, parent.height * 0.30)
+                                    Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 6.4
+                                    Layout.maximumHeight: ScreenTools.defaultFontPixelHeight * 8.0
                                     radius: _cornerRadius
                                     color: _root.useDarkStyle ? _inputColor : qgcPal.windowShade
                                     border.width: 1
@@ -1763,6 +1918,7 @@ Item {
                                                 { "name": qsTr("加速度计"), "type": "accel" },
                                                 { "name": qsTr("陀螺仪"), "type": "gyro" },
                                                 { "name": qsTr("磁力计"), "type": "compass" },
+                                                { "name": qsTr("地平线"), "type": "level" },
                                                 { "name": qsTr("空速"), "type": "airspeed" }
                                             ]
 
@@ -1770,17 +1926,26 @@ Item {
                                                 required property var modelData
                                                 visible: _calibrationVisible(modelData.type)
                                                 Layout.fillWidth: true
+                                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.05
+                                                Layout.minimumHeight: Layout.preferredHeight
+                                                spacing: ScreenTools.defaultFontPixelWidth * 0.35
 
                                                 QGCLabel {
                                                     Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
                                                     text: modelData.name
                                                     color: _root.useDarkStyle ? _secondaryTextColor : qgcPal.text
+                                                    elide: Text.ElideRight
                                                 }
 
                                                 QGCLabel {
+                                                    Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7.2
+                                                    Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 7.2
                                                     text: _calibrationStateText(modelData.type)
                                                     color: _calibrationAccent(modelData.type)
                                                     font.bold: true
+                                                    horizontalAlignment: Text.AlignRight
+                                                    elide: Text.ElideRight
                                                 }
                                             }
                                         }
@@ -1858,6 +2023,70 @@ Item {
                                             }
                                         }
 
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Heading"
+                                                color: "#A78BFA"
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _formatTelemetryValue(_activeVehicle ? _activeVehicle.heading : null, 0, "°")
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Board Rot"
+                                                color: _secondaryTextColor
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: sens_board_rot ? sens_board_rot.valueString : "--"
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Board X/Y"
+                                                color: _secondaryTextColor
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: "%1 / %2".arg(_formatTelemetryValue(sens_board_x_off, 1, "°")).arg(_formatTelemetryValue(sens_board_y_off, 1, "°"))
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+
+                                            QGCLabel {
+                                                Layout.fillWidth: true
+                                                text: "Board Z"
+                                                color: _secondaryTextColor
+                                                font.bold: true
+                                            }
+
+                                            QGCLabel {
+                                                text: _formatTelemetryValue(sens_board_z_off, 1, "°")
+                                                color: _primaryTextColor
+                                            }
+                                        }
+
                                         Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 1
@@ -1875,8 +2104,8 @@ Item {
                                             }
 
                                             QGCLabel {
-                                                text: _activeVehicle ? qsTr("稳定") : qsTr("等待数据")
-                                                color: _activeVehicle ? "#22C55E" : "#F59E0B"
+                                                text: _attitudeStable() ? qsTr("稳定") : (_activeVehicle ? qsTr("姿态变化中") : qsTr("等待数据"))
+                                                color: _attitudeStable() ? "#22C55E" : "#F59E0B"
                                                 font.bold: true
                                             }
                                         }
@@ -1964,6 +2193,28 @@ Item {
                 visible:        !orientationCalArea.visible
                 text:           statusTextAreaDefaultText
                 color:          _root.useDarkStyle ? _secondaryTextColor : qgcPal.text
+                onTextChanged: {
+                    const rawStatusText = text === undefined || text === null ? "" : "" + text
+                    const statusText = rawStatusText.toLowerCase()
+                    const resolvedCalibrationType = _activeCalibrationType !== "" ? _activeCalibrationType : _selectedCalibrationType
+                    if (_statusTextHasCalibrationComplete(rawStatusText)) {
+                        _setCalibrationResult(resolvedCalibrationType, "complete")
+                    } else if (_statusTextHasCalibrationFailed(rawStatusText)) {
+                        _setCalibrationResult(resolvedCalibrationType, "failed")
+                    } else if (_statusTextHasCalibrationCancelled(rawStatusText)) {
+                        _setCalibrationResult(resolvedCalibrationType, "cancelled")
+                    }
+                    if (_calibrationCommandPending &&
+                            (statusText.indexOf("calibration started") !== -1 ||
+                             statusText.indexOf("calibration failed") !== -1 ||
+                             statusText.indexOf("calibration cancelled") !== -1 ||
+                             statusText.indexOf("校准失败") !== -1 ||
+                             statusText.indexOf("取消") !== -1 ||
+                             statusText.indexOf("校准完成") !== -1)) {
+                        _calibrationCommandPending = false
+                        calibrationCommandResponseTimer.stop()
+                    }
+                }
                 background: Rectangle {
                     color: _root.useDarkStyle ? _panelColor : qgcPal.windowShade
                     border.width: _root.useDarkStyle ? 1 : 0

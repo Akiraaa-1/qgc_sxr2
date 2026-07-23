@@ -2,11 +2,16 @@
 
 #include <QtQuick/QQuickItem>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QSharedPointer>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "FactPanelController.h"
 
 Q_DECLARE_LOGGING_CATEGORY(SensorsComponentControllerLog)
+
+namespace events::parser {
+class ParsedEvent;
+}
 
 /// Sensors Component MVC Controller for SensorsComponent.qml.
 class SensorsComponentController : public FactPanelController
@@ -64,6 +69,7 @@ public:
     Q_INVOKABLE void cancelCalibration(void);
     Q_INVOKABLE bool usingUDPLink(void);
     Q_INVOKABLE void resetFactoryParameters();
+    Q_INVOKABLE void clearBoardLevelOffsets();
 
     bool calibrationActive() const { return _magCalInProgress || _gyroCalInProgress || _accelCalInProgress || _airspeedCalInProgress || _levelCalInProgress; }
     bool magCalInProgress() const { return _magCalInProgress; }
@@ -82,6 +88,7 @@ signals:
 
 private slots:
     void _handleUASTextMessage(int uasId, int compId, int severity, QString text, const QString &description);
+    void _handleCalibrationEvent(int uasId, int compId, int severity, QSharedPointer<events::parser::ParsedEvent> event);
     void _handleParametersReset(bool success);
 
 private:
@@ -91,6 +98,7 @@ private:
     void _refreshParams(void);
     void _hideAllCalAreas(void);
     void _resetInternalState(void);
+    void _updateAccelSidesFromRemaining(uint64_t remainingSides);
 
     enum StopCalibrationCode {
         StopCalibrationSuccess,

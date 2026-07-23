@@ -3,6 +3,7 @@
 #include "ParameterManager.h"
 #include "Vehicle.h"
 #include "QGCLoggingCategory.h"
+#include "MAVLink/LibEvents/libevents_includes.h"
 
 QGC_LOGGING_CATEGORY(SensorsComponentControllerLog, "AutoPilotPlugins.SensorsComponentController")
 
@@ -76,6 +77,7 @@ void SensorsComponentController::_startLogCalibration(void)
     _hideAllCalAreas();
 
     connect(_vehicle, &Vehicle::textMessageReceived, this, &SensorsComponentController::_handleUASTextMessage);
+    connect(_vehicle, &Vehicle::calibrationEventReceived, this, &SensorsComponentController::_handleCalibrationEvent);
 }
 
 void SensorsComponentController::_startVisualCalibration(void)
@@ -114,6 +116,7 @@ void SensorsComponentController::_resetInternalState(void)
 void SensorsComponentController::_stopCalibration(SensorsComponentController::StopCalibrationCode code)
 {
     disconnect(_vehicle, &Vehicle::textMessageReceived, this, &SensorsComponentController::_handleUASTextMessage);
+    disconnect(_vehicle, &Vehicle::calibrationEventReceived, this, &SensorsComponentController::_handleCalibrationEvent);
 
     if (code == StopCalibrationSuccess) {
         _resetInternalState();
@@ -132,7 +135,7 @@ void SensorsComponentController::_stopCalibration(SensorsComponentController::St
         case StopCalibrationSuccess:
             _orientationCalAreaHelpText->setProperty("text", tr("校准完成"));
             if (!_airspeedCalInProgress && !_levelCalInProgress) {
-                emit resetStatusTextArea();
+                _appendStatusLog(tr("校准完成"));
             }
             if (_magCalInProgress) {
                 emit magCalComplete();
@@ -158,6 +161,110 @@ void SensorsComponentController::_stopCalibration(SensorsComponentController::St
     _levelCalInProgress = false;
 
     emit calibrationActiveChanged();
+}
+
+void SensorsComponentController::_updateAccelSidesFromRemaining(uint64_t remainingSides)
+{
+    _orientationCalDownSideVisible = true;
+    _orientationCalUpsideDownSideVisible = true;
+    _orientationCalLeftSideVisible = true;
+    _orientationCalRightSideVisible = true;
+    _orientationCalTailDownSideVisible = true;
+    _orientationCalNoseDownSideVisible = true;
+
+    _orientationCalTailDownSideDone = !(remainingSides & 1);
+    _orientationCalNoseDownSideDone = !(remainingSides & 2);
+    _orientationCalLeftSideDone = !(remainingSides & 4);
+    _orientationCalRightSideDone = !(remainingSides & 8);
+    _orientationCalUpsideDownSideDone = !(remainingSides & 16);
+    _orientationCalDownSideDone = !(remainingSides & 32);
+
+    if (_orientationCalDownSideDone) {
+        _orientationCalDownSideInProgress = false;
+    }
+    if (_orientationCalUpsideDownSideDone) {
+        _orientationCalUpsideDownSideInProgress = false;
+    }
+    if (_orientationCalLeftSideDone) {
+        _orientationCalLeftSideInProgress = false;
+    }
+    if (_orientationCalRightSideDone) {
+        _orientationCalRightSideInProgress = false;
+    }
+    if (_orientationCalNoseDownSideDone) {
+        _orientationCalNoseDownSideInProgress = false;
+    }
+    if (_orientationCalTailDownSideDone) {
+        _orientationCalTailDownSideInProgress = false;
+    }
+
+    emit orientationCalSidesVisibleChanged();
+    emit orientationCalSidesDoneChanged();
+    emit orientationCalSidesInProgressChanged();
+}
+
+void SensorsComponentController::_handleCalibrationEvent(int uasId, int compId, int severity, QSharedPointer<events::parser::ParsedEvent> event)
+{
+    if (uasId != _vehicle->id() || !event) {
+        return;
+    }
+
+    const QString eventType = QString::fromStdString(event->type());
+    const auto sideName = [](uint64_t side) {
+        switch (side) {
+        case 1:  return QStringLiteral("back");
+        case 2:  return QStringLiteral("front");
+        case 4:  return QStringLiteral("left");
+        case 8:  return QStringLiteral("right");
+        case 16: return QStringLiteral("up");
+        case 32: return QStringLiteral("down");
+        default: return QString();
+        }
+    };
+    const auto calTypeName = [](uint64_t calType) {
+        if (calType & 1) {
+            return QStringLiteral("accel");
+        } else if (calType & 2) {
+            return QStringLiteral("mag");
+        } else if (calType & 4) {
+            return QStringLiteral("gyro");
+        } else if (calType & 8) {
+            return QStringLiteral("level");
+        } else if (calType & 16) {
+            return QStringLiteral("airspeed");
+        }
+        return QString();
+    };
+
+    if (eventType == QStringLiteral("cal_progress") && event->numArguments() >= 3) {
+        const QString calType = calTypeName(event->argumentValueInt(2));
+        if (!calType.isEmpty() && !calibrationActive()) {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] calibration started: 2 %1").arg(calType), QString());
+        }
+        if (calType == QStringLiteral("accel") && event->numArguments() >= 4) {
+            _updateAccelSidesFromRemaining(event->argumentValueInt(3));
+        }
+        _handleUASTextMessage(uasId, compId, severity, QStringLiteral("progress <%1>").arg(event->argumentValueInt(1)), QString());
+    } else if (eventType == QStringLiteral("cal_orientation_detected") && event->numArguments() >= 1) {
+        const QString side = sideName(event->argumentValueInt(0));
+        if (!side.isEmpty()) {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] %1 orientation detected").arg(side), QString());
+        }
+    } else if (eventType == QStringLiteral("cal_orientation_done") && event->numArguments() >= 1) {
+        const QString side = sideName(event->argumentValueInt(0));
+        if (!side.isEmpty()) {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] %1 side done, rotate to a different side").arg(side), QString());
+        }
+    } else if (eventType == QStringLiteral("cal_done") && event->numArguments() >= 1) {
+        const uint64_t result = event->argumentValueInt(0);
+        if (result == 0) {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] calibration done:"), QString());
+        } else if (result == 2) {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] calibration cancelled"), QString());
+        } else {
+            _handleUASTextMessage(uasId, compId, severity, QStringLiteral("[cal] calibration failed"), QString());
+        }
+    }
 }
 
 void SensorsComponentController::calibrateGyro(void)
@@ -487,4 +594,28 @@ void SensorsComponentController::resetFactoryParameters()
                              true,  // showError
                              3,     // Reset factory parameters
                              -1);   // Don't do anything with mission storage
+}
+
+void SensorsComponentController::clearBoardLevelOffsets()
+{
+    static constexpr const char* kBoardOffsetParams[] = {
+        "SENS_BOARD_X_OFF",
+        "SENS_BOARD_Y_OFF",
+        "SENS_BOARD_Z_OFF",
+    };
+
+    ParameterManager *parameterManager = _vehicle->parameterManager();
+    for (const char *paramName : kBoardOffsetParams) {
+        if (parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
+            parameterManager->getParameter(ParameterManager::defaultComponentId, paramName)->setCookedValue(0.0);
+        }
+    }
+
+    QTimer::singleShot(1000, this, [this]() {
+        _vehicle->parameterManager()->refreshParameter(ParameterManager::defaultComponentId, "SENS_BOARD_X_OFF");
+        _vehicle->parameterManager()->refreshParameter(ParameterManager::defaultComponentId, "SENS_BOARD_Y_OFF");
+        _vehicle->parameterManager()->refreshParameter(ParameterManager::defaultComponentId, "SENS_BOARD_Z_OFF");
+    });
+
+    qgcApp()->showAppMessage(tr("已清除水平偏置，请重启飞控后重新校准加速度计和地平线。"));
 }

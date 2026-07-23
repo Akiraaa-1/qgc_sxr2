@@ -147,7 +147,7 @@ bool LinkInterface::reportMavlinkV1Traffic()
             qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on link" << linkName << "(configured for MAVLink v1)";
             return true;
         }
-        if (linkConfig && linkName.startsWith(QStringLiteral("Start Page"))) {
+        if (linkConfig && (linkName.startsWith(QStringLiteral("Start Page")) || linkName.startsWith(QStringLiteral("开始页")))) {
             qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on start page link" << linkName << "- switching link to MAVLink v1";
             linkConfig->setMavlinkVersion(1);
             mavlink_status_t *const mavlinkStatus = mavlink_get_channel_status(_mavlinkChannel);

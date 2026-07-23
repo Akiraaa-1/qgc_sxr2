@@ -4231,9 +4231,9 @@ ApplicationWindow {
                     readonly property bool _connectionInProgress: _manualConnectionState === _connectionStateConnecting || _manualConnectionState === _connectionStateFinishing
                     property real _connectionProgress: 0
                     property int _connectionElapsedMs: 0
-                    readonly property int _connectionTimeoutMs: 6000
+                    readonly property int _connectionTimeoutMs: 15000
                     readonly property int _cleanupMinimumWaitMs: 900
-                    readonly property int _cleanupTimeoutMs: 2500
+                    readonly property int _cleanupTimeoutMs: 5000
                     readonly property int _startPageInitialMavlinkVersion: 2
                     property bool _pendingWorkspaceEntry: false
                     property bool _manualConnectionArmed: false
@@ -4260,7 +4260,7 @@ ApplicationWindow {
 
                     function _setStartPageAutoConnectPaused(paused) {
                         if (_linkManager && _linkManager.autoConnectPaused !== undefined) {
-                            _linkManager.autoConnectPaused = paused
+                            _linkManager.autoConnectPaused = false
                         }
                     }
 
@@ -4277,7 +4277,9 @@ ApplicationWindow {
                         _connectingConfig = config
                         _lastConnectionWasUdp = !!(config && config.linkType === LinkConfiguration.TypeUdp)
                         startConnectionCompleteTimer.stop()
-                        _statusText = _lastConnectionWasUdp
+                        _statusText = !config
+                            ? qsTr("正在等待地面站自动识别飞控并接收 MAVLink 心跳...")
+                            : _lastConnectionWasUdp
                             ? qsTr("正在打开 UDP 并等待 MAVLink 心跳...")
                             : qsTr("正在打开串口并等待 MAVLink 心跳...")
                         _recentConnectionText = _statusText
@@ -4676,6 +4678,15 @@ ApplicationWindow {
                         return 50
                     }
 
+                    function _defaultBaudRateForSerialPort(portName, displayName) {
+                        const portText = (portName + " " + displayName).toLowerCase()
+                        if (portText.indexOf("sik") !== -1 || portText.indexOf("radio") !== -1 || portText.indexOf("telemetry") !== -1) {
+                            return 57600
+                        }
+
+                        return 57600
+                    }
+
                     function _bestSerialPortIndex(minimumScore = -1) {
                         let bestIndex = -1
                         let bestScore = -1
@@ -4851,6 +4862,9 @@ ApplicationWindow {
                                 _linkSelectionLocked = false
                                 _lastConnectionWasUdp = false
                             }
+                            if (!_serialPortSelectionLocked) {
+                                _selectedBaudRate = _defaultBaudRateForSerialPort(currentPortName, currentDisplayName)
+                            }
                             _statusText = qsTr("检测到串口 %1，可以连接").arg(currentDisplayName)
                             _recentConnectionText = _statusText
                         } else if (!changed && logChanges && _serialPortSelectionLocked && previousPortName !== "" && _serialPortNames.length > previousPorts.length) {
@@ -5006,6 +5020,9 @@ ApplicationWindow {
                         config.dynamic = true
                         config.name = qsTr("Start Page Serial (%1)").arg(_selectedSerialPortDisplayName())
                         config.portName = portName
+                        if (!_serialPortSelectionLocked) {
+                            _selectedBaudRate = _defaultBaudRateForSerialPort(portName, _selectedSerialPortDisplayName())
+                        }
                         config.baud = _selectedBaudRate
                         config.flowControl = _selectedFlowControlEnabled ? 1 : 0
                         config.dataBits = _selectedDataBits
@@ -5066,6 +5083,19 @@ ApplicationWindow {
                         }
 
                         return null
+                    }
+
+                    function _shouldWaitForSerialAutoConnect() {
+                        const pixhawkAutoConnectEnabled = !!(_autoConnectSettings
+                                                             && _autoConnectSettings.autoConnectPixhawk
+                                                             && _autoConnectSettings.autoConnectPixhawk.rawValue)
+                        return _serialPortAvailable
+                            && pixhawkAutoConnectEnabled
+                            && !_linkSelectionLocked
+                            && !_serialPortSelectionLocked
+                            && _selectedSerialPortIndex >= 0
+                            && _selectedSerialPortIndex < _serialPortNames.length
+                            && _selectedSerialPortScore() >= 80
                     }
 
                     function _chooseConnectionConfig() {
@@ -5256,6 +5286,12 @@ ApplicationWindow {
                             return
                         }
 
+                        if (_shouldWaitForSerialAutoConnect()) {
+                            _beginConnectionProgress(null)
+                            _appendEvent(qsTr("检测到飞控串口，等待地面站自动连接..."))
+                            return
+                        }
+
                         const cfg = _chooseConnectionConfig()
 
                         if (!cfg) {
@@ -5308,22 +5344,40 @@ ApplicationWindow {
                             if (startPageOverlay._connectionElapsedMs >= startPageOverlay._connectionTimeoutMs) {
                                 const wasUdpConnection = startPageOverlay._connectingConfig
                                     && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
+                                const waitingForAutoConnect = !startPageOverlay._connectingConfig
                                 startPageOverlay._timeoutConnectionProgress()
+                                if (waitingForAutoConnect) {
+                                    startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
+                                    if (startPageOverlay._linkManager) {
+                                        startPageOverlay._linkManager.clearDeferredCommunicationError()
+                                    }
+                                    startPageOverlay._statusText = qsTr("仍在等待地面站自动连接飞控，请确认飞控已启动并正在发送 MAVLink 心跳")
+                                    startPageOverlay._recentConnectionText = startPageOverlay._statusText
+                                    startPageOverlay._appendEvent(qsTr("尚未收到 MAVLink 心跳，继续等待自动连接"))
+                                    return
+                                }
                                 const failureText = wasUdpConnection
                                     ? qsTr("连接失败：UDP 未收到 MAVLink 心跳，请确认仿真或飞控正在发送数据。")
-                                    : qsTr("连接失败：未收到 MAVLink 心跳，可能是波特率、端口选择错误或飞控未发送数据。")
+                                    : qsTr("连接失败：未收到 MAVLink 心跳，可能是飞控仍在重启、波特率不匹配或飞控暂未发送数据。")
                                 startPageOverlay._appendEvent(failureText)
                                 const portChanged = wasUdpConnection ? false : startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
+                                const serialPortMissing = !wasUdpConnection && startPageOverlay._selectedSerialPortName() === ""
                                 startPageOverlay._statusText = failureText
                                 startPageOverlay._recentConnectionText = failureText
                                 if (startPageOverlay._linkManager) {
-                                    if (portChanged) {
+                                    if (portChanged || serialPortMissing) {
                                         startPageOverlay._linkManager.clearDeferredCommunicationError()
                                     } else {
                                         startPageOverlay._linkManager.showDeferredCommunicationError()
                                     }
                                 }
-                                startPageOverlay._showConnectionFailure(failureText)
+                                if (!serialPortMissing) {
+                                    startPageOverlay._showConnectionFailure(failureText)
+                                } else {
+                                    startPageOverlay._appendEvent(qsTr("飞控串口暂未重新枚举，保持开始页等待检测"))
+                                    startPageOverlay._statusText = qsTr("飞控重启中或 USB 暂未枚举，检测到串口后请重新连接")
+                                    startPageOverlay._recentConnectionText = startPageOverlay._statusText
+                                }
                                 return
                             }
 
@@ -5367,7 +5421,7 @@ ApplicationWindow {
 
                     Timer {
                         id: startPageDisconnectConfirmTimer
-                        interval: 1500
+                        interval: 8000
                         repeat: false
 
                         onTriggered: startPageOverlay._finishStartPageDisconnectConfirm()
@@ -5448,10 +5502,18 @@ ApplicationWindow {
                             if (!activeVehicle && startPageOverlay._manualConnectionState === startPageOverlay._connectionStateConnecting) {
                                 return
                             }
+                            if (activeVehicle) {
+                                criticalVehicleMessageModel.clear()
+                                activeVehicle.resetErrorLevelMessages()
+                            }
                             startPageOverlay._syncConnectionState()
                         }
                         function onVehicleAdded(vehicle) {
                             mainWindow._clearVehicleDisconnectNotice()
+                            criticalVehicleMessageModel.clear()
+                            if (vehicle) {
+                                vehicle.resetErrorLevelMessages()
+                            }
                             startPageOverlay._syncConnectionState()
                         }
                         function onVehicleRemoved(vehicle) {
@@ -6409,6 +6471,17 @@ ApplicationWindow {
     }
 
     function showCriticalVehicleMessage(message) {
+        closeIndicatorDrawer()
+        criticalVehicleMessagePopup.addMessage(message)
+
+        if (criticalVehicleMessagePopup.visible || QGroundControl.videoManager.fullScreen) {
+            // Match QGC behavior: keep the current warning visible and mark that
+            // additional messages are waiting in the vehicle message list.
+            criticalVehicleMessagePopup.additionalCriticalMessagesReceived = true
+        } else {
+            criticalVehicleMessagePopup.additionalCriticalMessagesReceived = false
+            criticalVehicleMessagePopup.open()
+        }
     }
 
     Popup {

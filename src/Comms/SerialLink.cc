@@ -12,7 +12,7 @@ namespace {
     constexpr int CONNECT_TIMEOUT_MS = 1000;
     constexpr int DISCONNECT_TIMEOUT_MS = 3000;
     constexpr int PORT_RETRY_INTERVAL_MS = 1000;
-    constexpr int PORT_RETRY_TIMEOUT_MS = 5000;
+    constexpr int PORT_RETRY_TIMEOUT_MS = 15000;
 }
 
 /*===========================================================================*/
@@ -272,6 +272,12 @@ void SerialWorker::_connectToPort()
             return;
         }
 
+        if (_port->error() == QSerialPort::DeviceNotFoundError) {
+            qCWarning(SerialLinkLog) << "Serial device node did not appear before retry timeout, disconnecting without user-facing error" << _port->portName();
+            _onPortDisconnected();
+            return;
+        }
+
         // If auto-connect is enabled, we don't want to emit an error for PermissionError from devices already in use
         if (!_errorEmitted && (!_serialConfig->isAutoConnect() || _port->error() != QSerialPort::PermissionError)) {
             emit errorOccurred(tr("Could not open port: %1").arg(_port->errorString()));
@@ -393,6 +399,10 @@ void SerialWorker::_onPortErrorOccurred(QSerialPort::SerialPortError portError)
     case QSerialPort::ResourceError:
         // We get this when a usb cable is unplugged - close port to allow reconnection
         qCDebug(SerialLinkLog) << "Resource error (likely USB disconnect):" << _port->errorString();
+        _port->close();
+        return;
+    case QSerialPort::DeviceNotFoundError:
+        qCWarning(SerialLinkLog) << "Serial device node disappeared, closing port without user-facing error:" << _port->portName() << _port->errorString();
         _port->close();
         return;
     case QSerialPort::PermissionError:
