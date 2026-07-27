@@ -425,7 +425,7 @@ Item {
     function _triggerToolStripClear() {
         _clearMapToolState()
 
-        if (_planMasterController.syncInProgress || !_planMasterController.containsItems) {
+        if (!_planMasterController.containsItems) {
             return
         }
 
@@ -957,21 +957,20 @@ Item {
                     ToolStripAction {
                         text: qsTr("打开")
                         iconSource: "/qmlimages/Plan.svg"
-                        enabled: !_planMasterController.syncInProgress
                         visible: toolStrip._isMissionLayer
                         onTriggered: _triggerToolStripOpen()
                     },
                     ToolStripAction {
                         text: qsTr("保存")
                         iconSource: "/res/SaveToDisk.svg"
-                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        enabled: _planMasterController.containsItems
                         visible: toolStrip._isMissionLayer
                         onTriggered: _triggerToolStripSave()
                     },
                     ToolStripAction {
                         text: qsTr("清空航线")
                         iconSource: "/res/TrashCan.svg"
-                        enabled: !_planMasterController.syncInProgress && _planMasterController.containsItems
+                        enabled: _planMasterController.containsItems
                         visible: toolStrip._isMissionLayer
                         onTriggered: _triggerToolStripClear()
                     },

@@ -36,6 +36,9 @@ SetupPage {
             readonly property real _availableWidth:    Math.max(ScreenTools.defaultFontPixelWidth * 34, firmwarePage.availableWidth - (_outerMargin * 2))
             readonly property real _panelWidth:        Math.min(_contentMaxWidth, Math.max(_contentMinWidth, _availableWidth))
             readonly property real _logHeight:         Math.max(ScreenTools.defaultFontPixelHeight * 12, ScreenTools.defaultFontPixelHeight * 16)
+            readonly property real _sectionTitlePointSize: ScreenTools.mediumFontPointSize * 0.92
+            readonly property real _bodyPointSize:         ScreenTools.defaultFontPointSize * 0.90
+            readonly property real _smallPointSize:        ScreenTools.defaultFontPointSize * ScreenTools.smallFontPointRatio * 0.95
 
             implicitWidth:  _panelWidth + (_outerMargin * 2)
             implicitHeight: panelFrame.height + (_outerMargin * 2)
@@ -605,7 +608,7 @@ SetupPage {
                         QGCLabel {
                             Layout.fillWidth: true
                             text: firmwareContent.title
-                            font.pointSize: ScreenTools.mediumFontPointSize
+                            font.pointSize: firmwareContent._sectionTitlePointSize
                             font.bold: true
                             color: popupStyle.primaryTextColor
                         }
@@ -614,6 +617,7 @@ SetupPage {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             text: firmwareContent._singleFirmwareMode ? firmwareContent.welcomeTextSingle : firmwareContent.welcomeText
+                            font.pointSize: firmwareContent._bodyPointSize
                             color: popupStyle.secondaryTextColor
                         }
                     }
@@ -636,7 +640,7 @@ SetupPage {
                         QGCLabel {
                             Layout.fillWidth: true
                             text: qsTr("Installed Versions")
-                            font.pointSize: ScreenTools.mediumFontPointSize
+                            font.pointSize: firmwareContent._sectionTitlePointSize
                             font.bold: true
                             color: popupStyle.primaryTextColor
                         }
@@ -669,7 +673,7 @@ SetupPage {
                                         QGCLabel {
                                             Layout.fillWidth: true
                                             text: modelData.title
-                                            font.pointSize: ScreenTools.defaultFontPointSize * ScreenTools.smallFontPointRatio
+                                            font.pointSize: firmwareContent._smallPointSize
                                             color: popupStyle.secondaryTextColor
                                         }
 
@@ -679,6 +683,7 @@ SetupPage {
                                             maximumLineCount: 2
                                             wrapMode: Text.WordWrap
                                             text: modelData.value
+                                            font.pointSize: firmwareContent._bodyPointSize
                                             color: popupStyle.primaryTextColor
                                         }
                                     }
@@ -710,7 +715,7 @@ SetupPage {
                             QGCLabel {
                                 Layout.fillWidth: true
                                 text: qsTr("Upgrade Recommendations")
-                                font.pointSize: ScreenTools.mediumFontPointSize
+                                font.pointSize: firmwareContent._sectionTitlePointSize
                                 font.bold: true
                                 color: popupStyle.primaryTextColor
                             }
@@ -737,6 +742,7 @@ SetupPage {
                                         Layout.fillWidth: true
                                         wrapMode: Text.WordWrap
                                         text: modelData
+                                        font.pointSize: firmwareContent._bodyPointSize
                                         color: popupStyle.secondaryTextColor
                                     }
                                 }
@@ -762,7 +768,7 @@ SetupPage {
                             QGCLabel {
                                 Layout.fillWidth: true
                                 text: qsTr("Pre-upgrade Checks")
-                                font.pointSize: ScreenTools.mediumFontPointSize
+                                font.pointSize: firmwareContent._sectionTitlePointSize
                                 font.bold: true
                                 color: popupStyle.primaryTextColor
                             }
@@ -793,6 +799,7 @@ SetupPage {
                                             Layout.fillWidth: true
                                             wrapMode: Text.WordWrap
                                             text: modelData.title
+                                            font.pointSize: firmwareContent._bodyPointSize
                                             font.bold: true
                                             color: popupStyle.primaryTextColor
                                         }
@@ -802,7 +809,7 @@ SetupPage {
                                             wrapMode: Text.WordWrap
                                             text: modelData.detail
                                             color: popupStyle.secondaryTextColor
-                                            font.pointSize: ScreenTools.defaultFontPointSize * ScreenTools.smallFontPointRatio
+                                            font.pointSize: firmwareContent._smallPointSize
                                         }
                                     }
                                 }
@@ -836,7 +843,7 @@ SetupPage {
                                 QGCLabel {
                                     Layout.fillWidth: true
                                     text: qsTr("Upgrade Status")
-                                    font.pointSize: ScreenTools.mediumFontPointSize
+                                    font.pointSize: firmwareContent._sectionTitlePointSize
                                     font.bold: true
                                     color: popupStyle.primaryTextColor
                                 }
@@ -845,6 +852,7 @@ SetupPage {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                     text: qsTr("Connect the target device through USB. Upgrade progress and board detection messages will appear below.")
+                                    font.pointSize: firmwareContent._bodyPointSize
                                     color: popupStyle.secondaryTextColor
                                 }
                             }

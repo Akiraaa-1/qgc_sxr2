@@ -89,14 +89,14 @@ Item {
     property bool _showFlightPath: true
     readonly property bool _startMissionAlreadyStarted: !!(guidedActionsController && guidedActionsController._missionActive)
     property bool _startMissionCommandIssued: false
+    readonly property bool _startMissionReadyForStart: root._missionReadyForStart()
     readonly property bool _startMissionEntryVisible: !!guidedActionsController &&
                                                       !!root._activeVehicle &&
                                                       root._hasStartMissionItems() &&
                                                       !root._startMissionCommandIssued &&
                                                       !root._startMissionAlreadyStarted &&
                                                       (guidedActionsController.showContinueMission ||
-                                                       (!root._startMissionVehicleInAir &&
-                                                        root._missionReadyForStart()))
+                                                       !root._startMissionVehicleInAir)
     readonly property int _startMissionExecuteMaxAttempts: 12
     property bool _startMissionFeedbackIsError: false
     property string _startMissionFeedbackText: ""
@@ -1572,7 +1572,8 @@ Item {
 
     function _hasStartMissionItems() {
         const missionController = planControllerInternal ? planControllerInternal.missionController : null;
-        return !!(missionController && missionController.containsItems);
+        return !!((missionController && missionController.containsItems) ||
+                  (guidedActionsController && guidedActionsController._missionAvailable));
     }
 
     function _headingCompassLabel(headingDegrees) {
@@ -1789,7 +1790,10 @@ Item {
         case guidedActionsController.actionContinueMission:
             return guidedActionsController.showContinueMission;
         default:
-            return !root._startMissionVehicleInAir && guidedActionsController.showStartMission && root._missionReadyForStart();
+            return !root._startMissionVehicleInAir &&
+                   root._hasStartMissionItems() &&
+                   guidedActionsController._canStartMission &&
+                   root._startMissionReadyForStart;
         }
     }
 
@@ -2039,7 +2043,27 @@ Item {
     }
 
     function _missionReadyForStart() {
-        return !!(root._activeVehicle && root._hasStartMissionItems() && !root._missionPlanSyncInProgress() && !root._missionPlanDirtyForUpload());
+        const report = root._activeVehicle && root._activeVehicle.healthAndArmingCheckReport ? root._activeVehicle.healthAndArmingCheckReport : null;
+        const gpsLock = root._networkGpsLock(root._activeVehicle);
+        const gpsSatellites = root._networkGpsSatelliteCount(root._activeVehicle);
+        const gpsReady = root._activeVehicle && root._activeVehicle.fixedWing
+                       ? true
+                       : (!isNaN(gpsLock) && gpsLock >= 3 && !isNaN(gpsSatellites) && gpsSatellites > 0);
+        const prearmReady = root._activeVehicle && root._activeVehicle.readyToFlyAvailable !== undefined && root._activeVehicle.readyToFlyAvailable
+                          ? root._activeVehicle.readyToFly
+                          : true;
+        const vehicleReady = report && report.supported
+                           ? (report.canArm && report.canStartMission)
+                           : (root._activeVehicle.readyToFlyAvailable ? root._activeVehicle.readyToFly : guidedActionsController._canStartMission);
+
+        return !!(root._activeVehicle &&
+                  guidedActionsController &&
+                  vehicleReady &&
+                  prearmReady &&
+                  gpsReady &&
+                  root._hasStartMissionItems() &&
+                  !root._missionPlanSyncInProgress() &&
+                  !root._missionPlanDirtyForUpload());
     }
 
     function _missionRemainingSeconds(vehicle) {
@@ -3002,6 +3026,11 @@ Item {
             if (guidedActionsController._vehicleFlying) {
                 return qsTr("飞行器已经在飞行中。");
             }
+            const gpsLock = root._networkGpsLock(root._activeVehicle);
+            const gpsSatellites = root._networkGpsSatelliteCount(root._activeVehicle);
+            if (!root._activeVehicle.fixedWing && (isNaN(gpsLock) || gpsLock < 3 || isNaN(gpsSatellites) || gpsSatellites <= 0)) {
+                return qsTr("飞行器当前尚未准备好开始任务：定位质量不足，当前 %1 颗卫星。").arg(isNaN(gpsSatellites) ? 0 : Math.round(gpsSatellites));
+            }
             if (!guidedActionsController._checklistPassed) {
                 return qsTr("飞行前检查单尚未通过。");
             }
@@ -3034,6 +3063,11 @@ Item {
             }
             if (!guidedActionsController._checklistPassed) {
                 return qsTr("飞行前检查单尚未通过。");
+            }
+            const report = root._activeVehicle && root._activeVehicle.healthAndArmingCheckReport ? root._activeVehicle.healthAndArmingCheckReport : null;
+            if (report && report.supported && !report.canArm) {
+                const reason = root._compactPrearmReason(root._activeVehicle);
+                return reason !== "" ? qsTr("飞行器当前尚未准备好开始任务：%1").arg(reason) : qsTr("飞行器当前尚未准备好开始任务：解锁检查未通过。");
             }
             if (!guidedActionsController._canStartMission) {
                 const reason = root._compactPrearmReason(root._activeVehicle);
@@ -4073,6 +4107,13 @@ Item {
         }
 
         target: guidedActionsController
+    }
+
+    on_StartMissionReadyForStartChanged: {
+        if (!root._startMissionReadyForStart && root._startMissionSliderVisible) {
+            root._hideStartMissionSlider();
+            root._showStartMissionUnavailableDialog();
+        }
     }
 
     Timer {
@@ -9629,7 +9670,7 @@ Item {
                         color: Qt.rgba(0.07, 0.10, 0.12, 0.96)
                         height: startMissionConfirmContent.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.58)
                         radius: ScreenTools.defaultFontPixelHeight * 0.22
-                        visible: !root._useExternalStartMissionUi && root._startMissionSliderVisible && !root._startMissionAlreadyStarted
+                        visible: !root._useExternalStartMissionUi && root._startMissionSliderVisible && !root._startMissionAlreadyStarted && root._mapPrimaryActionAvailable()
                         width: Math.min(ScreenTools.defaultFontPixelWidth * 34, Math.max(ScreenTools.defaultFontPixelWidth * 22, mapPanel.width - (root._margin * 2)))
                         x: Math.max(root._margin, Math.min(mapPanel.width - width - root._margin, startMissionMapButton.mapToItem(rightPane, 0, 0).x + ((startMissionMapButton.width - width) * 0.5)))
                         y: Math.max(root._margin, startMissionMapButton.mapToItem(rightPane, 0, 0).y - height - (root._margin * 0.55))
@@ -9847,7 +9888,8 @@ Item {
                                     }
                                     onPressed: {
                                         if (!root._mapPrimaryActionAvailable()) {
-                                            root._confirmStartMissionSlider();
+                                            root._hideStartMissionSlider();
+                                            root._showStartMissionUnavailableDialog();
                                             return;
                                         }
                                         startMissionHoldAnimation.stop();

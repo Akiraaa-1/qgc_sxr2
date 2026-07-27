@@ -1049,6 +1049,7 @@ void MissionController::_recalcFlightPathSegments(void)
     int                 segmentCount =              0;
     bool                firstCoordinateNotFound =   true;
     VisualMissionItem*  lastFlyThroughVI =          qobject_cast<VisualMissionItem*>(_visualItems->get(0));
+    VisualMissionItem*  firstFlyThroughVI =         nullptr;
     bool                linkEndToHome =             false;
     bool                homePositionValid =         _settingsItem->coordinate().isValid();
     bool                linkStartToHome =           (!_flyView && homePositionValid) || _controllerVehicle->rover();
@@ -1175,13 +1176,17 @@ void MissionController::_recalcFlightPathSegments(void)
                     lastFlyThroughVI->setSimpleFlighPathSegment(segment);
                 }
                 firstCoordinateNotFound = false;
+                if (!firstFlyThroughVI) {
+                    firstFlyThroughVI = visualItem;
+                }
                 lastFlyThroughVI = visualItem;
             }
         }
     }
 
-    if (linkEndToHome && lastFlyThroughVI != _settingsItem && homePositionValid) {
-        lastSegmentVisualItemPair = VisualItemPair(lastFlyThroughVI, _settingsItem);
+    VisualMissionItem* rtlEndVI = homePositionValid ? _settingsItem : firstFlyThroughVI;
+    if (linkEndToHome && lastFlyThroughVI != _settingsItem && rtlEndVI && rtlEndVI != lastFlyThroughVI) {
+        lastSegmentVisualItemPair = VisualItemPair(lastFlyThroughVI, rtlEndVI);
         FlightPathSegment* segment = _addFlightPathSegment(oldSegmentTable, lastSegmentVisualItemPair, false /* mavlinkTerrainFrame */);
         segment->setSpecialVisual(roiActive);
         lastFlyThroughVI->setSimpleFlighPathSegment(segment);

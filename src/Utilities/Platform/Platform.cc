@@ -173,6 +173,12 @@ std::optional<int> Platform::initialize(int argc, char* argv[],
     disableAppNapViaInfoDict();
 #endif
 
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    if (!qEnvironmentVariableIsSet("QSG_RHI_BACKEND")) {
+        (void) qputenv("QSG_RHI_BACKEND", "vulkan");
+    }
+#endif
+
     // --- Unit test mode: run headless ---
 #ifdef QGC_UNITTEST_BUILD
     if (args.runningUnitTests || args.listTests) {

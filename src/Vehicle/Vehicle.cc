@@ -96,19 +96,6 @@ static bool _isPlanRequestListRetryFailure(int errorCode, const QString& errorMs
                 || errorMsg.contains(QStringLiteral("请求列表失败")));
 }
 
-static bool _isStartPageUdpLink(Vehicle* vehicle)
-{
-    if (!vehicle) {
-        return false;
-    }
-
-    SharedLinkInterfacePtr sharedLink = vehicle->vehicleLinkManager()->primaryLink().lock();
-    const SharedLinkConfigurationPtr linkConfig = sharedLink ? sharedLink->linkConfiguration() : nullptr;
-    return linkConfig
-            && linkConfig->type() == LinkConfiguration::TypeUdp
-            && linkConfig->name().startsWith(QStringLiteral("Start Page UDP"));
-}
-
 const QString guided_mode_not_supported_by_vehicle = QObject::tr("Guided mode not supported by Vehicle.");
 
 // Standard connected vehicle
@@ -1827,16 +1814,8 @@ void Vehicle::_missionManagerError(int errorCode, const QString& errorMsg)
 void Vehicle::_geoFenceManagerError(int errorCode, const QString& errorMsg)
 {
     const QString message = tr("GeoFence transfer failed. Error: %1").arg(errorMsg);
-    if (_isStartPageUdpLink(this) && _isPlanRequestListRetryFailure(errorCode, errorMsg)) {
-        const QString infoMessage = tr("UDP simulation does not appear to provide GeoFence data. Mission display will continue.");
-        qCInfo(VehicleLog) << message;
-        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_INFO, infoMessage.toHtmlEscaped(), QString());
-        return;
-    }
-
     if (_isPlanRequestListRetryFailure(errorCode, errorMsg)) {
-        qCWarning(VehicleLog) << message;
-        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_WARNING, message.toHtmlEscaped(), QString());
+        qCInfo(VehicleLog) << message;
         return;
     }
 
@@ -1847,16 +1826,8 @@ void Vehicle::_geoFenceManagerError(int errorCode, const QString& errorMsg)
 void Vehicle::_rallyPointManagerError(int errorCode, const QString& errorMsg)
 {
     const QString message = tr("Rally Point transfer failed. Error: %1").arg(errorMsg);
-    if (_isStartPageUdpLink(this) && _isPlanRequestListRetryFailure(errorCode, errorMsg)) {
-        const QString infoMessage = tr("UDP simulation does not appear to provide Rally Point data. Mission display will continue.");
-        qCInfo(VehicleLog) << message;
-        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_INFO, infoMessage.toHtmlEscaped(), QString());
-        return;
-    }
-
     if (_isPlanRequestListRetryFailure(errorCode, errorMsg)) {
-        qCWarning(VehicleLog) << message;
-        m_statusTextHandler->handleHTMLEscapedTextMessage(MAV_COMPONENT::MAV_COMP_ID_MISSIONPLANNER, MAV_SEVERITY_WARNING, message.toHtmlEscaped(), QString());
+        qCInfo(VehicleLog) << message;
         return;
     }
 

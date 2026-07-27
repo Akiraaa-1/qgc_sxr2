@@ -78,33 +78,25 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                     _vehicle->actuators()->init(); // At this point params are loaded, so we can init the actuators
                 }
 
-                // Decide between new Actuators page or legacy Motor page
-                bool showActuatorsPage = false;
                 if (!_vehicle->actuators()) {
                     qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
                     qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
                 } else if (!_vehicle->actuators()->showUi()) {
-                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
+                    qCDebug(ActuatorsConfigLog) << "Actuators page will show with limited vehicle metadata because:";
                     if (!_vehicle->actuators()->isInitialized()) {
                         qCDebug(ActuatorsConfigLog) << "  - Actuators initialization failed:" << _vehicle->actuators()->initializationError();
                     } else {
                         qCDebug(ActuatorsConfigLog) << "  - Condition 'show-ui-if' evaluated to false";
                         qCDebug(ActuatorsConfigLog) << "    (see 'Evaluating [show-ui-if]' log above for details)";
                     }
-                } else {
-                    showActuatorsPage = true;
-                    qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
-                }
-
-                if (showActuatorsPage) {
                     _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
                     _actuatorComponent->setupTriggerSignals();
                     _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
                 } else {
-                    qCDebug(ActuatorsConfigLog) << "  → Using legacy Motor page instead";
-                    _motorComponent = new MotorComponent(_vehicle, this, this);
-                    _motorComponent->setupTriggerSignals();
-                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));
+                    qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
+                    _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
+                    _actuatorComponent->setupTriggerSignals();
+                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
                 }
 
                 if (!_motorComponent) {

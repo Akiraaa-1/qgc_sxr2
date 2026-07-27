@@ -1935,7 +1935,7 @@ ApplicationWindow {
                             if (guidedController.showContinueMission) {
                                 guidedController.confirmAction(guidedController.actionContinueMission)
                             } else if (flyPageContent && flyPageContent._startMissionEntryVisible) {
-                                flyPageContent._showStartMissionSlider()
+                                flyPageContent._triggerMapPrimaryAction()
                             }
                             break
                         case "pause":
@@ -2970,7 +2970,7 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: qsTr("开始")
                                 primary: true
-                                onClicked: flyPageContent._showStartMissionSlider()
+                                onClicked: flyPageContent._triggerMapPrimaryAction()
                             }
                         }
                     }
@@ -3066,7 +3066,8 @@ ApplicationWindow {
                                  !!flyPageContent &&
                                  flyPageContent._startMissionSliderVisible &&
                                  !flyPageContent._startMissionAlreadyStarted &&
-                                 !flyPageContent._startMissionVehicleInAir
+                                 !flyPageContent._startMissionVehicleInAir &&
+                                 flyPageContent._mapPrimaryActionAvailable()
                         color: Qt.rgba(0.07, 0.10, 0.12, 0.96)
                         border.color: Qt.rgba(0.45, 0.74, 0.78, 0.20)
                         border.width: 1

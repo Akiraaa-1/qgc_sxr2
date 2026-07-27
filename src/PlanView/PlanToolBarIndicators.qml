@@ -143,7 +143,7 @@ RowLayout {
     }
 
     function _clearClicked() {
-        if (_planMasterController.offline) {
+        if (_planMasterController.offline || _syncInProgress) {
             _storageClearButtonClicked();
         } else {
             _vehicleClearButtonClicked();
@@ -155,7 +155,6 @@ RowLayout {
     QGCButton {
         text: qsTr("Open")
         iconSource: "/qmlimages/Plan.svg"
-        enabled: !_planMasterController.syncInProgress
         onClicked: { toolbarButtonClicked(); _openButtonClicked() }
     }
 
@@ -171,8 +170,7 @@ RowLayout {
         id: uploadButton
         text: qsTr("Upload")
         iconSource: "/res/UploadToVehicle.svg"
-        enabled: !_syncInProgress && _hasPlanItems
-        visible: !_syncInProgress
+        enabled: _hasPlanItems
         primary: _uploadDirty
         onClicked: { toolbarButtonClicked(); _uploadClicked() }
     }
@@ -180,7 +178,6 @@ RowLayout {
     QGCButton {
         text: qsTr("Clear")
         iconSource: "/res/TrashCan.svg"
-        enabled: !_syncInProgress
         onClicked: { toolbarButtonClicked(); _clearClicked() }
     }
 
