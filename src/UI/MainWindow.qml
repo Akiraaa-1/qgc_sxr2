@@ -2088,8 +2088,8 @@ ApplicationWindow {
                         color: flyPageContent &&
                                flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
                                !flyPageContent._vehicleAlertUrgentAcknowledged
-                               ? Qt.rgba(0.46, 0.05, 0.06, 0.48)
-                               : Qt.rgba(0.08, 0.09, 0.10, 0.38)
+                               ? Qt.rgba(0.46, 0.05, 0.06, 0.78)
+                               : Qt.rgba(0.08, 0.09, 0.10, 0.68)
                         border.color: flyPageContent &&
                                       flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
                                       !flyPageContent._vehicleAlertUrgentAcknowledged
