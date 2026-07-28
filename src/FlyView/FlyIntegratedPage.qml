@@ -3428,11 +3428,11 @@ Item {
     function _vehicleAlertColor() {
         switch (root._vehicleAlertLevel()) {
         case 3:
-            return "#B91C1C";
+            return Qt.rgba(0.52, 0.07, 0.07, 0.96);
         case 2:
-            return "#A16207";
+            return Qt.rgba(0.46, 0.28, 0.03, 0.96);
         case 1:
-            return "#1F2937";
+            return Qt.rgba(0.08, 0.11, 0.15, 0.96);
         default:
             return "transparent";
         }

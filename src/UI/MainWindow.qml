@@ -2088,8 +2088,8 @@ ApplicationWindow {
                         color: flyPageContent &&
                                flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
                                !flyPageContent._vehicleAlertUrgentAcknowledged
-                               ? Qt.rgba(0.46, 0.05, 0.06, 0.78)
-                               : Qt.rgba(0.08, 0.09, 0.10, 0.68)
+                               ? Qt.rgba(0.42, 0.04, 0.05, 0.96)
+                               : Qt.rgba(0.07, 0.08, 0.09, 0.94)
                         border.color: flyPageContent &&
                                       flyPageContent._vehicleAlertDisplayHasUrgentMessage() &&
                                       !flyPageContent._vehicleAlertUrgentAcknowledged
@@ -2108,13 +2108,13 @@ ApplicationWindow {
 
                             NumberAnimation {
                                 from: 1.0
-                                to: 0.72
+                                to: 0.9
                                 duration: 520
                                 easing.type: Easing.InOutQuad
                             }
 
                             NumberAnimation {
-                                from: 0.72
+                                from: 0.9
                                 to: 1.0
                                 duration: 520
                                 easing.type: Easing.InOutQuad
@@ -2137,7 +2137,7 @@ ApplicationWindow {
                             width: ScreenTools.defaultFontPixelWidth * 0.2
                             radius: parent.radius
                             color: Qt.rgba(1, 1, 1, 0.42)
-                            opacity: 0.72
+                            opacity: 0.9
                         }
 
                         Flickable {

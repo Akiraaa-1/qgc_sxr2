@@ -189,7 +189,7 @@ SetupPage {
 
                                     QGCButton {
                                         id:         button
-                                        width:      Math.max(ScreenTools.implicitButtonWidth, ScreenTools.defaultFontPixelWidth * 6)
+                                        width:      Math.max(ScreenTools.implicitButtonWidth, ScreenTools.defaultFontPixelWidth * 6.5)
                                         text:       motorIndexToString(index)
                                         onClicked:  {
                                             controller.vehicle.motorTest(index + 1, sliderThrottle.value, sliderThrottle.value === 0 ? 0 : _motorTimeoutSecs, true)
@@ -199,9 +199,9 @@ SetupPage {
 
                                 QGCButton {
                                     id:       allButton
-                                    width:    Math.max(ScreenTools.implicitButtonWidth, ScreenTools.defaultFontPixelWidth * 8)
+                                    width:    Math.max(implicitWidth, ScreenTools.defaultFontPixelWidth * 11)
                                     text:     qsTr("All")
-                                    primary:  true
+                                    primary:  enabled
                                     onClicked: {
                                         for (var motorIndex=0; motorIndex<buttonRepeater.count; motorIndex++) {
                                             controller.vehicle.motorTest(motorIndex + 1, sliderThrottle.value, sliderThrottle.value === 0 ? 0 : _motorTimeoutSecs, true)
@@ -211,7 +211,7 @@ SetupPage {
 
                                 QGCButton {
                                     id:      allStopButton
-                                    width:   Math.max(ScreenTools.implicitButtonWidth, ScreenTools.defaultFontPixelWidth * 8)
+                                    width:   Math.max(implicitWidth, ScreenTools.defaultFontPixelWidth * 11)
                                     text:    qsTr("Stop")
                                     onClicked: {
                                         for (var motorIndex=0; motorIndex<buttonRepeater.count; motorIndex++) {
@@ -235,16 +235,20 @@ SetupPage {
                             id: safetyRow
                             anchors.fill: parent
                             anchors.margins: ScreenTools.defaultFontPixelHeight * 0.4
-                            spacing: ScreenTools.defaultFontPixelWidth
+                            spacing: ScreenTools.defaultFontPixelWidth * 1.4
 
                             Switch {
                                 id: safetySwitch
                                 anchors.verticalCenter: parent.verticalCenter
+                                width: ScreenTools.defaultFontPixelWidth * 7
+                                height: ScreenTools.defaultFontPixelHeight * 1.5
                                 hoverEnabled: !ScreenTools.isMobile
 
                                 indicator: Rectangle {
-                                    implicitWidth: ScreenTools.defaultFontPixelWidth * 5
+                                    implicitWidth: ScreenTools.defaultFontPixelWidth * 7
                                     implicitHeight: ScreenTools.defaultFontPixelHeight * 1.5
+                                    width: safetySwitch.width
+                                    height: safetySwitch.height
                                     radius: height / 2
                                     color: safetySwitch.checked ? popupStyle.accentColor : popupStyle.inputBackground
                                     border.color: safetySwitch.checked ? popupStyle.accentColor : popupStyle.borderColor
@@ -290,7 +294,7 @@ SetupPage {
                             QGCLabel {
                                 id: safetyStatus
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - safetySwitch.implicitWidth - parent.spacing
+                                width: parent.width - safetySwitch.width - parent.spacing - (ScreenTools.defaultFontPixelWidth * 0.5)
                                 wrapMode: Text.WordWrap
                                 color: safetySwitch.checked ? qgcPal.warningText : popupStyle.secondaryTextColor
                                 text: safetySwitch.checked ? qsTr("Careful : Motors are enabled") : qsTr("Propellers are removed - Enable slider and motors")
