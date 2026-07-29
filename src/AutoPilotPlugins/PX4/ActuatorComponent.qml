@@ -10,17 +10,65 @@ import QGroundControl.AutoPilotPlugins.PX4
 
 SetupPage {
     id:             actuatorPage
-    pageComponent:  pageComponent
+    pageComponent:  actuators ? pageComponent : unavailableComponent
     showAdvanced:   true
     centerPageLoader: true
     property bool _qgcPopupChrome: true
 
-    property var actuators:       globals.activeVehicle.actuators
+    property var actuators:       globals.activeVehicle ? globals.activeVehicle.actuators : null
 
     property var _showAdvanced:              advanced
     readonly property real _margins:         ScreenTools.defaultFontPixelHeight
 
     QGCPopupStyle { id: popupStyle }
+
+    Component {
+        id: unavailableComponent
+
+        Item {
+            width: Math.min(actuatorPage.availableWidth, ScreenTools.defaultFontPixelWidth * 68)
+            height: Math.max(messagePanel.implicitHeight + (_margins * 4), ScreenTools.defaultFontPixelHeight * 14)
+
+            Rectangle {
+                id: messagePanel
+                anchors.centerIn: parent
+                width: parent.width
+                implicitHeight: messageColumn.implicitHeight + (_margins * 2)
+                radius: popupStyle.cornerRadius
+                color: popupStyle.panelBackground
+                border.color: popupStyle.borderColor
+                border.width: 1
+
+                Column {
+                    id: messageColumn
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        verticalCenter: parent.verticalCenter
+                        margins: _margins
+                    }
+                    spacing: _margins
+
+                    QGCLabel {
+                        width: parent.width
+                        text: qsTr("执行器信息正在加载")
+                        font.pointSize: ScreenTools.mediumFontPointSize
+                        font.bold: true
+                        color: popupStyle.primaryTextColor
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    QGCLabel {
+                        width: parent.width
+                        text: qsTr("当前飞行器还没有提供执行器 metadata。请保持连接，参数加载完成后返回菜单再进入。")
+                        wrapMode: Text.WordWrap
+                        color: popupStyle.secondaryTextColor
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+            }
+        }
+    }
 
     function _translatedActuatorText(text) {
         if (text && text.indexOf("Rev Range") !== -1) {
