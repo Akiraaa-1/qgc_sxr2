@@ -84,7 +84,7 @@ void ComponentInformationManager::_createStates()
     _stateRequestActuators = new SkippableAsyncState(
         QStringLiteral("RequestActuators"),
         this,
-        [this]() { return !_isCompTypeSupported(COMP_METADATA_TYPE_ACTUATORS); },
+        []() { return false; },
         [this](SkippableAsyncState* state) { _requestCompInfoActuators(state); },
         []() {
             qCDebug(ComponentInformationManagerLog) << "Skipping actuators metadata, not supported";

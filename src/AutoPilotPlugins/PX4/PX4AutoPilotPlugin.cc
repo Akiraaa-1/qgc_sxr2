@@ -12,7 +12,45 @@
 #include "Actuators.h"
 #include "ActuatorComponent.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QStandardPaths>
+
 #include <algorithm>
+
+namespace {
+QString cachedActuatorsMetadataFile()
+{
+    const QDir cacheDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1String("/QGCCompInfoCache"));
+    const QFileInfoList candidates = cacheDir.entryInfoList(
+        QStringList() << QStringLiteral("*_05_0.cache"),
+        QDir::Files,
+        QDir::Time
+    );
+
+    QString fallback;
+    for (const QFileInfo &candidate : candidates) {
+        QFile file(candidate.absoluteFilePath());
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            continue;
+        }
+        const QByteArray data = file.read(16 * 1024);
+        const bool actuatorJson = data.contains("\"outputs_v1\"") && data.contains("\"functions_v1\"") && data.contains("\"mixer_v1\"");
+        if (!actuatorJson) {
+            continue;
+        }
+        if (fallback.isEmpty()) {
+            fallback = candidate.absoluteFilePath();
+        }
+        if (!data.contains("SIM_GZ")) {
+            return candidate.absoluteFilePath();
+        }
+    }
+
+    return fallback;
+}
+}
 
 PX4AutoPilotPlugin::PX4AutoPilotPlugin(Vehicle* vehicle, QObject* parent)
     : AutoPilotPlugin(vehicle, parent)
@@ -77,29 +115,34 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                 if (_vehicle->actuators()) {
                     _vehicle->actuators()->init(); // At this point params are loaded, so we can init the actuators
                 }
-
                 if (!_vehicle->actuators()) {
-                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
-                    qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
-                } else if (!_vehicle->actuators()->showUi()) {
-                    qCDebug(ActuatorsConfigLog) << "Actuators page will show with limited vehicle metadata because:";
-                    if (!_vehicle->actuators()->isInitialized()) {
-                        qCDebug(ActuatorsConfigLog) << "  - Actuators initialization failed:" << _vehicle->actuators()->initializationError();
+                    const QString cachedMetadata = cachedActuatorsMetadataFile();
+                    if (!cachedMetadata.isEmpty()) {
+                        qCDebug(ActuatorsConfigLog) << "Loading cached actuators metadata fallback:" << cachedMetadata;
+                        _vehicle->setActuatorsMetadata(MAV_COMP_ID_AUTOPILOT1, cachedMetadata);
+                        _vehicle->actuators()->init();
+                    }
+                }
+
+                if (_vehicle->actuators()) {
+                    if (_vehicle->actuators()->showUi()) {
+                        qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
                     } else {
-                        qCDebug(ActuatorsConfigLog) << "  - Condition 'show-ui-if' evaluated to false";
-                        qCDebug(ActuatorsConfigLog) << "    (see 'Evaluating [show-ui-if]' log above for details)";
+                        qCDebug(ActuatorsConfigLog) << "Actuators page will show with limited vehicle metadata because:";
+                        if (!_vehicle->actuators()->isInitialized()) {
+                            qCDebug(ActuatorsConfigLog) << "  - Actuators initialization failed:" << _vehicle->actuators()->initializationError();
+                        } else {
+                            qCDebug(ActuatorsConfigLog) << "  - Condition 'show-ui-if' evaluated to false";
+                            qCDebug(ActuatorsConfigLog) << "    (see 'Evaluating [show-ui-if]' log above for details)";
+                        }
                     }
                     _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
                     _actuatorComponent->setupTriggerSignals();
                     _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
                 } else {
-                    qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
-                    _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
-                    _actuatorComponent->setupTriggerSignals();
-                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
-                }
+                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
+                    qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
 
-                if (!_motorComponent) {
                     _motorComponent = new MotorComponent(_vehicle, this, this);
                     _motorComponent->setupTriggerSignals();
                     _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));

@@ -69,6 +69,18 @@ Rectangle {
         }
     }
 
+    function _componentForTile(modelData) {
+        return _componentByKeywords(modelData.keys) || _componentByKeywords(modelData.fallbackKeys)
+    }
+
+    function _openTileComponent(modelData) {
+        const component = _componentForTile(modelData)
+        const setupView = panelLoader && panelLoader.vehicleConfigViewRef ? panelLoader.vehicleConfigViewRef : vehicleConfigView
+        if (component && setupView && typeof setupView.showVehicleComponentPanel === "function") {
+            setupView.showVehicleComponentPanel(component)
+        }
+    }
+
     function _specialTileAvailable(specialName) {
         const activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
         switch (specialName) {
@@ -180,7 +192,7 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuator", "servo", "motor"] },
+                        { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuatorcomponent.qml", "actuators"], fallbackKeys: ["motorcomponent.qml"] },
                         { title: qsTr("传感器"), icon: "/qmlimages/SensorsComponentIcon.png", keys: ["sensor", "calibration"] },
                         { title: qsTr("安全"), icon: "/qmlimages/SafetyComponentIcon.png", keys: ["safety", "failsafe"] },
                         { title: qsTr("固件"), icon: "/qmlimages/FirmwareUpgradeIcon.png", special: "firmware" }
@@ -189,7 +201,7 @@ Rectangle {
                     delegate: Item {
                         required property var modelData
 
-                        readonly property var _component: root._componentByKeywords(modelData.keys)
+                        readonly property var _component: root._componentForTile(modelData)
                         readonly property bool _available: modelData.special !== undefined
                             ? root._specialTileAvailable(modelData.special)
                             : (_component !== null)
@@ -242,7 +254,7 @@ Rectangle {
                                         if (modelData.special !== undefined) {
                                             root._openSpecialPanel(modelData.special)
                                         } else {
-                                            root._openComponent(modelData.keys)
+                                            root._openTileComponent(modelData)
                                         }
                                     }
                                 }
@@ -328,7 +340,7 @@ Rectangle {
                     delegate: Item {
                         required property var modelData
 
-                        readonly property var _component: root._componentByKeywords(modelData.keys)
+                        readonly property var _component: root._componentForTile(modelData)
                         readonly property bool _available: modelData.special !== undefined
                             ? root._specialTileAvailable(modelData.special)
                             : (_component !== null)
@@ -381,7 +393,7 @@ Rectangle {
                                         if (modelData.special !== undefined) {
                                             root._openSpecialPanel(modelData.special)
                                         } else {
-                                            root._openComponent(modelData.keys)
+                                            root._openTileComponent(modelData)
                                         }
                                     }
                                 }
