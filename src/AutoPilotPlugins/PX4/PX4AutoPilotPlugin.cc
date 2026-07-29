@@ -170,10 +170,6 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                 } else {
                     qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
                     qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
-
-                    _motorComponent = new MotorComponent(_vehicle, this, this);
-                    _motorComponent->setupTriggerSignals();
-                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));
                 }
 
                 _safetyComponent = new SafetyComponent(_vehicle, this, this);
