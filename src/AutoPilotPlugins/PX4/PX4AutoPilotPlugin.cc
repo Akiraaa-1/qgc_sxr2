@@ -20,7 +20,7 @@
 #include <algorithm>
 
 namespace {
-QString cachedActuatorsMetadataFile()
+QString cachedActuatorsMetadataFile(bool preferSimulationMetadata)
 {
     const QDir cacheDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1String("/QGCCompInfoCache"));
     const QFileInfoList candidates = cacheDir.entryInfoList(
@@ -29,7 +29,8 @@ QString cachedActuatorsMetadataFile()
         QDir::Time
     );
 
-    QString fallback;
+    QString matchingFallback;
+    QString anyFallback;
     for (const QFileInfo &candidate : candidates) {
         QFile file(candidate.absoluteFilePath());
         if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -40,15 +41,26 @@ QString cachedActuatorsMetadataFile()
         if (!actuatorJson) {
             continue;
         }
-        if (fallback.isEmpty()) {
-            fallback = candidate.absoluteFilePath();
+        if (anyFallback.isEmpty()) {
+            anyFallback = candidate.absoluteFilePath();
         }
-        if (!data.contains("SIM_GZ")) {
+        const bool simulationMetadata = data.contains("SIM_GZ");
+        if (matchingFallback.isEmpty() && simulationMetadata == preferSimulationMetadata) {
+            matchingFallback = candidate.absoluteFilePath();
+        }
+        if (simulationMetadata == preferSimulationMetadata) {
             return candidate.absoluteFilePath();
         }
     }
 
-    return fallback;
+    return matchingFallback.isEmpty() ? anyFallback : matchingFallback;
+}
+
+bool vehicleUsesGazeboSimMetadata(Vehicle *vehicle)
+{
+    return vehicle
+        && vehicle->parameterManager()
+        && vehicle->parameterManager()->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SIM_GZ_EN"));
 }
 }
 
@@ -116,7 +128,7 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                     _vehicle->actuators()->init(); // At this point params are loaded, so we can init the actuators
                 }
                 if (!_vehicle->actuators()) {
-                    const QString cachedMetadata = cachedActuatorsMetadataFile();
+                    const QString cachedMetadata = cachedActuatorsMetadataFile(vehicleUsesGazeboSimMetadata(_vehicle));
                     if (!cachedMetadata.isEmpty()) {
                         qCDebug(ActuatorsConfigLog) << "Loading cached actuators metadata fallback:" << cachedMetadata;
                         _vehicle->setActuatorsMetadata(MAV_COMP_ID_AUTOPILOT1, cachedMetadata);
