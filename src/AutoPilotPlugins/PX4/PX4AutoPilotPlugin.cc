@@ -16,40 +16,54 @@
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QStandardPaths>
+#include <QtCore/QStringList>
 
 #include <algorithm>
 
 namespace {
+void appendUniqueDirectory(QStringList &directories, const QString &directory)
+{
+    if (!directory.isEmpty() && !directories.contains(directory)) {
+        directories.append(directory);
+    }
+}
+
 QString cachedActuatorsMetadataFile(bool preferSimulationMetadata)
 {
-    const QDir cacheDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1String("/QGCCompInfoCache"));
-    const QFileInfoList candidates = cacheDir.entryInfoList(
-        QStringList() << QStringLiteral("*_05_0.cache"),
-        QDir::Files,
-        QDir::Time
-    );
+    QStringList cacheDirectories;
+    appendUniqueDirectory(cacheDirectories, QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1String("/QGCCompInfoCache"));
+    appendUniqueDirectory(cacheDirectories, QDir::homePath() + QLatin1String("/.cache/QGroundControl/QGroundControl/QGCCompInfoCache"));
 
     QString matchingFallback;
     QString anyFallback;
-    for (const QFileInfo &candidate : candidates) {
-        QFile file(candidate.absoluteFilePath());
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            continue;
-        }
-        const QByteArray data = file.read(16 * 1024);
-        const bool actuatorJson = data.contains("\"outputs_v1\"") && data.contains("\"functions_v1\"") && data.contains("\"mixer_v1\"");
-        if (!actuatorJson) {
-            continue;
-        }
-        if (anyFallback.isEmpty()) {
-            anyFallback = candidate.absoluteFilePath();
-        }
-        const bool simulationMetadata = data.contains("SIM_GZ");
-        if (matchingFallback.isEmpty() && simulationMetadata == preferSimulationMetadata) {
-            matchingFallback = candidate.absoluteFilePath();
-        }
-        if (simulationMetadata == preferSimulationMetadata) {
-            return candidate.absoluteFilePath();
+    for (const QString &cacheDirectory : cacheDirectories) {
+        const QDir cacheDir(cacheDirectory);
+        const QFileInfoList candidates = cacheDir.entryInfoList(
+            QStringList() << QStringLiteral("*_05_0.cache"),
+            QDir::Files,
+            QDir::Time
+        );
+
+        for (const QFileInfo &candidate : candidates) {
+            QFile file(candidate.absoluteFilePath());
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                continue;
+            }
+            const QByteArray data = file.read(16 * 1024);
+            const bool actuatorJson = data.contains("\"outputs_v1\"") && data.contains("\"functions_v1\"") && data.contains("\"mixer_v1\"");
+            if (!actuatorJson) {
+                continue;
+            }
+            if (anyFallback.isEmpty()) {
+                anyFallback = candidate.absoluteFilePath();
+            }
+            const bool simulationMetadata = data.contains("SIM_GZ");
+            if (matchingFallback.isEmpty() && simulationMetadata == preferSimulationMetadata) {
+                matchingFallback = candidate.absoluteFilePath();
+            }
+            if (simulationMetadata == preferSimulationMetadata) {
+                return candidate.absoluteFilePath();
+            }
         }
     }
 
@@ -130,9 +144,11 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                 if (!_vehicle->actuators()) {
                     const QString cachedMetadata = cachedActuatorsMetadataFile(vehicleUsesGazeboSimMetadata(_vehicle));
                     if (!cachedMetadata.isEmpty()) {
-                        qCDebug(ActuatorsConfigLog) << "Loading cached actuators metadata fallback:" << cachedMetadata;
+                        qWarning() << "Loading cached PX4 actuators metadata fallback:" << cachedMetadata;
                         _vehicle->setActuatorsMetadata(MAV_COMP_ID_AUTOPILOT1, cachedMetadata);
                         _vehicle->actuators()->init();
+                    } else {
+                        qWarning() << "No cached PX4 actuators metadata fallback found";
                     }
                 }
 
