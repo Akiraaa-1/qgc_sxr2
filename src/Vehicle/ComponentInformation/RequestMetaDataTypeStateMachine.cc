@@ -200,7 +200,7 @@ QString RequestMetaDataTypeStateMachine::typeToString() const
 
 bool RequestMetaDataTypeStateMachine::_shouldSkipCompInfoRequest() const
 {
-    return _compInfo->type != COMP_METADATA_TYPE_GENERAL;
+    return false;
 }
 
 bool RequestMetaDataTypeStateMachine::_shouldSkipDeprecatedRequest() const
@@ -260,7 +260,8 @@ void RequestMetaDataTypeStateMachine::_requestCompInfo()
         },
         this,
         MAV_COMP_ID_AUTOPILOT1,
-        MAVLINK_MSG_ID_COMPONENT_METADATA
+        MAVLINK_MSG_ID_COMPONENT_METADATA,
+        _compInfo->type
     );
 }
 
