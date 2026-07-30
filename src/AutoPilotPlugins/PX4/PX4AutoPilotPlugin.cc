@@ -12,71 +12,7 @@
 #include "Actuators.h"
 #include "ActuatorComponent.h"
 
-#include <QtCore/QDir>
-#include <QtCore/QFile>
-#include <QtCore/QFileInfo>
-#include <QtCore/QStandardPaths>
-#include <QtCore/QStringList>
-
 #include <algorithm>
-
-namespace {
-void appendUniqueDirectory(QStringList &directories, const QString &directory)
-{
-    if (!directory.isEmpty() && !directories.contains(directory)) {
-        directories.append(directory);
-    }
-}
-
-QString cachedActuatorsMetadataFile(bool preferSimulationMetadata)
-{
-    QStringList cacheDirectories;
-    appendUniqueDirectory(cacheDirectories, QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1String("/QGCCompInfoCache"));
-    appendUniqueDirectory(cacheDirectories, QDir::homePath() + QLatin1String("/.cache/QGroundControl/QGroundControl/QGCCompInfoCache"));
-
-    QString matchingFallback;
-    QString anyFallback;
-    for (const QString &cacheDirectory : cacheDirectories) {
-        const QDir cacheDir(cacheDirectory);
-        const QFileInfoList candidates = cacheDir.entryInfoList(
-            QStringList() << QStringLiteral("*_05_0.cache"),
-            QDir::Files,
-            QDir::Time
-        );
-
-        for (const QFileInfo &candidate : candidates) {
-            QFile file(candidate.absoluteFilePath());
-            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                continue;
-            }
-            const QByteArray data = file.read(16 * 1024);
-            const bool actuatorJson = data.contains("\"outputs_v1\"") && data.contains("\"functions_v1\"") && data.contains("\"mixer_v1\"");
-            if (!actuatorJson) {
-                continue;
-            }
-            if (anyFallback.isEmpty()) {
-                anyFallback = candidate.absoluteFilePath();
-            }
-            const bool simulationMetadata = data.contains("SIM_GZ");
-            if (matchingFallback.isEmpty() && simulationMetadata == preferSimulationMetadata) {
-                matchingFallback = candidate.absoluteFilePath();
-            }
-            if (simulationMetadata == preferSimulationMetadata) {
-                return candidate.absoluteFilePath();
-            }
-        }
-    }
-
-    return matchingFallback.isEmpty() ? anyFallback : matchingFallback;
-}
-
-bool vehicleUsesGazeboSimMetadata(Vehicle *vehicle)
-{
-    return vehicle
-        && vehicle->parameterManager()
-        && vehicle->parameterManager()->parameterExists(ParameterManager::defaultComponentId, QStringLiteral("SIM_GZ_EN"));
-}
-}
 
 PX4AutoPilotPlugin::PX4AutoPilotPlugin(Vehicle* vehicle, QObject* parent)
     : AutoPilotPlugin(vehicle, parent)
@@ -102,6 +38,8 @@ PX4AutoPilotPlugin::PX4AutoPilotPlugin(Vehicle* vehicle, QObject* parent)
 
     _airframeFacts = new PX4AirframeLoader(this, this);
     Q_CHECK_PTR(_airframeFacts);
+
+    connect(_vehicle, &Vehicle::actuatorsChanged, this, &PX4AutoPilotPlugin::_actuatorsMetadataChanged);
 
     PX4AirframeLoader::loadAirframeMetaData();
 }
@@ -141,35 +79,33 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
                 if (_vehicle->actuators()) {
                     _vehicle->actuators()->init(); // At this point params are loaded, so we can init the actuators
                 }
+
+                bool showActuatorsPage = false;
                 if (!_vehicle->actuators()) {
-                    const QString cachedMetadata = cachedActuatorsMetadataFile(vehicleUsesGazeboSimMetadata(_vehicle));
-                    if (!cachedMetadata.isEmpty()) {
-                        qWarning() << "Loading cached PX4 actuators metadata fallback:" << cachedMetadata;
-                        _vehicle->setActuatorsMetadata(MAV_COMP_ID_AUTOPILOT1, cachedMetadata);
-                        _vehicle->actuators()->init();
+                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
+                    qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
+                } else if (!_vehicle->actuators()->showUi()) {
+                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
+                    if (!_vehicle->actuators()->isInitialized()) {
+                        qCDebug(ActuatorsConfigLog) << "  - Actuators initialization failed:" << _vehicle->actuators()->initializationError();
                     } else {
-                        qWarning() << "No cached PX4 actuators metadata fallback found";
+                        qCDebug(ActuatorsConfigLog) << "  - Condition 'show-ui-if' evaluated to false";
+                        qCDebug(ActuatorsConfigLog) << "    (see 'Evaluating [show-ui-if]' log above for details)";
                     }
+                } else {
+                    showActuatorsPage = true;
+                    qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
                 }
 
-                if (_vehicle->actuators()) {
-                    if (_vehicle->actuators()->showUi()) {
-                        qCDebug(ActuatorsConfigLog) << "Actuators page WILL show (all conditions passed)";
-                    } else {
-                        qCDebug(ActuatorsConfigLog) << "Actuators page will show with limited vehicle metadata because:";
-                        if (!_vehicle->actuators()->isInitialized()) {
-                            qCDebug(ActuatorsConfigLog) << "  - Actuators initialization failed:" << _vehicle->actuators()->initializationError();
-                        } else {
-                            qCDebug(ActuatorsConfigLog) << "  - Condition 'show-ui-if' evaluated to false";
-                            qCDebug(ActuatorsConfigLog) << "    (see 'Evaluating [show-ui-if]' log above for details)";
-                        }
-                    }
+                if (showActuatorsPage) {
                     _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
                     _actuatorComponent->setupTriggerSignals();
                     _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
                 } else {
-                    qCDebug(ActuatorsConfigLog) << "Actuators page will NOT show because:";
-                    qCDebug(ActuatorsConfigLog) << "  - Vehicle did not provide actuators metadata via component information";
+                    qCDebug(ActuatorsConfigLog) << "  → Using legacy Motor page instead";
+                    _motorComponent = new MotorComponent(_vehicle, this, this);
+                    _motorComponent->setupTriggerSignals();
+                    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_motorComponent)));
                 }
 
                 _safetyComponent = new SafetyComponent(_vehicle, this, this);
@@ -216,6 +152,41 @@ const QVariantList& PX4AutoPilotPlugin::vehicleComponents(void)
     }
 
     return _components;
+}
+
+void PX4AutoPilotPlugin::_actuatorsMetadataChanged()
+{
+    // Component information can finish after parametersReady on slower USB
+    // connections. In that case vehicleComponents() has already selected the
+    // legacy Motor page. Promote it to the Actuators page as soon as the
+    // vehicle-provided metadata becomes available.
+    if (!_vehicle || !_vehicle->actuators() || !_vehicle->parameterManager()->parametersReady() || _components.isEmpty()) {
+        return;
+    }
+
+    _vehicle->actuators()->init();
+    if (!_vehicle->actuators()->showUi() || _actuatorComponent) {
+        return;
+    }
+
+    if (_motorComponent) {
+        for (qsizetype i = 0; i < _components.size(); ++i) {
+            if (_components[i].value<VehicleComponent*>() == _motorComponent) {
+                _components.removeAt(i);
+                break;
+            }
+        }
+        _motorComponent->deleteLater();
+        _motorComponent = nullptr;
+    }
+
+    _actuatorComponent = new ActuatorComponent(_vehicle, this, this);
+    _actuatorComponent->setupTriggerSignals();
+    _components.append(QVariant::fromValue(static_cast<VehicleComponent*>(_actuatorComponent)));
+    std::sort(_components.begin(), _components.end(), [](const QVariant &a, const QVariant &b) {
+        return a.value<VehicleComponent*>()->name().toLower() < b.value<VehicleComponent*>()->name().toLower();
+    });
+    emit vehicleComponentsChanged();
 }
 
 void PX4AutoPilotPlugin::parametersReadyPreChecks(void)

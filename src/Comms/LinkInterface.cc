@@ -1,6 +1,5 @@
 #include "LinkInterface.h"
 #include "LinkManager.h"
-#include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "MAVLinkSigning.h"
 
@@ -74,7 +73,7 @@ bool LinkInterface::_allocateMavlinkChannel()
     qCDebug(LinkInterfaceLog) << "_allocateMavlinkChannel" << _mavlinkChannel;
 
     const SharedLinkConfigurationPtr linkConfig = linkConfiguration();
-    const int mavlinkVersion = linkConfig ? linkConfig->mavlinkVersion() : 1;
+    const int mavlinkVersion = linkConfig ? linkConfig->mavlinkVersion() : 2;
     mavlink_status_t *const mavlinkStatus = mavlink_get_channel_status(_mavlinkChannel);
     if (mavlinkVersion <= 1) {
         mavlinkStatus->flags |= MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
@@ -155,12 +154,11 @@ bool LinkInterface::reportMavlinkV1Traffic()
             mavlink_set_proto_version(_mavlinkChannel, 1);
             return true;
         }
-        qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on link" << linkName;
-        const QString message = tr("MAVLink v1 traffic detected on link '%1'. "
-                                   "%2 is configured for MAVLink v2 on this link. "
-                                   "Please ensure your vehicle is configured to use MAVLink v2, or switch this link to MAVLink 1.")
-                                    .arg(linkName).arg(qgcApp()->applicationName());
-        emit communicationError(QString(), message);
+        // PX4 can send a small number of MAVLink 1 compatibility frames while
+        // the link is configured for MAVLink 2. Keep the diagnostic in the log,
+        // but do not interrupt the user with a modal warning. The link must stay
+        // on MAVLink 2 so component/actuator metadata remains available.
+        qCWarning(LinkInterfaceLog) << "MAVLink v1 traffic detected on MAVLink v2 link" << linkName;
     }
 
     const SharedLinkConfigurationPtr linkConfig = linkConfiguration();

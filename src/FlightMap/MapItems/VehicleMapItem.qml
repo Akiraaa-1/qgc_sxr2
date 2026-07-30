@@ -150,9 +150,18 @@ MapQuickItem {
             sourceSize.width:   _root.size
             fillMode:           Image.PreserveAspectFit
             transform: Rotation {
+                id:             vehicleIconRotation
                 origin.x:       vehicleIcon.width  / 2
                 origin.y:       vehicleIcon.height / 2
                 angle:          isNaN(heading) ? 0 : heading
+
+                Behavior on angle {
+                    RotationAnimation {
+                        duration: 120
+                        direction: RotationAnimation.Shortest
+                        easing.type: Easing.Linear
+                    }
+                }
             }
         }
 

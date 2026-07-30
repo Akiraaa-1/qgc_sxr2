@@ -49,5 +49,7 @@ protected:
     JoystickComponent*      _joystickComponent;
 
 private:
+    void                    _actuatorsMetadataChanged();
+
     QVariantList            _components;
 };

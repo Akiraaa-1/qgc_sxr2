@@ -19,7 +19,10 @@ FlightMap {
     showGCSPositionMarker:      true
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
-    center:                     QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
+    // Do not bind center directly to flightMapPosition. onCenterChanged writes
+    // the source coordinate back to that same global property, and the two-way
+    // feedback causes visible map jitter with high-rate simulation telemetry.
+    center:                     QtPositioning.coordinate()
 
     property Item   pipView
     property Item   pipState:                   _pipState
@@ -85,6 +88,10 @@ FlightMap {
             // Synchronize center position with Plan View
             center = QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
         }
+    }
+
+    Component.onCompleted: {
+        center = QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
     }
 
     onZoomLevelChanged: {

@@ -140,7 +140,7 @@ private:
     bool _forwarding = false;  ///< Automatically added Mavlink forwarding connection
     bool _autoConnect = false; ///< This connection is started automatically at boot
     bool _highLatency = false;
-    int _mavlinkVersion = 1;
+    int _mavlinkVersion = 2;
 };
 
 typedef std::shared_ptr<LinkConfiguration> SharedLinkConfigurationPtr;

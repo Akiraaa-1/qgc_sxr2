@@ -84,8 +84,6 @@ Rectangle {
     function _specialTileAvailable(specialName) {
         const activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
         switch (specialName) {
-        case "actuators":
-            return !!activeVehicle && activeVehicle.parameterManager.parametersReady
         case "parameters":
             return QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable
                 && !!activeVehicle
@@ -105,9 +103,6 @@ Rectangle {
         }
 
         switch (specialName) {
-        case "actuators":
-            setupView.showPanel("actuators", "qrc:/qml/QGroundControl/AutoPilotPlugins/PX4/ActuatorComponent.qml")
-            break
         case "parameters":
             setupView.showPanel("parameters", "qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml")
             break
@@ -197,7 +192,7 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", special: "actuators" },
+                        { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuatorcomponent.qml", "actuators"], fallbackKeys: ["motorcomponent.qml"] },
                         { title: qsTr("传感器"), icon: "/qmlimages/SensorsComponentIcon.png", keys: ["sensor", "calibration"] },
                         { title: qsTr("安全"), icon: "/qmlimages/SafetyComponentIcon.png", keys: ["safety", "failsafe"] },
                         { title: qsTr("固件"), icon: "/qmlimages/FirmwareUpgradeIcon.png", special: "firmware" }

@@ -60,7 +60,7 @@ SetupPage {
 
                     QGCLabel {
                         width: parent.width
-                        text: qsTr("当前飞行器还没有提供执行器 metadata。请保持连接，参数加载完成后返回菜单再进入。")
+                        text: qsTr("当前飞行器还没有提供执行器 metadata。请保持连接，metadata 加载完成后会自动显示。")
                         wrapMode: Text.WordWrap
                         color: popupStyle.secondaryTextColor
                         horizontalAlignment: Text.AlignHCenter

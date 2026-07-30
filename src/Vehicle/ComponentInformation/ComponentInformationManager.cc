@@ -84,7 +84,7 @@ void ComponentInformationManager::_createStates()
     _stateRequestActuators = new SkippableAsyncState(
         QStringLiteral("RequestActuators"),
         this,
-        []() { return false; },
+        [this]() { return !_isCompTypeSupported(COMP_METADATA_TYPE_ACTUATORS); },
         [this](SkippableAsyncState* state) { _requestCompInfoActuators(state); },
         []() {
             qCDebug(ComponentInformationManagerLog) << "Skipping actuators metadata, not supported";
@@ -107,20 +107,22 @@ void ComponentInformationManager::_wireTransitions()
     // RequestGeneral -> UpdateUri
     _stateRequestGeneral->addTransition(_stateRequestGeneral, &AsyncFunctionState::advance, _stateUpdateUri);
 
-    // UpdateUri -> RequestParam
-    _stateUpdateUri->addTransition(_stateUpdateUri, &FunctionState::advance, _stateRequestParam);
+    // Load actuators first. The PX4 component list is created as soon as
+    // parameters become ready, so actuator metadata must not wait behind
+    // optional parameter/events translation downloads.
+    _stateUpdateUri->addTransition(_stateUpdateUri, &FunctionState::advance, _stateRequestActuators);
+
+    // RequestActuators -> RequestParam (via advance or skipped)
+    _stateRequestActuators->addTransition(_stateRequestActuators, &SkippableAsyncState::advance, _stateRequestParam);
+    _stateRequestActuators->addTransition(_stateRequestActuators, &SkippableAsyncState::skipped, _stateRequestParam);
 
     // RequestParam -> RequestEvents (via advance or skipped)
     _stateRequestParam->addTransition(_stateRequestParam, &SkippableAsyncState::advance, _stateRequestEvents);
     _stateRequestParam->addTransition(_stateRequestParam, &SkippableAsyncState::skipped, _stateRequestEvents);
 
-    // RequestEvents -> RequestActuators (via advance or skipped)
-    _stateRequestEvents->addTransition(_stateRequestEvents, &SkippableAsyncState::advance, _stateRequestActuators);
-    _stateRequestEvents->addTransition(_stateRequestEvents, &SkippableAsyncState::skipped, _stateRequestActuators);
-
-    // RequestActuators -> Complete (via advance or skipped)
-    _stateRequestActuators->addTransition(_stateRequestActuators, &SkippableAsyncState::advance, _stateComplete);
-    _stateRequestActuators->addTransition(_stateRequestActuators, &SkippableAsyncState::skipped, _stateComplete);
+    // RequestEvents -> Complete (via advance or skipped)
+    _stateRequestEvents->addTransition(_stateRequestEvents, &SkippableAsyncState::advance, _stateComplete);
+    _stateRequestEvents->addTransition(_stateRequestEvents, &SkippableAsyncState::skipped, _stateComplete);
 
     // Complete -> Final
     _stateComplete->addTransition(_stateComplete, &FunctionState::advance, _stateFinal);
@@ -139,17 +141,17 @@ void ComponentInformationManager::_wireProgressTracking()
     });
 
     _stateRequestParam->setOnEntry([this]() {
-        _currentStateIndex = 2;
-        _updateProgress();
-    });
-
-    _stateRequestEvents->setOnEntry([this]() {
         _currentStateIndex = 3;
         _updateProgress();
     });
 
-    _stateRequestActuators->setOnEntry([this]() {
+    _stateRequestEvents->setOnEntry([this]() {
         _currentStateIndex = 4;
+        _updateProgress();
+    });
+
+    _stateRequestActuators->setOnEntry([this]() {
+        _currentStateIndex = 2;
         _updateProgress();
     });
 

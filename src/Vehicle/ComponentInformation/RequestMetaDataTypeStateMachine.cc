@@ -13,9 +13,10 @@
 // State types included via QGCStateMachine.h in header
 
 #include <QtCore/QCoreApplication>
-#include <QtCore/QStandardPaths>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QLocale>
+#include <QtCore/QStandardPaths>
 
 QGC_LOGGING_CATEGORY(RequestMetaDataTypeStateMachineLog, "ComponentInformation.RequestMetaDataTypeStateMachine")
 
@@ -200,7 +201,9 @@ QString RequestMetaDataTypeStateMachine::typeToString() const
 
 bool RequestMetaDataTypeStateMachine::_shouldSkipCompInfoRequest() const
 {
-    return false;
+    // COMPONENT_METADATA is requested once for GENERAL. The general metadata
+    // JSON supplies the URIs for parameters, events and actuators.
+    return _compInfo->type != COMP_METADATA_TYPE_GENERAL;
 }
 
 bool RequestMetaDataTypeStateMachine::_shouldSkipDeprecatedRequest() const
@@ -260,8 +263,7 @@ void RequestMetaDataTypeStateMachine::_requestCompInfo()
         },
         this,
         MAV_COMP_ID_AUTOPILOT1,
-        MAVLINK_MSG_ID_COMPONENT_METADATA,
-        _compInfo->type
+        MAVLINK_MSG_ID_COMPONENT_METADATA
     );
 }
 
@@ -365,8 +367,12 @@ void RequestMetaDataTypeStateMachine::_requestTranslationJson()
 {
     CompInfo* compInfo = _compInfo;
     const QString uri = compInfo->uriTranslation();
+    const QString locale = QLocale::system().name();
 
-    if (uri.isEmpty()) {
+    // PX4 metadata is authored in English. The POSIX "C" locale is also
+    // English and has no entry in the PX4 translation summary. Avoid an HTTP
+    // request which can hold up initial connection until its timeout.
+    if (uri.isEmpty() || locale == QLatin1String("C") || locale.startsWith(QLatin1String("en"))) {
         qCDebug(RequestMetaDataTypeStateMachineLog) << "No translation URI for" << typeToString();
         _stateRequestTranslationJson->complete();
         return;

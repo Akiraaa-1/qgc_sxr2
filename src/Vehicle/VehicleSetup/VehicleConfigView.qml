@@ -299,7 +299,7 @@ Rectangle {
         ignoreUnknownSignals: true
 
         function onCountChanged() {
-            if (count === 0 && vehicleConfigView._hadConnectedVehicle) {
+            if (QGroundControl.multiVehicleManager.vehicles.count === 0 && vehicleConfigView._hadConnectedVehicle) {
                 vehicleConfigView._showMenuPanel()
             }
         }
@@ -317,6 +317,32 @@ Rectangle {
 
         function onMissingParametersChanged(missingParameters) {
             _refreshRootPanelForParameterState()
+        }
+    }
+
+    Connections {
+        target: _activeVehicle ? _activeVehicle.autopilotPlugin : null
+        ignoreUnknownSignals: true
+
+        function onVehicleComponentsChanged() {
+            if (_selectedSpecial === "menu") {
+                _showMenuPanel()
+                return
+            }
+
+            const currentSource = panelLoader.source ? panelLoader.source.toString().toLowerCase() : ""
+            if (currentSource.indexOf("motorcomponent.qml") === -1) {
+                return
+            }
+
+            const components = _activeVehicle.autopilotPlugin.vehicleComponents
+            for (let i = 0; i < components.length; ++i) {
+                const setupSource = components[i].setupSource ? components[i].setupSource.toString().toLowerCase() : ""
+                if (setupSource.indexOf("actuatorcomponent.qml") !== -1) {
+                    _navigateToComponent(i, -1)
+                    return
+                }
+            }
         }
     }
 

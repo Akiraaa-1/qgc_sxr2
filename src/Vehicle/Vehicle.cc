@@ -1400,6 +1400,7 @@ void Vehicle::setActuatorsMetadata([[maybe_unused]] uint8_t compid,
         _actuators = new Actuators(this, this);
     }
     _actuators->load(metadataJsonFileName);
+    emit actuatorsChanged();
 }
 
 void Vehicle::_handleHeartbeat(mavlink_message_t& message)
