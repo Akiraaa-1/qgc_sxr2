@@ -50,7 +50,7 @@ jobs:
       fail-fast: false
       matrix:
         build_type: ${{ inputs.build_type && fromJSON(format('["{0}"]', inputs.build_type)) || fromJSON('["Release"]') }}
-        variant: [amd64, arm64, arm64-cross]
+        variant: [amd64]
         include:
           - variant: amd64
             os: windows-2022
@@ -183,7 +183,7 @@ jobs:
         shell: pwsh
         run: |
           $buildDir = "${{ runner.temp }}\build"
-          $installerExe = Get-ChildItem -Path $buildDir -Filter "BTFW-GCS.exe" | Select-Object -First 1
+          $installerExe = Get-ChildItem -Path $buildDir -Filter "BTFW-GCS-installer*.exe" | Select-Object -First 1
           if (-not $installerExe) {
             Write-Error "Installer .exe not found in $buildDir"
             exit 1
@@ -237,7 +237,7 @@ jobs:
         if: matrix.build_type == 'Release'
         uses: ./.github/actions/attest-and-upload
         with:
-          artifact-name: BTFW-GCS.exe
+          artifact-name: ${{ matrix.package == 'QGroundControl-installer-AMD64' && 'BTFW-GCS-installer-AMD64.exe' || matrix.package == 'QGroundControl-installer-ARM64' && 'BTFW-GCS-installer-ARM64.exe' || 'BTFW-GCS-installer-AMD64-ARM64.exe' }}
           package-name: ${{ matrix.package }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}

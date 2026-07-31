@@ -134,7 +134,11 @@ elseif(LINUX)
 # ----------------------------------------------------------------------------
 elseif(WIN32)
     # Pass variables to Windows installer creation script
-    set(_win_installer_out "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.exe")
+    if(CMAKE_CROSSCOMPILING)
+        set(_win_installer_out "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}-installer-${CMAKE_HOST_SYSTEM_PROCESSOR}-${CMAKE_SYSTEM_PROCESSOR}.exe")
+    else()
+        set(_win_installer_out "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}-installer-${CMAKE_SYSTEM_PROCESSOR}.exe")
+    endif()
     install(CODE "
         set(CMAKE_PROJECT_NAME \"${CMAKE_PROJECT_NAME}\")
         set(CMAKE_PROJECT_VERSION \"${CMAKE_PROJECT_VERSION}\")
