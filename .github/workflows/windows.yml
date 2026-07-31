@@ -170,7 +170,7 @@ jobs:
         if: matrix.build_type == 'Release' && matrix.arch != 'win64_msvc2022_arm64_cross_compiled'
         uses: ./.github/actions/verify-executable
         with:
-          binary-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/QGroundControl.exe
+          binary-path: ${{ runner.temp }}/build/${{ matrix.build_type }}/BTFW-GCS.exe
           type: exe
           build-dir: ${{ runner.temp }}/build
 
@@ -183,7 +183,7 @@ jobs:
         shell: pwsh
         run: |
           $buildDir = "${{ runner.temp }}\build"
-          $installerExe = Get-ChildItem -Path $buildDir -Filter "*installer*.exe" | Select-Object -First 1
+          $installerExe = Get-ChildItem -Path $buildDir -Filter "BTFW-GCS.exe" | Select-Object -First 1
           if (-not $installerExe) {
             Write-Error "Installer .exe not found in $buildDir"
             exit 1
@@ -191,9 +191,9 @@ jobs:
           $installDir = "${{ runner.temp }}\qgc-install-test"
           Write-Host "Installing $($installerExe.Name) to $installDir"
           Start-Process -FilePath $installerExe.FullName -ArgumentList "/S", "/D=$installDir" -Wait -NoNewWindow
-          $binary = Join-Path $installDir "bin\QGroundControl.exe"
+          $binary = Join-Path $installDir "bin\BTFW-GCS.exe"
           if (-not (Test-Path $binary)) {
-            Write-Error "QGroundControl.exe not found at $binary after install"
+            Write-Error "BTFW-GCS.exe not found at $binary after install"
             Get-ChildItem -Path $installDir -Recurse | Select-Object FullName
             exit 1
           }
@@ -230,14 +230,14 @@ jobs:
         env:
           PATH: ${{ env.QGC_VERIFY_INSTALLED_PATH }}
         with:
-          binary-path: ${{ runner.temp }}\qgc-install-test\bin\QGroundControl.exe
+          binary-path: ${{ runner.temp }}\qgc-install-test\bin\BTFW-GCS.exe
           type: exe
 
       - name: Attest and Upload
         if: matrix.build_type == 'Release'
         uses: ./.github/actions/attest-and-upload
         with:
-          artifact-name: ${{ matrix.package }}.exe
+          artifact-name: BTFW-GCS.exe
           package-name: ${{ matrix.package }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
