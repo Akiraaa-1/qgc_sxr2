@@ -17,6 +17,7 @@ import QGroundControl.Toolbar
 /// All properties defined here are visible to all QML pages.
 ApplicationWindow {
     id:         mainWindow
+    title:      "BTFW-GCS"
     visible:    true
     // The special casing for android prevents white bars from showing up on the edges of the screen with newer android versions
     flags:      Qt.Window | (ScreenTools.isAndroid ? Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint : 0)

@@ -53,7 +53,7 @@ SetupPage {
             readonly property string title:             qsTr("Firmware Setup") // Popup dialog title
             readonly property string highlightPrefix:   "<font color=\"" + qgcPal.warningText + "\">"
             readonly property string highlightSuffix:   "</font>"
-            readonly property string welcomeText:       qsTr("%1 can upgrade the firmware on Pixhawk devices and SiK Radios.").arg(QGroundControl.appName)
+            readonly property string welcomeText:       qsTr("%1 can upgrade the firmware on Pixhawk devices and SiK Radios.").arg("BTFW-GCS")
             readonly property string welcomeTextSingle: qsTr("Update the autopilot firmware to the latest version")
             readonly property string plugInText:        "<big>" + highlightPrefix + qsTr("Plug in your device") + highlightSuffix + qsTr(" via USB to ") + highlightPrefix + qsTr("start") + highlightSuffix + qsTr(" firmware upgrade.") + "</big>"
             readonly property string flashFailText:     qsTr("If upgrade failed, make sure to connect ") + highlightPrefix + qsTr("directly") + highlightSuffix + qsTr(" to a powered USB port on your computer, not through a USB hub. ") +
