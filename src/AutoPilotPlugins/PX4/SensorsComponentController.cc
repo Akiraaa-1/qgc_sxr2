@@ -594,6 +594,37 @@ void SensorsComponentController::resetFactoryParameters()
                              true,  // showError
                              3,     // Reset factory parameters
                              -1);   // Don't do anything with mission storage
+
+    QTimer::singleShot(1000, this, [this]() {
+        _clearSensorCalibrationIds();
+    });
+}
+
+void SensorsComponentController::_clearSensorCalibrationIds()
+{
+    static constexpr const char* kSensorCalibrationIdParams[] = {
+        "CAL_ACC0_ID",
+        "CAL_ACC1_ID",
+        "CAL_ACC2_ID",
+        "CAL_ACC3_ID",
+        "CAL_GYRO0_ID",
+        "CAL_GYRO1_ID",
+        "CAL_GYRO2_ID",
+        "CAL_GYRO3_ID",
+        "CAL_MAG0_ID",
+        "CAL_MAG1_ID",
+        "CAL_MAG2_ID",
+        "CAL_MAG3_ID",
+    };
+
+    ParameterManager *parameterManager = _vehicle->parameterManager();
+    for (const char *paramName : kSensorCalibrationIdParams) {
+        if (parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
+            parameterManager->getParameter(ParameterManager::defaultComponentId, paramName)->setCookedValue(0);
+        }
+    }
+
+    qgcApp()->showAppMessage(tr("已恢复为未校准状态，请重启飞控后重新校准传感器。"));
 }
 
 void SensorsComponentController::clearBoardLevelOffsets()

@@ -79,6 +79,15 @@ Item {
     property string _pendingCalibrationStatusText:       ""
     property string _activeCalibrationType:              ""
     property var    _calibrationResultByType:            ({})
+    property bool   _factoryResetPending:                false
+    property bool   _factoryResetForcesUncalibrated:     false
+    property int    _lastVehicleMessagesReceived:        _activeVehicle ? _activeVehicle.messagesReceived : 0
+    property double _lastVehicleMessageMSecs:            Date.now()
+    property string _lastAttitudeSample:                 ""
+    property double _lastAttitudeSampleMSecs:            Date.now()
+    property bool   _vehicleTelemetryLive:               !!_activeVehicle
+    property bool   _attitudeTelemetryLive:              !!_activeVehicle
+    property bool   _vehicleConnected:                   !!(QGroundControl.multiVehicleManager.activeVehicleAvailable && _activeVehicle && !_activeVehicle.isOfflineEditingVehicle && _activeVehicle.vehicleLinkManager && !_activeVehicle.vehicleLinkManager.communicationLost && _vehicleTelemetryLive && _attitudeTelemetryLive)
 
     function currentMagParamCount() {
         if (_allMagsDisabled) {
@@ -176,6 +185,75 @@ Item {
 
     Component.onCompleted: _applySectionFilterSelection()
 
+    on_ActiveVehicleChanged: {
+        _calibrationResultByType = ({})
+        _factoryResetPending = false
+        _factoryResetForcesUncalibrated = false
+        _lastVehicleMessagesReceived = _activeVehicle ? _activeVehicle.messagesReceived : 0
+        _lastVehicleMessageMSecs = Date.now()
+        _lastAttitudeSample = _attitudeSample()
+        _lastAttitudeSampleMSecs = Date.now()
+        _vehicleTelemetryLive = !!_activeVehicle
+        _attitudeTelemetryLive = !!_activeVehicle
+        factoryResetRefreshTimer.stop()
+    }
+
+    Connections {
+        target: _activeVehicle
+
+        function onMessagesReceivedChanged() {
+            _lastVehicleMessagesReceived = _activeVehicle ? _activeVehicle.messagesReceived : 0
+            _lastVehicleMessageMSecs = Date.now()
+            _vehicleTelemetryLive = true
+        }
+    }
+
+    Connections {
+        target: _activeVehicle && _activeVehicle.vehicleLinkManager ? _activeVehicle.vehicleLinkManager : null
+
+        function onCommunicationLostChanged(communicationLost) {
+            if (communicationLost) {
+                _calibrationResultByType = ({})
+                _factoryResetPending = false
+                _factoryResetForcesUncalibrated = false
+                factoryResetRefreshTimer.stop()
+            }
+        }
+    }
+
+    Timer {
+        id: vehicleTelemetryWatchdogTimer
+        interval: 500
+        repeat: true
+        running: true
+
+        onTriggered: {
+            if (!_activeVehicle) {
+                _vehicleTelemetryLive = false
+                _attitudeTelemetryLive = false
+                return
+            }
+
+            const messagesReceived = _activeVehicle.messagesReceived
+            if (messagesReceived !== _lastVehicleMessagesReceived) {
+                _lastVehicleMessagesReceived = messagesReceived
+                _lastVehicleMessageMSecs = Date.now()
+                _vehicleTelemetryLive = true
+            } else if (Date.now() - _lastVehicleMessageMSecs > 2500) {
+                _vehicleTelemetryLive = false
+            }
+
+            const attitudeSample = _attitudeSample()
+            if (attitudeSample !== _lastAttitudeSample) {
+                _lastAttitudeSample = attitudeSample
+                _lastAttitudeSampleMSecs = Date.now()
+                _attitudeTelemetryLive = true
+            } else if (Date.now() - _lastAttitudeSampleMSecs > 5000) {
+                _attitudeTelemetryLive = false
+            }
+        }
+    }
+
     onSectionNameFilterChanged: _applySectionFilterSelection()
 
     Timer {
@@ -190,6 +268,14 @@ Item {
                 statusTextArea.append(_pendingCalibrationStatusText)
             }
         }
+    }
+
+    Timer {
+        id: factoryResetRefreshTimer
+        interval: 3000
+        repeat: false
+
+        onTriggered: _factoryResetPending = false
     }
 
     QGCPopupDialogFactory {
@@ -601,6 +687,17 @@ Item {
         return isNaN(value) ? 0 : value
     }
 
+    function _attitudeSample() {
+        if (!_activeVehicle) {
+            return ""
+        }
+
+        return "%1,%2,%3,%4".arg(_formatTelemetryValue(_activeVehicle.roll, 2, ""))
+                            .arg(_formatTelemetryValue(_activeVehicle.pitch, 2, ""))
+                            .arg(_formatTelemetryValue(_activeVehicle.yawRate, 3, ""))
+                            .arg(_formatTelemetryValue(_activeVehicle.heading, 1, ""))
+    }
+
     function _attitudeRateMagnitude() {
         const rollRate = _factNumberOrZero(_activeVehicle ? _activeVehicle.rollRate : null)
         const pitchRate = _factNumberOrZero(_activeVehicle ? _activeVehicle.pitchRate : null)
@@ -609,11 +706,11 @@ Item {
     }
 
     function _attitudeStable() {
-        return _activeVehicle && _attitudeRateMagnitude() < 0.15
+        return _vehicleConnected && _attitudeRateMagnitude() < 0.15
     }
 
     function _telemetryHealthText() {
-        return _activeVehicle ? qsTr("数据通信正常") : qsTr("等待飞控连接")
+        return _vehicleConnected ? qsTr("数据通信正常") : qsTr("等待飞控连接")
     }
 
     function _selectCalibrationPage(type) {
@@ -644,10 +741,11 @@ Item {
     }
 
     function _calibrationReady(type) {
+        if (!_vehicleConnected) return false
         if (type === "compass") return !_allMagsDisabled
-        if (type === "gyro") return cal_gyro0_id.value !== 0
-        if (type === "accel") return cal_acc0_id.value !== 0
-        if (type === "level") return cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
+        if (type === "gyro") return controller.parameterExists(-1, "CAL_GYRO0_ID")
+        if (type === "accel") return controller.parameterExists(-1, "CAL_ACC0_ID")
+        if (type === "level") return controller.parameterExists(-1, "CAL_ACC0_ID") && controller.parameterExists(-1, "CAL_GYRO0_ID")
         if (type === "airspeed") return vehicleComponent.airspeedCalSupported
         return false
     }
@@ -656,8 +754,14 @@ Item {
         if (!_calibrationReady(type)) {
             return qsTr("不可用")
         }
+        if (_factoryResetPending) {
+            return qsTr("刷新中")
+        }
         if (_calibrationComplete(type)) {
             return qsTr("已完成")
+        }
+        if (_calibrationValid(type)) {
+            return qsTr("已校准")
         }
         if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
             return qsTr("需校准")
@@ -669,7 +773,13 @@ Item {
         if (!_calibrationReady(type)) {
             return "#FF5A5F"
         }
+        if (_factoryResetPending) {
+            return "#F59E0B"
+        }
         if (_calibrationComplete(type)) {
+            return "#22C55E"
+        }
+        if (_calibrationValid(type)) {
             return "#22C55E"
         }
         if (type === "airspeed" && vehicleComponent.airspeedCalRequired) {
@@ -956,6 +1066,32 @@ Item {
         return _calibrationResult(type) === "complete"
     }
 
+    function _calibrationValid(type) {
+        if (!_vehicleConnected || _factoryResetPending || _factoryResetForcesUncalibrated) {
+            return false
+        }
+        if (type === "compass") {
+            return _allMagsDisabled || cal_mag0_id.value !== 0
+        }
+        if (type === "gyro") {
+            return cal_gyro0_id.value !== 0
+        }
+        if (type === "accel") {
+            return cal_acc0_id.value !== 0
+        }
+        if (type === "level") {
+            return cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
+        }
+        if (type === "airspeed") {
+            return vehicleComponent.airspeedCalSupported && !vehicleComponent.airspeedCalRequired
+        }
+        return false
+    }
+
+    function _calibrationDoneForDisplay(type) {
+        return _calibrationComplete(type) || _calibrationValid(type)
+    }
+
     function _calibrationFailed(type) {
         return _calibrationResult(type) === "failed"
     }
@@ -965,7 +1101,7 @@ Item {
     }
 
     function _displayStepIndex() {
-        if (_calibrationComplete(_selectedCalibrationType)) {
+        if (_calibrationDoneForDisplay(_selectedCalibrationType)) {
             return Math.max(0, _displayStepCount() - 1)
         }
         return controller.calibrationActive && controller.showOrientationCalArea ? _activeOrientationStepIndex() : 0
@@ -1019,7 +1155,7 @@ Item {
     }
 
     function _displayProgressValue() {
-        if (_calibrationComplete(_selectedCalibrationType)) {
+        if (_calibrationDoneForDisplay(_selectedCalibrationType)) {
             return 1.0
         }
         if (controller.calibrationActive) {
@@ -1041,7 +1177,7 @@ Item {
             if (_calibrationCommandPending) {
                 return _pendingCalibrationStatusText !== "" ? _pendingCalibrationStatusText : qsTr("校准命令已发送，等待飞控响应...")
             }
-            return controller.calibrationActive ? qsTr("正在校准...") : (_activeVehicle ? qsTr("已检测到飞控数据，等待开始校准。") : qsTr("正在等待飞控数据..."))
+            return controller.calibrationActive ? qsTr("正在校准...") : (_vehicleConnected ? qsTr("已检测到飞控数据，等待开始校准。") : qsTr("正在等待飞控数据..."))
         }
         if (controller.calibrationActive && controller.showOrientationCalArea) {
             if (!_orientationHasActiveDetection()) {
@@ -1060,6 +1196,9 @@ Item {
         }
         if (_calibrationComplete(_selectedCalibrationType)) {
             return qsTr("已完成")
+        }
+        if (_calibrationValid(_selectedCalibrationType)) {
+            return qsTr("已校准")
         }
         if (_calibrationCancelled(_selectedCalibrationType)) {
             return qsTr("已取消")
@@ -1290,8 +1429,8 @@ Item {
                             spacing: ScreenTools.defaultFontPixelWidth * 0.35
 
                             QGCLabel {
-                                text: _activeVehicle ? qsTr("已连接") : qsTr("未连接")
-                                color: _activeVehicle ? "#22C55E" : "#FF5A5F"
+                                text: _vehicleConnected ? qsTr("已连接") : qsTr("未连接")
+                                color: _vehicleConnected ? "#22C55E" : "#FF5A5F"
                                 font.bold: true
                             }
 
@@ -1299,7 +1438,7 @@ Item {
                                 Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.45
                                 Layout.preferredHeight: Layout.preferredWidth
                                 radius: width / 2
-                                color: _activeVehicle ? "#22C55E" : "#FF5A5F"
+                                color: _vehicleConnected ? "#22C55E" : "#FF5A5F"
                             }
                         }
 
@@ -1424,7 +1563,13 @@ Item {
                         pressedOverlayOpacity: 0.42
                         backRadius: _cornerRadius
                         showBorder: true
-                        onClicked: controller.resetFactoryParameters()
+                        onClicked: {
+                            _calibrationResultByType = ({})
+                            _factoryResetForcesUncalibrated = true
+                            _factoryResetPending = true
+                            factoryResetRefreshTimer.restart()
+                            controller.resetFactoryParameters()
+                        }
                     }
 
                     QGCButton {
@@ -1536,7 +1681,7 @@ Item {
                                 id: stepRow
                                 required property var modelData
                                 required property int index
-                                readonly property bool stepDone: _calibrationComplete(_selectedCalibrationType) ||
+                                readonly property bool stepDone: _calibrationDoneForDisplay(_selectedCalibrationType) ||
                                     (modelData && modelData.done !== undefined ? modelData.done : false)
                                 readonly property bool stepActive: controller.calibrationActive &&
                                     controller.showOrientationCalArea &&
@@ -2104,7 +2249,7 @@ Item {
                                             }
 
                                             QGCLabel {
-                                                text: _attitudeStable() ? qsTr("稳定") : (_activeVehicle ? qsTr("姿态变化中") : qsTr("等待数据"))
+                                                text: _attitudeStable() ? qsTr("稳定") : (_vehicleConnected ? qsTr("姿态变化中") : qsTr("等待数据"))
                                                 color: _attitudeStable() ? "#22C55E" : "#F59E0B"
                                                 font.bold: true
                                             }

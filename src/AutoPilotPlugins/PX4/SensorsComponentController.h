@@ -96,6 +96,7 @@ private:
     void _startVisualCalibration(void);
     void _appendStatusLog(const QString& text);
     void _refreshParams(void);
+    void _clearSensorCalibrationIds(void);
     void _hideAllCalAreas(void);
     void _resetInternalState(void);
     void _updateAccelSidesFromRemaining(uint64_t remainingSides);
