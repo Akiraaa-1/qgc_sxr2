@@ -35,7 +35,8 @@
                 {
                     "param": "_SOURCE",
                     "label": "来源",
-                    "control": "combobox"
+                    "control": "combobox",
+                    "onCompleted": "var sourceFact = controller.getParameterFact(-1, _fullParamName(\"_SOURCE\")); if (_rawIndex === 1 && sourceFact && sourceFact.rawValue === -1) sourceFact.rawValue = 0"
                 },
                 {
                     "param": "_N_CELLS",

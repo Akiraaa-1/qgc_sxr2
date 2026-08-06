@@ -23,6 +23,16 @@ TextArea {
 
     function localizeVehicleMessage(message) {
         let localizedMessage = message || ""
+        const exactTranslations = [
+            { "source": "Calibration: Disabling RC input", "text": qsTr("校准：正在禁用 RC 输入") },
+            { "source": "Calibration: Restoring RC input", "text": qsTr("校准：正在恢复 RC 输入") },
+            { "source": "Navigation error: No valid position estimate", "text": qsTr("导航错误：无有效位置估计") }
+        ]
+        for (let i = 0; i < exactTranslations.length; i++) {
+            const item = exactTranslations[i]
+            const escapedSource = item.source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            localizedMessage = localizedMessage.replace(new RegExp(escapedSource, "gi"), qsTr("%1（%2）").arg(item.text).arg(item.source))
+        }
         const replacements = [
             { "pattern": /No valid mission available, loitering/gi, "text": qsTr("没有可执行的有效任务，飞行器正在保持/盘旋") },
             { "pattern": /No valid mission available/gi, "text": qsTr("没有可执行的有效任务") },

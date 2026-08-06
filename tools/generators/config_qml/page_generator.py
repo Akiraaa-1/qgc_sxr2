@@ -68,6 +68,7 @@ class ControlDef:
     toggleCheckbox: ToggleCheckboxDef | None = None  # toggleCheckbox: custom checked/onClicked
     indent: bool = False                              # indent control with left margin
     smallFont: bool = False                           # label: use small font size
+    onCompleted: str = ""                             # QML Component.onCompleted body
 
 
 @dataclass
@@ -171,6 +172,7 @@ def load_page_def(json_path: Path) -> PageDef:
                 toggleCheckbox=parse_toggle_checkbox(ctrl_data.get("toggleCheckbox")),
                 indent=ctrl_data.get("indent", False),
                 smallFont=ctrl_data.get("smallFont", False),
+                onCompleted=ctrl_data.get("onCompleted", ""),
             ))
         repeat_data = sec_data.get("repeat")
         repeat_def = None
@@ -345,6 +347,12 @@ def _qml_control(
             qml = _inject_prop(qml, f"{indent}    Layout.leftMargin: ScreenTools.defaultFontPixelWidth * 2")
         return qml
 
+    def _apply_on_completed(qml: str) -> str:
+        """Add a Component.onCompleted handler to a single generated control."""
+        if ctrl.onCompleted:
+            qml = _inject_prop(qml, f"{indent}    Component.onCompleted: {{ {ctrl.onCompleted} }}")
+        return qml
+
     # Static label — no fact binding
     if control_type == "label":
         qml = render_label(
@@ -361,7 +369,7 @@ def _qml_control(
             ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Dialog button — standalone button that opens a popup dialog
     if control_type == "dialogButton" and ctrl.dialogButton:
@@ -533,7 +541,7 @@ def _qml_control(
             ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Slider — has its own label
     if control_type == "slider":
@@ -567,7 +575,7 @@ def _qml_control(
             ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Radio group — label + radio buttons
     if control_type == "radiogroup":
@@ -654,7 +662,7 @@ def _qml_control(
         )
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Bitmask — full FactBitmask widget
     if control_type == "bitmask":
@@ -665,7 +673,7 @@ def _qml_control(
         )
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Toggle checkbox — QGCCheckBoxSlider with custom logic
     if control_type == "toggleCheckbox" and ctrl.toggleCheckbox:
@@ -680,7 +688,7 @@ def _qml_control(
         )
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Checkbox — FactCheckBoxSlider includes label
     if control_type == "checkbox":
@@ -704,7 +712,7 @@ def _qml_control(
             ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Combobox — LabelledFactComboBox includes label
     if control_type == "combobox":
@@ -734,7 +742,7 @@ def _qml_control(
             ])
         if ctrl.showWhen:
             qml = _inject_prop(qml, f"{indent}    visible: {ctrl.showWhen}")
-        return _apply_indent(qml)
+        return _apply_indent(_apply_on_completed(qml))
 
     # Textfield — LabelledFactTextField includes label
     qml = render_textfield(

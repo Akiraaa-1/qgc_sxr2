@@ -441,6 +441,17 @@ Item {
         text = text.replace(/&gt;/g, ">");
         text = text.replace(/&amp;/g, "&");
         text = text.replace(/\s+/g, " ").trim();
+        const exactTranslations = [
+            { "source": "Calibration: Disabling RC input", "text": qsTr("校准：正在禁用 RC 输入") },
+            { "source": "Calibration: Restoring RC input", "text": qsTr("校准：正在恢复 RC 输入") },
+            { "source": "Navigation error: No valid position estimate", "text": qsTr("导航错误：无有效位置估计") }
+        ];
+        for (let i = 0; i < exactTranslations.length; i++) {
+            const item = exactTranslations[i];
+            if (text.toLowerCase() === item.source.toLowerCase()) {
+                return qsTr("%1（%2）").arg(item.text).arg(item.source);
+            }
+        }
         text = text.replace(/No valid mission available, loitering/gi, qsTr("没有可执行的有效任务，飞行器正在保持/盘旋"));
         text = text.replace(/No valid mission available/gi, qsTr("没有可执行的有效任务"));
         text = text.replace(/Mission rejected/gi, qsTr("任务被拒绝"));

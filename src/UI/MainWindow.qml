@@ -1034,19 +1034,27 @@ ApplicationWindow {
                             border.color: Qt.rgba(1, 1, 1, 0.18)
                             border.width: 1
 
-                            Row {
+                            RowLayout {
                                 anchors.centerIn: parent
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.35
 
-                                QGCColoredImage {
-                                    width: ScreenTools.defaultFontPixelHeight * 0.78
-                                    height: width
-                                    source: "/InstrumentValueIcons/home.svg"
-                                    fillMode: Image.PreserveAspectFit
-                                    color: integratedMainView._navTextColor
+                                Item {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.78
+                                    Layout.preferredHeight: Layout.preferredWidth
+
+                                    QGCColoredImage {
+                                        anchors.centerIn: parent
+                                        width: parent.width
+                                        height: parent.height
+                                        source: "/InstrumentValueIcons/home.svg"
+                                        fillMode: Image.PreserveAspectFit
+                                        color: integratedMainView._navTextColor
+                                    }
                                 }
 
                                 QGCLabel {
+                                    Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("开始")
                                     color: integratedMainView._navTextColor
                                     font.pixelSize: topNavigationBar._returnTextSize
@@ -5603,17 +5611,17 @@ ApplicationWindow {
 
                             property var originalConfig
                             property var editingConfig
-                            readonly property real _dialogContentWidth: ScreenTools.defaultFontPixelWidth * 46
-                            readonly property real _fieldLabelWidth: ScreenTools.defaultFontPixelWidth * 15
-                            readonly property real _sectionSpacing: ScreenTools.defaultFontPixelHeight * 0.8
-                            readonly property real _cardPadding: ScreenTools.defaultFontPixelHeight * 0.9
-                            readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 1.8
+                            readonly property real _dialogContentWidth: ScreenTools.defaultFontPixelWidth * 52
+                            readonly property real _fieldLabelWidth: ScreenTools.defaultFontPixelWidth * 12
+                            readonly property real _sectionSpacing: ScreenTools.defaultFontPixelHeight * 0.62
+                            readonly property real _cardPadding: ScreenTools.defaultFontPixelHeight * 0.82
+                            readonly property real _buttonHeight: ScreenTools.defaultFontPixelHeight * 1.95
                             readonly property bool _canSave: nameField.text.trim() !== ""
                             readonly property bool _showLinkParameters: editingConfig
                                                                        && editingConfig.linkType !== LinkConfiguration.TypeSerial
+                                                                       && editingConfig.linkType !== LinkConfiguration.TypeUdp
+                                                                       && editingConfig.linkType !== LinkConfiguration.TypeTcp
                                                                        && _settingsSource(editingConfig) !== ""
-
-                            QGCPopupStyle { id: popupStyle }
 
                             function _settingsSource(config) {
                                 if (!config || !config.settingsURL) {
@@ -5621,6 +5629,16 @@ ApplicationWindow {
                                 }
 
                                 return Qt.resolvedUrl("AppSettings/" + config.settingsURL)
+                            }
+
+                            function _styleCombo(combo) {
+                                combo.backgroundColor = startPageOverlay._inputBg
+                                combo.borderColor = startPageOverlay._borderColor
+                                combo.focusBorderColor = startPageOverlay._focusColor
+                                combo.textColor = combo.enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                combo.showFocusBorder = true
+                                combo.borderRadius = startPageOverlay._uiRadius
+                                combo.stateAnimationDuration = startPageOverlay._uiAnimMs
                             }
 
                             function _saveDialog() {
@@ -5657,10 +5675,10 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     implicitHeight: headerLayout.implicitHeight + (startPageLinkDialog._cardPadding * 2)
-                                    color: popupStyle.popupBackground
-                                    radius: popupStyle.cornerRadius
+                                    color: startPageOverlay._cardBg
+                                    radius: startPageOverlay._uiRadius
                                     border.width: 1
-                                    border.color: popupStyle.borderColor
+                                    border.color: startPageOverlay._borderColor
 
                                     ColumnLayout {
                                         id: headerLayout
@@ -5670,17 +5688,17 @@ ApplicationWindow {
 
                                         QGCLabel {
                                             Layout.fillWidth: true
-                                    text: originalConfig ? qsTr("编辑链路") : qsTr("新增链路")
-                                            color: popupStyle.primaryTextColor
-                                            font.pointSize: ScreenTools.defaultFontPointSize + 2
-                                            font.bold: true
+                                            text: originalConfig ? qsTr("编辑链路") : qsTr("新增链路")
+                                            color: startPageOverlay._primaryText
+                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSectionTitle
+                                            font.weight: Font.DemiBold
                                         }
 
                                         QGCLabel {
                                             Layout.fillWidth: true
-                    text: qsTr("创建并配置通信链路配置。")
-                                            color: popupStyle.secondaryTextColor
-                                            font.pointSize: ScreenTools.defaultFontPointSize - 1
+                                            text: qsTr("创建并配置通信链路配置。")
+                                            color: startPageOverlay._secondaryText
+                                            font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta
                                             wrapMode: Text.WordWrap
                                         }
                                     }
@@ -5689,10 +5707,10 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth:   true
                                     implicitHeight:     dialogForm.implicitHeight + (startPageLinkDialog._cardPadding * 2)
-                                    color:              popupStyle.panelBackground
-                                    radius:             popupStyle.cornerRadius
+                                    color:              startPageOverlay._cardBg
+                                    radius:             startPageOverlay._uiRadius
                                     border.width:       1
-                                    border.color:       popupStyle.borderColor
+                                    border.color:       startPageOverlay._borderColor
 
                                     ColumnLayout {
                                         id: dialogForm
@@ -5706,17 +5724,21 @@ ApplicationWindow {
 
                                             QGCLabel {
                                                 Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth
-                                text: qsTr("名称")
-                                                color: popupStyle.primaryTextColor
-                                                font.pointSize: ScreenTools.defaultFontPointSize
+                                                text: qsTr("名称")
+                                                color: startPageOverlay._primaryText
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel
                                             }
 
                                             QGCTextField {
                                                 id:                 nameField
                                                 Layout.fillWidth:   true
                                                 text:               editingConfig.name
-                                placeholderText:    qsTr("输入名称")
-                                                borderRadius:       popupStyle.cornerRadius
+                                                placeholderText:    qsTr("输入名称")
+                                                backgroundColor:    startPageOverlay._inputBg
+                                                borderColor:        startPageOverlay._borderColor
+                                                focusBorderColor:   startPageOverlay._focusColor
+                                                textColor:          startPageOverlay._primaryText
+                                                borderRadius:       startPageOverlay._uiRadius
                                                 borderWidth:        1
                                                 focusBorderWidth:   1
                                                 showFocusGlow:      true
@@ -5726,53 +5748,261 @@ ApplicationWindow {
                                         Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 1
-                                            color: popupStyle.borderColor
+                                            color: startPageOverlay._borderColor
                                             opacity: 0.8
                                         }
 
                                         QGCCheckBoxSlider {
                                             Layout.fillWidth:   true
-                            text:               qsTr("启动时自动连接")
+                                            text:               qsTr("启动时自动连接")
                                             checked:            editingConfig.autoConnect
                                             onCheckedChanged:   editingConfig.autoConnect = checked
-                                            textColor:          popupStyle.primaryTextColor
-                                            trackColor:         popupStyle.secondaryButtonColor
-                                            trackOnColor:       popupStyle.accentColor
-                                            trackBorderColor:   popupStyle.borderColor
-                                            handleColor:        popupStyle.primaryTextColor
+                                            textColor:          startPageOverlay._primaryText
+                                            trackColor:         startPageOverlay._secondaryBtn
+                                            trackOnColor:       startPageOverlay._focusColor
+                                            trackBorderColor:   startPageOverlay._borderColor
+                                            handleColor:        startPageOverlay._primaryText
                                         }
 
                                         QGCCheckBoxSlider {
                                             Layout.fillWidth:   true
-                            text:               qsTr("高延迟")
+                                            text:               qsTr("高延迟")
                                             checked:            editingConfig.highLatency
                                             onCheckedChanged:   editingConfig.highLatency = checked
-                                            textColor:          popupStyle.primaryTextColor
-                                            trackColor:         popupStyle.secondaryButtonColor
-                                            trackOnColor:       popupStyle.accentColor
-                                            trackBorderColor:   popupStyle.borderColor
-                                            handleColor:        popupStyle.primaryTextColor
+                                            textColor:          startPageOverlay._primaryText
+                                            trackColor:         startPageOverlay._secondaryBtn
+                                            trackOnColor:       startPageOverlay._focusColor
+                                            trackBorderColor:   startPageOverlay._borderColor
+                                            handleColor:        startPageOverlay._primaryText
                                         }
 
                                         Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 1
-                                            color: popupStyle.borderColor
+                                            color: startPageOverlay._borderColor
                                             opacity: 0.8
                                         }
 
-                                        LabelledComboBox {
-                                            Layout.fillWidth:       true
-                            label:                  qsTr("类型")
-                                            comboBoxPreferredWidth: ScreenTools.defaultFontPixelWidth * 18
-                                            enabled:                originalConfig == null
-                                            model:                  startPageOverlay._linkManager.linkTypeStrings
-                                            Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: ScreenTools.defaultFontPixelWidth
 
-                                            onActivated: (index) => {
-                                                if (index !== editingConfig.linkType) {
-                                                    const name = nameField.text
-                                                    editingConfig = startPageOverlay._linkManager.createConfiguration(index, name)
+                                            QGCLabel {
+                                                Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth
+                                                text: qsTr("类型")
+                                                color: startPageOverlay._primaryText
+                                                font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel
+                                            }
+
+                                            QGCComboBox {
+                                                id: linkTypeCombo
+                                                Layout.fillWidth: true
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 20
+                                                enabled: originalConfig == null
+                                                model: startPageOverlay._linkManager.linkTypeStrings
+                                                Component.onCompleted: {
+                                                    currentIndex = editingConfig.linkType
+                                                    startPageLinkDialog._styleCombo(linkTypeCombo)
+                                                }
+
+                                                onActivated: (index) => {
+                                                    if (index !== editingConfig.linkType) {
+                                                        const name = nameField.text
+                                                        editingConfig = startPageOverlay._linkManager.createConfiguration(index, name)
+                                                        currentIndex = editingConfig.linkType
+                                                        startPageLinkDialog._styleCombo(linkTypeCombo)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            visible: editingConfig && editingConfig.linkType === LinkConfiguration.TypeSerial
+                                            implicitHeight: serialSettingsLayout.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.2)
+                                            color: startPageOverlay._inputBg
+                                            radius: startPageOverlay._uiRadius
+                                            border.width: 1
+                                            border.color: startPageOverlay._borderColor
+
+                                            ColumnLayout {
+                                                id: serialSettingsLayout
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.55
+
+                                                QGCLabel {
+                                                    Layout.fillWidth: true
+                                                    text: qsTr("串口参数")
+                                                    color: startPageOverlay._secondaryText
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta
+                                                    font.weight: Font.DemiBold
+                                                }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCComboBox {
+                                                        id: dialogSerialPortCombo
+                                                        Layout.fillWidth: true
+                                                        model: QGroundControl.linkManager.serialPortStrings.length > 0 ? QGroundControl.linkManager.serialPortStrings : [qsTr("无可用串口")]
+                                                        enabled: QGroundControl.linkManager.serialPortStrings.length > 0
+                                                        currentIndex: {
+                                                            const index = QGroundControl.linkManager.serialPortStrings.indexOf(editingConfig.portDisplayName)
+                                                            return index >= 0 ? index : 0
+                                                        }
+                                                        Component.onCompleted: startPageLinkDialog._styleCombo(dialogSerialPortCombo)
+                                                        onActivated: (index) => {
+                                                            if (index >= 0 && index < QGroundControl.linkManager.serialPorts.length) {
+                                                                editingConfig.portName = QGroundControl.linkManager.serialPorts[index]
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("波特率"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCComboBox {
+                                                        id: dialogBaudCombo
+                                                        Layout.fillWidth: true
+                                                        model: QGroundControl.linkManager.serialBaudRates
+                                                        currentIndex: Math.max(0, QGroundControl.linkManager.serialBaudRates.indexOf(editingConfig.baud.toString()))
+                                                        Component.onCompleted: startPageLinkDialog._styleCombo(dialogBaudCombo)
+                                                        onActivated: {
+                                                            const baud = parseInt(currentText)
+                                                            if (!isNaN(baud) && baud > 0) {
+                                                                editingConfig.baud = baud
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("高级"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCComboBox { id: dialogDataBitsCombo; Layout.fillWidth: true; model: ["5", "6", "7", "8"]; currentIndex: Math.max(Math.min(editingConfig.dataBits - 5, 3), 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogDataBitsCombo); onActivated: (index) => editingConfig.dataBits = index + 5 }
+                                                    QGCComboBox { id: dialogStopBitsCombo; Layout.fillWidth: true; model: ["1", "2"]; currentIndex: Math.max(Math.min(editingConfig.stopBits - 1, 1), 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogStopBitsCombo); onActivated: (index) => editingConfig.stopBits = index + 1 }
+                                                    QGCComboBox { id: dialogParityCombo; Layout.fillWidth: true; model: [qsTr("无奇偶"), qsTr("偶"), qsTr("奇")]; currentIndex: editingConfig.parity === 2 ? 1 : (editingConfig.parity === 3 ? 2 : 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogParityCombo); onActivated: (index) => editingConfig.parity = index === 1 ? 2 : (index === 2 ? 3 : 0) }
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            visible: editingConfig && editingConfig.linkType === LinkConfiguration.TypeUdp
+                                            implicitHeight: udpSettingsLayout.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.2)
+                                            color: startPageOverlay._inputBg
+                                            radius: startPageOverlay._uiRadius
+                                            border.width: 1
+                                            border.color: startPageOverlay._borderColor
+
+                                            ColumnLayout {
+                                                id: udpSettingsLayout
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.55
+
+                                                QGCLabel { Layout.fillWidth: true; text: qsTr("UDP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("监听端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCTextField { id: udpPortField; Layout.fillWidth: true; text: editingConfig.localPort.toString(); numericValuesOnly: true; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.localPort = parseInt(text) }
+                                                }
+
+                                                QGCLabel { Layout.fillWidth: true; text: qsTr("目标地址（可选）"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
+
+                                                Repeater {
+                                                    model: editingConfig ? editingConfig.hostList : []
+
+                                                    delegate: RowLayout {
+                                                        required property string modelData
+                                                        Layout.fillWidth: true
+                                                        spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+                                                        QGCLabel { Layout.fillWidth: true; text: modelData; color: startPageOverlay._primaryText; elide: Text.ElideRight; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
+                                                        QGCButton {
+                                                            id: udpRemoveHostButton
+                                                            text: qsTr("移除")
+                                                            Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7
+                                                            Layout.preferredHeight: startPageLinkDialog._buttonHeight * 0.86
+                                                            showBorder: true
+                                                            backRadius: startPageOverlay._uiRadius
+                                                            borderColor: startPageOverlay._borderColor
+                                                            backgroundColor: pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn)
+                                                            textColor: startPageOverlay._primaryText
+                                                            stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                            onClicked: editingConfig.removeHost(modelData)
+                                                        }
+                                                    }
+                                                }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth * 0.55
+
+                                                    QGCTextField { id: udpHostField; Layout.fillWidth: true; placeholderText: qsTr("例如 127.0.0.1:14550"); backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius }
+                                                    QGCButton {
+                                                        id: udpAddHostButton
+                                                        text: qsTr("添加")
+                                                        enabled: udpHostField.text !== ""
+                                                        Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 7
+                                                        Layout.preferredHeight: startPageLinkDialog._buttonHeight
+                                                        showBorder: true
+                                                        backRadius: startPageOverlay._uiRadius
+                                                        borderColor: startPageOverlay._borderColor
+                                                        backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                        textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                        stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                        onClicked: {
+                                                            editingConfig.addHost(udpHostField.text)
+                                                            udpHostField.text = ""
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            visible: editingConfig && editingConfig.linkType === LinkConfiguration.TypeTcp
+                                            implicitHeight: tcpSettingsLayout.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.2)
+                                            color: startPageOverlay._inputBg
+                                            radius: startPageOverlay._uiRadius
+                                            border.width: 1
+                                            border.color: startPageOverlay._borderColor
+
+                                            ColumnLayout {
+                                                id: tcpSettingsLayout
+                                                anchors.fill: parent
+                                                anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
+                                                spacing: ScreenTools.defaultFontPixelHeight * 0.55
+
+                                                QGCLabel { Layout.fillWidth: true; text: qsTr("TCP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("服务器"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCTextField { id: tcpHostField; Layout.fillWidth: true; text: editingConfig.host; placeholderText: qsTr("localhost 或 192.168.1.1"); backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.host = text.trim() }
+                                                }
+
+                                                RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: ScreenTools.defaultFontPixelWidth
+
+                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCTextField { id: tcpPortField; Layout.fillWidth: true; text: editingConfig.port.toString(); numericValuesOnly: true; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.port = parseInt(text) }
                                                 }
                                             }
                                         }
@@ -5781,10 +6011,10 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             visible: startPageLinkDialog._showLinkParameters
                                             implicitHeight: linkSettingsLayout.implicitHeight + (ScreenTools.defaultFontPixelHeight * 1.4)
-                                            color: popupStyle.inputBackground
-                                            radius: popupStyle.cornerRadius
+                                            color: startPageOverlay._inputBg
+                                            radius: startPageOverlay._uiRadius
                                             border.width: 1
-                                            border.color: popupStyle.borderColor
+                                            border.color: startPageOverlay._borderColor
 
                                             ColumnLayout {
                                                 id: linkSettingsLayout
@@ -5795,9 +6025,9 @@ ApplicationWindow {
                                                 QGCLabel {
                                                     Layout.fillWidth: true
                                                     text: qsTr("链路参数")
-                                                    color: popupStyle.secondaryTextColor
-                                                    font.pointSize: ScreenTools.defaultFontPointSize - 1
-                                                    font.bold: true
+                                                    color: startPageOverlay._secondaryText
+                                                    font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta
+                                                    font.weight: Font.DemiBold
                                                 }
 
                                                 Loader {
@@ -5826,24 +6056,16 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     implicitHeight: footerLayout.implicitHeight + (startPageLinkDialog._cardPadding * 2)
-                                    color: popupStyle.popupBackground
-                                    radius: popupStyle.cornerRadius
+                                    color: startPageOverlay._cardBg
+                                    radius: startPageOverlay._uiRadius
                                     border.width: 1
-                                    border.color: popupStyle.borderColor
+                                    border.color: startPageOverlay._borderColor
 
                                     ColumnLayout {
                                         id: footerLayout
                                         anchors.fill: parent
                                         anchors.margins: startPageLinkDialog._cardPadding
                                         spacing: ScreenTools.defaultFontPixelHeight * 0.5
-
-                                        QGCLabel {
-                                            Layout.fillWidth: true
-                                            text: qsTr("当内容高于屏幕时，对话框会保持居中并自动变为可滚动。")
-                                            color: popupStyle.secondaryTextColor
-                                            font.pointSize: ScreenTools.defaultFontPointSize - 2
-                                            wrapMode: Text.WordWrap
-                                        }
 
                                         RowLayout {
                                             Layout.fillWidth: true
@@ -5856,6 +6078,12 @@ ApplicationWindow {
                                                 Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 9, implicitWidth + (ScreenTools.defaultFontPixelWidth * 2))
                                                 Layout.minimumWidth: Layout.preferredWidth
                                                 Layout.preferredHeight: startPageLinkDialog._buttonHeight
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn)
+                                                textColor: startPageOverlay._primaryText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
                                                 onClicked: startPageLinkDialog._cancelDialog()
                                             }
 
@@ -5866,6 +6094,12 @@ ApplicationWindow {
                                                 Layout.preferredWidth: Math.max(ScreenTools.defaultFontPixelWidth * 9, implicitWidth + (ScreenTools.defaultFontPixelWidth * 2))
                                                 Layout.minimumWidth: Layout.preferredWidth
                                                 Layout.preferredHeight: startPageLinkDialog._buttonHeight
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._primaryBtnPressed : (hovered ? startPageOverlay._primaryBtnHover : startPageOverlay._primaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
                                                 onClicked: startPageLinkDialog._saveDialog()
                                             }
                                         }
@@ -6439,6 +6673,16 @@ ApplicationWindow {
 
     function _localizedVehicleMessage(message) {
         let localizedMessage = message || ""
+        const exactTranslations = [
+            { "source": "Calibration: Disabling RC input", "text": qsTr("校准：正在禁用 RC 输入") },
+            { "source": "Calibration: Restoring RC input", "text": qsTr("校准：正在恢复 RC 输入") },
+            { "source": "Navigation error: No valid position estimate", "text": qsTr("导航错误：无有效位置估计") }
+        ]
+        for (let i = 0; i < exactTranslations.length; i++) {
+            const item = exactTranslations[i]
+            const escapedSource = item.source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            localizedMessage = localizedMessage.replace(new RegExp(escapedSource, "gi"), qsTr("%1（%2）").arg(item.text).arg(item.source))
+        }
         const replacements = [
             { "pattern": /No valid mission available, loitering/gi, "text": qsTr("没有可执行的有效任务，飞行器正在保持/盘旋") },
             { "pattern": /No valid mission available/gi, "text": qsTr("没有可执行的有效任务") },
