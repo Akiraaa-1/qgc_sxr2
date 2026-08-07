@@ -181,7 +181,22 @@ jobs:
 
       - name: Create Installer
         working-directory: ${{ runner.temp }}\build
-        run: cmake --install . --config ${{ matrix.build_type }}
+        shell: pwsh
+        run: |
+          cmake --install . --config ${{ matrix.build_type }} *>&1 | Tee-Object -FilePath install-log.txt
+          exit $LASTEXITCODE
+
+      - name: Upload installer diagnostics
+        if: always() && matrix.variant == 'amd64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-amd64-installer-diagnostics
+          path: |
+            ${{ runner.temp }}/build/install-log.txt
+            ${{ runner.temp }}/build/staging/**
+            ${{ runner.temp }}/build/BTFW-GCS-installer*.exe
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Install and verify installer
         if: matrix.build_type == 'Release' && matrix.arch != 'win64_msvc2022_arm64_cross_compiled'
