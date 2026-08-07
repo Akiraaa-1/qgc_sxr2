@@ -171,21 +171,11 @@ Rectangle {
         _selectedSpecial = "menu"
         _selectedComponentIndex = -1
         _selectedSectionIndex = -1
-        if (readOnlyMode) {
-            panelLoader.setSourceComponent(offlineReadOnlyPanelComponent)
-            return
-        }
-        if (_fullParameterVehicleAvailable) {
-            if (_activeVehicle.autopilotPlugin.vehicleComponents.length === 0) {
-                panelLoader.setSourceComponent(noComponentsVehicleSummaryComponent)
-            } else {
-                panelLoader.setSource("qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigMenu.qml")
-            }
-        } else if (_activeVehicle && _parametersReadyForActiveVehicle && _activeVehicle.parameterManager.missingParameters) {
-            panelLoader.setSourceComponent(missingParametersVehicleSummaryComponent)
-        } else {
-            panelLoader.setSourceComponent(disconnectedVehicleAndParamsSummaryComponent)
-        }
+
+        // The menu contains entries, such as Firmware, that do not require a
+        // complete parameter download. Keep those reachable while parameter-backed
+        // setup pages continue to guard themselves.
+        panelLoader.setSource("qrc:/qml/QGroundControl/VehicleSetup/VehicleConfigMenu.qml")
     }
 
     function _refreshRootPanelForParameterState() {
@@ -198,7 +188,7 @@ Rectangle {
 
     function showPanel(specialName, qmlSource) {
         if (mainWindow.allowViewSwitch()) {
-            if (readOnlyMode) {
+            if (readOnlyMode && specialName !== "firmware") {
                 _showMenuPanel()
                 return
             }

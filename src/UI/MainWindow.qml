@@ -4247,6 +4247,7 @@ ApplicationWindow {
                     readonly property int _startPageInitialMavlinkVersion: 2
                     property bool _pendingWorkspaceEntry: false
                     property bool _manualConnectionArmed: false
+                    property bool _linkRefreshQueued: false
                     property string _statusText: qsTr("请选择链路并连接飞行器")
                     property string _recentConnectionText: qsTr("暂无成功连接记录")
 
@@ -4586,8 +4587,10 @@ ApplicationWindow {
                     }
 
                     function _refreshLinks() {
+                        _linkRefreshQueued = false
                         const configs = []
                         const names = []
+                        const nameCounts = ({})
                         const model = _linkManager ? _linkManager.linkConfigurations : null
                         if (model) {
                             for (let i = 0; i < model.count; i++) {
@@ -4596,14 +4599,25 @@ ApplicationWindow {
                                     continue
                                 }
                                 configs.push(cfg)
-                                names.push(cfg.name && cfg.name !== "" ? cfg.name : qsTr("Link %1").arg(i + 1))
+                                const baseName = cfg.name && cfg.name !== "" ? cfg.name : qsTr("Link %1").arg(i + 1)
+                                nameCounts[baseName] = (nameCounts[baseName] || 0) + 1
+                                names.push(nameCounts[baseName] === 1 ? baseName : qsTr("%1 (%2)").arg(baseName).arg(nameCounts[baseName]))
                             }
                         }
                         _availableLinkConfigs = configs
                         _availableLinkNames = names
                         _selectedLinkIndex = configs.length > 0 ? Math.max(0, Math.min(_selectedLinkIndex, configs.length - 1)) : -1
-                        _syncSelectedLinkSettings()
                         _refreshSerialSelection()
+                        _syncSelectedLinkSettings()
+                    }
+
+                    function _scheduleRefreshLinks() {
+                        if (_linkRefreshQueued) {
+                            return
+                        }
+
+                        _linkRefreshQueued = true
+                        Qt.callLater(_refreshLinks)
                     }
 
                     function _syncSelectedLinkSettings() {
@@ -4623,12 +4637,22 @@ ApplicationWindow {
                             const stopBits = Number(cfg.stopBits)
                             const parity = Number(cfg.parity)
                             const flowControl = Number(cfg.flowControl)
+                            const portName = cfg.portName || ""
+                            const portDisplayName = cfg.portDisplayName || ""
+                            const portIndex = portName !== "" ? _serialPortNames.indexOf(portName) : -1
+                            const displayIndex = portDisplayName !== "" ? _serialPortDisplayNames.indexOf(portDisplayName) : -1
 
+                            if (portIndex >= 0) {
+                                _selectedSerialPortIndex = portIndex
+                            } else if (displayIndex >= 0) {
+                                _selectedSerialPortIndex = displayIndex
+                            }
                             _selectedBaudRate = isNaN(baud) || baud <= 0 ? 57600 : baud
                             _selectedFlowControlEnabled = !isNaN(flowControl) && flowControl !== 0
                             _selectedDataBits = isNaN(dataBits) || dataBits < 5 || dataBits > 8 ? 8 : dataBits
                             _selectedStopBits = isNaN(stopBits) || stopBits < 1 || stopBits > 2 ? 1 : stopBits
                             _selectedParity = isNaN(parity) ? 0 : parity
+                            _serialPortSelectionLocked = portIndex >= 0 || displayIndex >= 0
                         } else {
                             _selectedBaudRate = 57600
                             _selectedFlowControlEnabled = false
@@ -4637,6 +4661,37 @@ ApplicationWindow {
                             _selectedParity = 0
                         }
 
+                    }
+
+                    function _linkNameExists(name, exceptConfig) {
+                        const model = _linkManager ? _linkManager.linkConfigurations : null
+                        const cleanName = name ? name.trim() : ""
+                        if (!model || cleanName === "") {
+                            return false
+                        }
+
+                        for (let i = 0; i < model.count; i++) {
+                            const cfg = model.get(i)
+                            if (cfg && !cfg.dynamic && cfg !== exceptConfig && cfg.name === cleanName) {
+                                return true
+                            }
+                        }
+                        return false
+                    }
+
+                    function _uniqueLinkName(baseName) {
+                        const cleanBaseName = baseName && baseName.trim() !== "" ? baseName.trim() : qsTr("链路")
+                        if (!_linkNameExists(cleanBaseName, null)) {
+                            return cleanBaseName
+                        }
+
+                        for (let i = 2; i < 1000; i++) {
+                            const candidate = qsTr("%1 %2").arg(cleanBaseName).arg(i)
+                            if (!_linkNameExists(candidate, null)) {
+                                return candidate
+                            }
+                        }
+                        return qsTr("%1 %2").arg(cleanBaseName).arg(Date.now())
                     }
 
                     function _selectLinkConfigByName(name) {
@@ -4660,13 +4715,35 @@ ApplicationWindow {
                             return
                         }
 
-                        const editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
+                        _refreshLinks()
+                        const editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, _uniqueLinkName(qsTr("链路")))
                         if (!editingConfig) {
                             _appendEvent(qsTr("无法创建链路配置"))
                             return
                         }
 
                         startPageLinkDialogFactory.open({ editingConfig: editingConfig, originalConfig: null })
+                    }
+
+                    function _openEditLinkDialog() {
+                        if (!_linkManager || _selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
+                            _appendEvent(qsTr("请选择要编辑的链路配置"))
+                            return
+                        }
+
+                        const originalConfig = _availableLinkConfigs[_selectedLinkIndex]
+                        if (!originalConfig || originalConfig.dynamic) {
+                            _appendEvent(qsTr("当前链路不可编辑"))
+                            return
+                        }
+
+                        const editingConfig = _linkManager.startConfigurationEditing(originalConfig)
+                        if (!editingConfig) {
+                            _appendEvent(qsTr("无法编辑当前链路配置"))
+                            return
+                        }
+
+                        startPageLinkDialogFactory.open({ editingConfig: editingConfig, originalConfig: originalConfig })
                     }
 
                     function _serialPortScore(portName, displayName) {
@@ -4694,7 +4771,7 @@ ApplicationWindow {
                             return 57600
                         }
 
-                        return 57600
+                        return 115200
                     }
 
                     function _bestSerialPortIndex(minimumScore = -1) {
@@ -5006,6 +5083,15 @@ ApplicationWindow {
                         const previousPortName = _selectedSerialPortName()
                         const previousDisplayName = _selectedSerialPortDisplayName()
                         _refreshSerialSelection(true, previousPortName, previousDisplayName)
+                        if (_serialPortSelectionLocked && previousPortName !== "") {
+                            const lockedPortIndex = _serialPortNames.indexOf(previousPortName)
+                            const lockedDisplayIndex = previousDisplayName !== "" ? _serialPortDisplayNames.indexOf(previousDisplayName) : -1
+                            if (lockedPortIndex >= 0) {
+                                _selectedSerialPortIndex = lockedPortIndex
+                            } else if (lockedDisplayIndex >= 0) {
+                                _selectedSerialPortIndex = lockedDisplayIndex
+                            }
+                        }
 
                         const portName = _selectedSerialPortName()
                         if (portName === "") {
@@ -5471,6 +5557,7 @@ ApplicationWindow {
                     Component.onCompleted: {
                         _setStartPageAutoConnectPaused(visible)
                         _refreshLinks()
+                        _scheduleRefreshLinks()
                         _autoConnectOnBoot = false
                         _removeStartPageAutoConnectConfig()
                         _appendEvent(qsTr("开始页已初始化"))
@@ -5482,6 +5569,7 @@ ApplicationWindow {
                         _setStartPageAutoConnectPaused(visible)
                         if (visible) {
                             _refreshLinks()
+                            _scheduleRefreshLinks()
                             _autoConnectOnBoot = false
                             _removeStartPageAutoConnectConfig()
                             _refreshSerialSelectionFromDetection(false)
@@ -5489,6 +5577,15 @@ ApplicationWindow {
                         } else if (_linkManager && !_pendingWorkspaceEntry) {
                             _linkManager.clearDeferredCommunicationError()
                             _linkManager.communicationErrorDisplayPaused = false
+                        }
+                    }
+
+                    Connections {
+                        target: startPageOverlay._linkManager ? startPageOverlay._linkManager.linkConfigurations : null
+                        ignoreUnknownSignals: true
+
+                        function onCountChanged() {
+                            startPageOverlay._scheduleRefreshLinks()
                         }
                     }
 
@@ -5645,11 +5742,16 @@ ApplicationWindow {
                                 if (!_canSave) {
                                     return
                                 }
+                                const cleanName = nameField.text.trim()
+                                if (startPageOverlay._linkNameExists(cleanName, originalConfig ? originalConfig : editingConfig)) {
+                                    QGroundControl.showMessageDialog(mainWindow, qsTr("链路名称重复"), qsTr("已存在名为“%1”的链路配置，请使用其他名称。").arg(cleanName))
+                                    return
+                                }
 
                                 if (linkSettingsLoader.item && typeof linkSettingsLoader.item.saveSettings === "function") {
                                     linkSettingsLoader.item.saveSettings()
                                 }
-                                editingConfig.name = nameField.text
+                                editingConfig.name = cleanName
                                 const savedConfigName = editingConfig.name
                                 if (originalConfig) {
                                     startPageOverlay._linkManager.endConfigurationEditing(originalConfig, editingConfig)
@@ -5659,7 +5761,7 @@ ApplicationWindow {
                                 }
                                 startPageOverlay._refreshLinks()
                                 startPageOverlay._selectLinkConfigByName(savedConfigName)
-                                startPageOverlay._appendEvent(qsTr("已添加链路配置“%1”").arg(savedConfigName))
+                                startPageOverlay._appendEvent(originalConfig ? qsTr("已更新链路配置“%1”").arg(savedConfigName) : qsTr("已添加链路配置“%1”").arg(savedConfigName))
                                 close()
                             }
 
@@ -5850,8 +5952,12 @@ ApplicationWindow {
                                                         model: QGroundControl.linkManager.serialPortStrings.length > 0 ? QGroundControl.linkManager.serialPortStrings : [qsTr("无可用串口")]
                                                         enabled: QGroundControl.linkManager.serialPortStrings.length > 0
                                                         currentIndex: {
-                                                            const index = QGroundControl.linkManager.serialPortStrings.indexOf(editingConfig.portDisplayName)
-                                                            return index >= 0 ? index : 0
+                                                            const portIndex = QGroundControl.linkManager.serialPorts.indexOf(editingConfig.portName)
+                                                            if (portIndex >= 0) {
+                                                                return portIndex
+                                                            }
+                                                            const displayIndex = QGroundControl.linkManager.serialPortStrings.indexOf(editingConfig.portDisplayName)
+                                                            return displayIndex >= 0 ? displayIndex : 0
                                                         }
                                                         Component.onCompleted: startPageLinkDialog._styleCombo(dialogSerialPortCombo)
                                                         onActivated: (index) => {
@@ -6213,6 +6319,20 @@ ApplicationWindow {
                                                 onClicked: startPageOverlay._openAddLinkDialog()
                                             }
                                             QGCButton {
+                                                Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6.0
+                                                text: qsTr("编辑")
+                                                enabled: startPageOverlay._selectedLinkIndex >= 0 && startPageOverlay._selectedLinkIndex < startPageOverlay._availableLinkConfigs.length
+                                                horizontalAlignment: Text.AlignHCenter
+                                                pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
+                                                showBorder: true
+                                                backRadius: startPageOverlay._uiRadius
+                                                borderColor: startPageOverlay._borderColor
+                                                backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
+                                                textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
+                                                stateAnimationDuration: startPageOverlay._uiAnimMs
+                                                onClicked: startPageOverlay._openEditLinkDialog()
+                                            }
+                                            QGCButton {
                                                 Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9.5
                                                 text: qsTr("刷新")
                                                 horizontalAlignment: Text.AlignHCenter
@@ -6336,6 +6456,9 @@ ApplicationWindow {
                                                 onActivated: {
                                                     const baud = parseInt(currentText)
                                                     if (!isNaN(baud) && baud > 0) {
+                                                        if (startPageOverlay._selectedSerialPortName() !== "") {
+                                                            startPageOverlay._serialPortSelectionLocked = true
+                                                        }
                                                         startPageOverlay._selectedBaudRate = baud
                                                         startPageOverlay._connectionSettingChanged(qsTr("波特率已更新，请重新连接"))
                                                     }

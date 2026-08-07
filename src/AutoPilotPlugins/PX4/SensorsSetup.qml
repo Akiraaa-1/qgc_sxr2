@@ -68,9 +68,11 @@ Item {
     property bool   _sensorsHaveFixedOrientation:       QGroundControl.corePlugin.options.sensorsHaveFixedOrientation
     property string _calMagIdParamFormat:               "CAL_MAG#_ID"
     property string _calMagRotParamFormat:              "CAL_MAG#_ROT"
-    property bool 	_allMagsDisabled:                   controller.parameterExists(-1, "SYS_HAS_MAG") ? controller.getParameterFact(-1, "SYS_HAS_MAG").value === 0 : false
+    property int    _expectedMagCount:                   controller.parameterExists(-1, "SYS_HAS_MAG") ? Number(controller.getParameterFact(-1, "SYS_HAS_MAG").value) : 1
+    property bool 	_allMagsDisabled:                   _expectedMagCount <= 0
+    property bool   _magCalibrationAvailable:            !_allMagsDisabled && (cal_mag0_id.value > 0 || cal_mag1_id.value > 0 || cal_mag2_id.value > 0)
     property bool   _boardOrientationChangeAllowed:     !_sensorsHaveFixedOrientation && setOrientationsDialogShowBoardOrientation
-    property bool   _compassOrientationChangeAllowed:   !_sensorsHaveFixedOrientation
+    property bool   _compassOrientationChangeAllowed:   !_sensorsHaveFixedOrientation && _magCalibrationAvailable
     property int    _arbitrarilyLargeMaxMagIndex:       50
     property string _selectedCalibrationType:            "accel"
     property var    _activeVehicle:                      QGroundControl.multiVehicleManager.activeVehicle
@@ -183,7 +185,12 @@ Item {
 
     Component.onDestruction: globals.navigationBlockedReason = ""
 
-    Component.onCompleted: _applySectionFilterSelection()
+    Component.onCompleted: {
+        _applySectionFilterSelection()
+        _ensureSelectedCalibrationVisible()
+    }
+
+    on_MagCalibrationAvailableChanged: _ensureSelectedCalibrationVisible()
 
     on_ActiveVehicleChanged: {
         _calibrationResultByType = ({})
@@ -626,12 +633,24 @@ Item {
     property string sectionNameFilter: ""
 
     function sectionVisible(name) {
-        if (name === qsTr("磁力计")) return !_allMagsDisabled && QGroundControl.corePlugin.options.showSensorCalibrationCompass && showSensorCalibrationCompass
-        if (name === qsTr("陀螺仪")) return QGroundControl.corePlugin.options.showSensorCalibrationGyro && showSensorCalibrationGyro
-        if (name === qsTr("加速度计")) return QGroundControl.corePlugin.options.showSensorCalibrationAccel && showSensorCalibrationAccel
-        if (name === qsTr("地平线")) return QGroundControl.corePlugin.options.showSensorCalibrationLevel && showSensorCalibrationLevel
-        if (name === qsTr("空速")) return vehicleComponent.airspeedCalSupported && QGroundControl.corePlugin.options.showSensorCalibrationAirspeed && showSensorCalibrationAirspeed
-        if (name === qsTr("方向设置")) return orientationsButtonVisible()
+        if (_sectionMatches(name, "Compass") || _sectionMatches(name, "磁力计")) {
+            return _magCalibrationAvailable && QGroundControl.corePlugin.options.showSensorCalibrationCompass && showSensorCalibrationCompass
+        }
+        if (_sectionMatches(name, "Gyroscope") || _sectionMatches(name, "陀螺仪")) {
+            return QGroundControl.corePlugin.options.showSensorCalibrationGyro && showSensorCalibrationGyro
+        }
+        if (_sectionMatches(name, "Accelerometer") || _sectionMatches(name, "加速度计")) {
+            return QGroundControl.corePlugin.options.showSensorCalibrationAccel && showSensorCalibrationAccel
+        }
+        if (_sectionMatches(name, "Level Horizon") || _sectionMatches(name, "地平线")) {
+            return QGroundControl.corePlugin.options.showSensorCalibrationLevel && showSensorCalibrationLevel
+        }
+        if (_sectionMatches(name, "Airspeed") || _sectionMatches(name, "空速")) {
+            return vehicleComponent.airspeedCalSupported && QGroundControl.corePlugin.options.showSensorCalibrationAirspeed && showSensorCalibrationAirspeed
+        }
+        if (_sectionMatches(name, "Orientations") || _sectionMatches(name, "方向设置")) {
+            return orientationsButtonVisible()
+        }
         return true
     }
 
@@ -717,6 +736,20 @@ Item {
         _selectedCalibrationType = type
     }
 
+    function _ensureSelectedCalibrationVisible() {
+        if (_calibrationVisible(_selectedCalibrationType)) {
+            return
+        }
+
+        const fallbackTypes = [ "accel", "gyro", "level", "airspeed", "compass" ]
+        for (let i = 0; i < fallbackTypes.length; i++) {
+            if (_calibrationVisible(fallbackTypes[i])) {
+                _selectedCalibrationType = fallbackTypes[i]
+                return
+            }
+        }
+    }
+
     function _applySectionFilterSelection() {
         if (_sectionMatches(sectionNameFilter, "Compass") || _sectionMatches(sectionNameFilter, "磁力计")) {
             _selectedCalibrationType = "compass"
@@ -729,6 +762,7 @@ Item {
         } else if (_sectionMatches(sectionNameFilter, "Airspeed") || _sectionMatches(sectionNameFilter, "空速")) {
             _selectedCalibrationType = "airspeed"
         }
+        _ensureSelectedCalibrationVisible()
     }
 
     function _calibrationVisible(type) {
@@ -997,6 +1031,40 @@ Item {
         return completeCount
     }
 
+    function _completedDisplayStepCount() {
+        if (controller.calibrationActive && controller.showOrientationCalArea) {
+            return _completedOrientationCount()
+        }
+        return _calibrationDoneForDisplay(_selectedCalibrationType) ? _displayStepCount() : 0
+    }
+
+    function _stepStatusText(modelData) {
+        if (controller.calibrationActive && controller.showOrientationCalArea && modelData && modelData.rawIndex !== undefined) {
+            if (modelData.done) {
+                return qsTr("已校准")
+            }
+            if (modelData.rawIndex === _activeOrientationRawIndex()) {
+                return modelData.rotate ? qsTr("旋转中") : qsTr("校准中")
+            }
+            return qsTr("待校准")
+        }
+        if (_calibrationDoneForDisplay(_selectedCalibrationType)) {
+            return qsTr("已校准")
+        }
+        return qsTr("待校准")
+    }
+
+    function _stepStatusColor(modelData) {
+        const status = _stepStatusText(modelData)
+        if (status === qsTr("已校准")) {
+            return "#22C55E"
+        }
+        if (status === qsTr("校准中") || status === qsTr("旋转中")) {
+            return "#60A5FA"
+        }
+        return _secondaryTextColor
+    }
+
     function _activeOrientationStepIndex() {
         const rawIndex = _activeOrientationRawIndex()
         const visibleSteps = _orientationCalVisibleSteps()
@@ -1230,15 +1298,18 @@ Item {
     function _orientationWaitDiagnosticText() {
         const rollText = _formatTelemetryValue(_activeVehicle ? _activeVehicle.roll : null, 1, "°")
         const pitchText = _formatTelemetryValue(_activeVehicle ? _activeVehicle.pitch : null, 1, "°")
+        const completedText = _completedOrientationCount() > 0
+            ? qsTr(" 已完成的姿态会保留为“已校准”，后续按顺序校准时会自动跳过。")
+            : ""
         if (_selectedCalibrationType === "accel") {
             const boardX = _factNumber(sens_board_x_off)
             const boardY = _factNumber(sens_board_y_off)
             if (controller.calibrationActive && !isNaN(boardX) && !isNaN(boardY) && (Math.abs(boardX) > 1.0 || Math.abs(boardY) > 1.0)) {
                 return qsTr("当前水平偏置较大，建议先点击“清除水平偏置”并重启飞控。当前 Roll %1 / Pitch %2，Board X/Y %3 / %4").arg(rollText).arg(pitchText).arg(_formatTelemetryValue(sens_board_x_off, 1, "°")).arg(_formatTelemetryValue(sens_board_y_off, 1, "°"))
             }
-            return qsTr("请按当前高亮步骤放置飞机并保持静止。若已放平但仍不识别，请检查飞控方向 SENS_BOARD_ROT。当前 Roll %1 / Pitch %2").arg(rollText).arg(pitchText)
+            return qsTr("请按当前高亮步骤放置飞机并保持静止。若已放平但仍不识别，请检查飞控方向 SENS_BOARD_ROT。当前 Roll %1 / Pitch %2").arg(rollText).arg(pitchText) + completedText
         }
-        return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别")
+        return qsTr("请按当前高亮步骤放置飞机，放稳后保持静止，等待飞控识别") + completedText
     }
 
     function _calibrationImageScale(type, stepIndex) {
@@ -1681,8 +1752,9 @@ Item {
                                 id: stepRow
                                 required property var modelData
                                 required property int index
-                                readonly property bool stepDone: _calibrationDoneForDisplay(_selectedCalibrationType) ||
-                                    (modelData && modelData.done !== undefined ? modelData.done : false)
+                                readonly property bool stepDone: controller.calibrationActive && controller.showOrientationCalArea && modelData && modelData.rawIndex !== undefined
+                                    ? (modelData.done !== undefined ? modelData.done : false)
+                                    : _calibrationDoneForDisplay(_selectedCalibrationType)
                                 readonly property bool stepActive: controller.calibrationActive &&
                                     controller.showOrientationCalArea &&
                                     modelData &&
@@ -1722,6 +1794,24 @@ Item {
                                     font.bold: stepRow.stepActive
                                     font.pointSize: Math.max(8, ScreenTools.defaultFontPointSize * 0.86)
                                     elide: Text.ElideRight
+                                }
+
+                                Rectangle {
+                                    Layout.preferredWidth: stepStatusLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 1.2
+                                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.35
+                                    radius: height / 2
+                                    color: Qt.rgba(0, 0, 0, 0.18)
+                                    border.width: 1
+                                    border.color: _stepStatusColor(modelData)
+
+                                    QGCLabel {
+                                        id: stepStatusLabel
+                                        anchors.centerIn: parent
+                                        text: _stepStatusText(modelData)
+                                        color: _stepStatusColor(modelData)
+                                        font.bold: stepRow.stepDone || stepRow.stepActive
+                                        font.pointSize: Math.max(7, ScreenTools.defaultFontPointSize * 0.72)
+                                    }
                                 }
                             }
                         }
@@ -1768,7 +1858,9 @@ Item {
 
                             QGCLabel {
                                 Layout.fillWidth: true
-                                text: qsTr("校准进度 %1/%2").arg(_displayStepIndex() + 1).arg(_displayStepCount())
+                                text: controller.calibrationActive && controller.showOrientationCalArea
+                                      ? qsTr("已完成 %1/%2").arg(_completedDisplayStepCount()).arg(_displayStepCount())
+                                      : qsTr("校准进度 %1/%2").arg(_displayStepIndex() + 1).arg(_displayStepCount())
                                 color: _primaryTextColor
                                 font.bold: true
                             }
@@ -1998,7 +2090,9 @@ Item {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     anchors.top: parent.top
                                     anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.45
-                                    text: qsTr("步骤 %1/%2  %3").arg(_displayStepIndex() + 1).arg(_displayStepCount()).arg(_displayStepText())
+                                    text: controller.calibrationActive && controller.showOrientationCalArea
+                                          ? qsTr("步骤 %1/%2  已完成 %3/%4  %5").arg(_displayStepIndex() + 1).arg(_displayStepCount()).arg(_completedDisplayStepCount()).arg(_displayStepCount()).arg(_displayStepText())
+                                          : qsTr("步骤 %1/%2  %3").arg(_displayStepIndex() + 1).arg(_displayStepCount()).arg(_displayStepText())
                                     color: _root.useDarkStyle ? _primaryTextColor : qgcPal.text
                                     font.bold: true
                                     font.pointSize: ScreenTools.defaultFontPointSize * 1.05
