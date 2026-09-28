@@ -19,12 +19,15 @@ Item {
                                                 : QGroundControl.videoManager.aspectRatio
     property bool   _showGrid:          QGroundControl.settingsManager.videoSettings.gridLines.rawValue
     property var    _dynamicCameras:    globals.activeVehicle ? globals.activeVehicle.cameraManager : null
-    property bool   _connected:         globals.activeVehicle ? !globals.activeVehicle.communicationLost : false
+    property bool   _connected:         globals.activeVehicle && globals.activeVehicle.vehicleLinkManager
+                                            ? !globals.activeVehicle.vehicleLinkManager.communicationLost
+                                            : false
     property int    _curCameraIndex:    _dynamicCameras ? _dynamicCameras.currentCamera : 0
     property bool   _isCamera:          _dynamicCameras ? _dynamicCameras.cameras.count > 0 : false
     property var    _camera:            _isCamera ? _dynamicCameras.cameras.get(_curCameraIndex) : null
     property bool   _hasZoom:           _camera && _camera.hasZoom
     property int    _fitMode:           QGroundControl.settingsManager.videoSettings.videoFit.rawValue
+    property bool   _streamItemActive:  QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.isUvc
     property bool   _showStreamLoader:  QGroundControl.videoManager.decoding
     property bool   _showUvcLoader:     QGroundControl.videoManager.isUvc
 
@@ -40,6 +43,27 @@ Item {
         return videoBackground.getHeight()
     }
 
+    function _videoItemReady() {
+        return videoStreamLoader.item
+                && videoStreamLoader.item.Window.window
+                && videoStreamLoader.item.width > ScreenTools.defaultFontPixelWidth * 4
+                && videoStreamLoader.item.height > ScreenTools.defaultFontPixelHeight * 4
+    }
+
+    function _requestVideoStart() {
+        if (visible && QGroundControl.videoManager.hasVideo && _videoItemReady()) {
+            Qt.callLater(function() {
+                if (root.visible && QGroundControl.videoManager.hasVideo && root._videoItemReady()) {
+                    QGroundControl.videoManager.setVideoSinkTarget("videoContent", videoStreamLoader.item)
+                    QGroundControl.videoManager.startVideo()
+                }
+            })
+        }
+    }
+
+    Component.onCompleted: _requestVideoStart()
+    onVisibleChanged: _requestVideoStart()
+
     property double _thermalHeightFactor: 0.85 //-- TODO
 
         Image {
@@ -48,6 +72,7 @@ Item {
             source:         "/res/NoVideoBackground.jpg"
             fillMode:       Image.PreserveAspectCrop
             visible:        !_showStreamLoader && !_showUvcLoader
+            z:              10
 
             Rectangle {
                 anchors.centerIn:   parent
@@ -72,7 +97,7 @@ Item {
         id:             videoBackground
         anchors.fill:   parent
         color:          "black"
-        visible:        _showStreamLoader || _showUvcLoader
+        visible:        _streamItemActive || _showUvcLoader
         function getWidth() {
             if(_ar != 0.0){
                 if(_isMode_FIT_HEIGHT
@@ -143,12 +168,21 @@ Item {
             // code from running. Hence the Loader to completely remove it.
             id:                 videoStreamLoader
             anchors.fill:       videoContentArea
-            visible:            _showStreamLoader
+            active:             _streamItemActive
+            visible:            _streamItemActive
             sourceComponent:    QGroundControl.videoManager.gstreamerD3D11Sink
                                     ? videoBackgroundD3D11Component
                                     : videoBackgroundGLComponent
 
             property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
+            onLoaded: Qt.callLater(root._requestVideoStart)
+
+            Connections {
+                target: videoStreamLoader.item
+                function onWidthChanged() { root._requestVideoStart() }
+                function onHeightChanged() { root._requestVideoStart() }
+                function onWindowChanged() { root._requestVideoStart() }
+            }
         }
         //-- UVC Video (USB Camera or Video Device)
         Loader {
@@ -163,7 +197,7 @@ Item {
             height:             parent.getHeight()
             width:              parent.getWidth()
             anchors.centerIn:   parent
-            visible:           _showStreamLoader || _showUvcLoader
+            visible:            _streamItemActive || _showUvcLoader
 
             // grid lines
             Item {

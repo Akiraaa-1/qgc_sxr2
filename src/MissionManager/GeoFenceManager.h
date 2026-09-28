@@ -33,6 +33,8 @@ public:
     /// Signals removeAllComplete when done
     void removeAll(void);
 
+    void cancelTransaction(void);
+
     /// Returns true if polygon fence is currently enabled on this vehicle
     ///     Signal: polygonEnabledChanged
     bool polygonEnabled(void) const { return true; }
@@ -61,6 +63,7 @@ signals:
 
 private slots:
     void _sendComplete              (bool error);
+    void _removeAllComplete         (bool error);
     void _planManagerLoadComplete   (bool removeAllRequested);
 
 private:

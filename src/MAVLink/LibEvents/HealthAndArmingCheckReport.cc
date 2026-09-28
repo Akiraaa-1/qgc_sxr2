@@ -32,14 +32,27 @@ void HealthAndArmingCheckReport::update(uint8_t compid, const events::HealthAndA
         // only autopilot supported atm
         return;
     }
-    if (flightModeGroup == -1) {
-        qWarning() << "Flight mode group not set";
-        return;
-    }
+
+    _capabilityKnown = true;
+    _healthAndArmingChecksSupported = true;
     _supported = true;
+    _valid = true;
+    _currentModeMapped = flightModeGroup != -1;
+
+    _canTakeoff = _takeoffModeGroup != -1 && results.canArm(_takeoffModeGroup);
+    _canStartMission = _missionModeGroup != -1 && results.canArm(_missionModeGroup);
+    _canResumeMission = _missionModeGroup != -1 && results.canRun(_missionModeGroup);
 
     _problemsForCurrentMode->clearAndDeleteContents();
     _hasWarningsOrErrors = false;
+    _gpsState.clear();
+
+    if (flightModeGroup == -1) {
+        qWarning() << "Flight mode group not set";
+        emit updated();
+        return;
+    }
+
     for (const auto& check : results.checks(flightModeGroup)) {
         QString severity = "";
         if (events::externalLogLevel(check.log_levels) <= events::Log::Error) {
@@ -55,13 +68,6 @@ void HealthAndArmingCheckReport::update(uint8_t compid, const events::HealthAndA
     }
 
     _canArm = results.canArm(flightModeGroup);
-    if (_missionModeGroup != -1) {
-        // TODO: use results.canRun(_missionModeGroup) while armed
-        _canStartMission = results.canArm(_missionModeGroup);
-    }
-    if (_takeoffModeGroup != -1) {
-        _canTakeoff = results.canArm(_takeoffModeGroup);
-    }
 
     const auto& healthComponents = results.healthComponents().health_components;
 
@@ -81,8 +87,35 @@ void HealthAndArmingCheckReport::update(uint8_t compid, const events::HealthAndA
     emit updated();
 }
 
+void HealthAndArmingCheckReport::setHealthAndArmingChecksCapability(bool supported)
+{
+    _capabilityKnown = true;
+    _healthAndArmingChecksSupported = supported;
+    if (!supported) {
+        invalidate();
+        return;
+    }
+    emit updated();
+}
+
 void HealthAndArmingCheckReport::setModeGroups(int takeoffModeGroup, int missionModeGroup)
 {
     _takeoffModeGroup = takeoffModeGroup;
     _missionModeGroup = missionModeGroup;
+    emit updated();
+}
+
+void HealthAndArmingCheckReport::invalidate()
+{
+    _supported = false;
+    _valid = false;
+    _currentModeMapped = false;
+    _canArm = false;
+    _canTakeoff = false;
+    _canStartMission = false;
+    _canResumeMission = false;
+    _hasWarningsOrErrors = false;
+    _gpsState.clear();
+    _problemsForCurrentMode->clearAndDeleteContents();
+    emit updated();
 }

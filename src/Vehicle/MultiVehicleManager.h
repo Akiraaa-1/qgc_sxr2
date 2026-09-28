@@ -9,6 +9,7 @@
 
 class LinkInterface;
 class Vehicle;
+class VehiclePlanSessionManager;
 class QmlObjectListModel;
 class QTimer;
 
@@ -22,12 +23,14 @@ class MultiVehicleManager : public QObject
     Q_MOC_INCLUDE("QmlObjectListModel.h")
     Q_MOC_INCLUDE("LinkInterface.h")
     Q_MOC_INCLUDE("Vehicle.h")
+    Q_MOC_INCLUDE("VehiclePlanSessionManager.h")
     Q_PROPERTY(bool                 activeVehicleAvailable          READ _getActiveVehicleAvailable                                         NOTIFY activeVehicleAvailableChanged)
     Q_PROPERTY(bool                 parameterReadyVehicleAvailable  READ _getParameterReadyVehicleAvailable                                 NOTIFY parameterReadyVehicleAvailableChanged)
     Q_PROPERTY(Vehicle              *activeVehicle                  READ activeVehicle                      WRITE setActiveVehicle          NOTIFY activeVehicleChanged)
     Q_PROPERTY(QmlObjectListModel   *vehicles                       READ vehicles                                                           CONSTANT)
     Q_PROPERTY(QmlObjectListModel   *selectedVehicles               READ selectedVehicles                                                   CONSTANT)
     Q_PROPERTY(Vehicle              *offlineEditingVehicle          READ offlineEditingVehicle                                              CONSTANT)
+    Q_PROPERTY(VehiclePlanSessionManager *planSessionManager         READ planSessionManager                                                 CONSTANT)
     Q_PROPERTY(QVariantMap           my_vehicles                    READ my_vehicles                                                       NOTIFY myVehiclesChanged)
 
 public:
@@ -46,6 +49,7 @@ public:
     QmlObjectListModel *vehicles() const { return _vehicles; }
     QmlObjectListModel *selectedVehicles() const { return _selectedVehicles; }
     Vehicle *offlineEditingVehicle() const { return _offlineEditingVehicle; }
+    VehiclePlanSessionManager *planSessionManager() const { return _planSessionManager; }
     Vehicle *activeVehicle() const { return _activeVehicle; }
     void setActiveVehicle(Vehicle *vehicle);
     QVariantMap my_vehicles() const;
@@ -82,6 +86,7 @@ private:
     QmlObjectListModel *_vehicles = nullptr;
     QmlObjectListModel *_selectedVehicles = nullptr;
     Vehicle *_offlineEditingVehicle = nullptr;      ///< Disconnected vechicle used for offline editing
+    VehiclePlanSessionManager *_planSessionManager = nullptr;
     bool _activeVehicleAvailable = false;           ///< true: An active vehicle is available
     bool _parameterReadyVehicleAvailable = false;   ///< true: An active vehicle with ready parameters is available
     Vehicle *_activeVehicle = nullptr;              ///< Currently active vehicle from a ui perspective

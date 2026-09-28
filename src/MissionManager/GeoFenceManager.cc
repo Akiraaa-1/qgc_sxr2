@@ -10,7 +10,7 @@ GeoFenceManager::GeoFenceManager(Vehicle* vehicle)
 {
     connect(this, &PlanManager::inProgressChanged,          this, &GeoFenceManager::inProgressChanged);
     connect(this, &PlanManager::error,                      this, &GeoFenceManager::error);
-    connect(this, &PlanManager::removeAllComplete,          this, &GeoFenceManager::removeAllComplete);
+    connect(this, &PlanManager::removeAllComplete,          this, &GeoFenceManager::_removeAllComplete);
     connect(this, &PlanManager::sendComplete,               this, &GeoFenceManager::_sendComplete);
     connect(this, &PlanManager::newMissionItemsAvailable,   this, &GeoFenceManager::_planManagerLoadComplete);
 }
@@ -95,11 +95,14 @@ void GeoFenceManager::sendToVehicle(const QGeoCoordinate&   breachReturn,
 
 void GeoFenceManager::removeAll(void)
 {
-    _polygons.clear();
-    _circles.clear();
-    _breachReturnPoint = QGeoCoordinate();
-
     PlanManager::removeAll();
+}
+
+void GeoFenceManager::cancelTransaction(void)
+{
+    _sendPolygons.clear();
+    _sendCircles.clear();
+    PlanManager::cancelTransaction();
 }
 
 void GeoFenceManager::_sendComplete(bool error)
@@ -115,6 +118,17 @@ void GeoFenceManager::_sendComplete(bool error)
     _sendPolygons.clear();
     _sendCircles.clear();
     emit sendComplete(error);
+}
+
+void GeoFenceManager::_removeAllComplete(bool error)
+{
+    if (!error) {
+        _polygons.clear();
+        _circles.clear();
+        _breachReturnPoint = QGeoCoordinate();
+    }
+
+    emit removeAllComplete(error);
 }
 
 void GeoFenceManager::_planManagerLoadComplete(bool removeAllRequested)

@@ -67,6 +67,14 @@ void TransformPositionController::setCoordinate(QGeoCoordinate coordinate)
     }
 }
 
+void TransformPositionController::setVehicle(Vehicle* vehicle)
+{
+    if (_vehicle != vehicle) {
+        _vehicle = vehicle;
+        emit vehicleChanged(_vehicle.data());
+    }
+}
+
 void TransformPositionController::initValues()
 {
     if (!_coordinate.isValid()) {
@@ -123,7 +131,7 @@ void TransformPositionController::setFromMGRS()
 
 void TransformPositionController::setFromVehicle()
 {
-    Vehicle* activeVehicle = MultiVehicleManager::instance()->activeVehicle();
+    Vehicle* activeVehicle = _vehicle ? _vehicle.data() : MultiVehicleManager::instance()->activeVehicle();
     if (!activeVehicle) {
         qCWarning(TransformPositionControllerLog) << "Cannot set coordinate from vehicle: no active vehicle";
         return;

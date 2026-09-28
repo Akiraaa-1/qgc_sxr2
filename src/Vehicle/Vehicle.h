@@ -68,6 +68,7 @@ class TerrainAtCoordinateQuery;
 class TerrainProtocolHandler;
 class TrajectoryPoints;
 class VehicleObjectAvoidance;
+class VehicleReadiness;
 class VehicleSupports;
 
 namespace events {
@@ -93,6 +94,7 @@ class Vehicle : public VehicleFactGroup, public VehicleTypes
     Q_MOC_INCLUDE("MAVLinkLogManager.h")
     Q_MOC_INCLUDE("LinkInterface.h")
     Q_MOC_INCLUDE("VehicleSupports.h")
+    Q_MOC_INCLUDE("VehicleReadiness.h")
     Q_MOC_INCLUDE("GimbalController.h")
 
     friend class InitialConnectStateMachine;
@@ -172,6 +174,7 @@ public:
     Q_PROPERTY(int                  sensorsEnabledBits          READ sensorsEnabledBits                                             NOTIFY sensorsEnabledBitsChanged)
     Q_PROPERTY(int                  sensorsHealthBits           READ sensorsHealthBits                                              NOTIFY sensorsHealthBitsChanged)
     Q_PROPERTY(int                  sensorsUnhealthyBits        READ sensorsUnhealthyBits                                           NOTIFY sensorsUnhealthyBitsChanged) ///< Combination of enabled and health
+    Q_PROPERTY(bool                 sysStatusReceived           READ sysStatusReceived                                              NOTIFY sysStatusReceivedChanged)
     Q_PROPERTY(QString              missionFlightMode           READ missionFlightMode                                              CONSTANT)
     Q_PROPERTY(QString              pauseFlightMode             READ pauseFlightMode                                                CONSTANT)
     Q_PROPERTY(QString              rtlFlightMode               READ rtlFlightMode                                                  CONSTANT)
@@ -252,6 +255,7 @@ public:
     Q_PROPERTY(FactGroup*           efi             READ efiFactGroup               CONSTANT)
     Q_PROPERTY(Actuators*           actuators       READ actuators                  NOTIFY actuatorsChanged)
     Q_PROPERTY(HealthAndArmingCheckReport* healthAndArmingCheckReport READ healthAndArmingCheckReport CONSTANT)
+    Q_PROPERTY(VehicleReadiness*    readiness       READ readiness                  CONSTANT)
 
     // Dynamic FactGroupListModel properties
     Q_PROPERTY(QmlObjectListModel*  batteries       READ batteries                  CONSTANT)
@@ -265,6 +269,8 @@ public:
     Q_PROPERTY(int      firmwareCustomMajorVersion  READ firmwareCustomMajorVersion NOTIFY firmwareCustomVersionChanged)
     Q_PROPERTY(int      firmwareCustomMinorVersion  READ firmwareCustomMinorVersion NOTIFY firmwareCustomVersionChanged)
     Q_PROPERTY(int      firmwareCustomPatchVersion  READ firmwareCustomPatchVersion NOTIFY firmwareCustomVersionChanged)
+    Q_PROPERTY(int      firmwareBoardVendorId       READ firmwareBoardVendorId      NOTIFY vehicleUIDChanged)
+    Q_PROPERTY(int      firmwareBoardProductId      READ firmwareBoardProductId     NOTIFY vehicleUIDChanged)
     Q_PROPERTY(QString  gitHash                     READ gitHash                    NOTIFY gitHashChanged)
     Q_PROPERTY(quint64  vehicleUID                  READ vehicleUID                 NOTIFY vehicleUIDChanged)
     Q_PROPERTY(QString  vehicleUIDStr               READ vehicleUIDStr              NOTIFY vehicleUIDChanged)
@@ -457,6 +463,11 @@ public:
     bool armed              () const{ return _armed; }
     void setArmed           (bool armed, bool showError);
     void setArmedShowError  (bool armed) { setArmed(armed, true); }
+    Q_INVOKABLE bool requestArm(bool confirmUnknown = false);
+    Q_INVOKABLE bool requestTakeoff(double altitudeRelative, bool confirmUnknown = false);
+    Q_INVOKABLE bool requestStartMission(bool confirmUnknown = false);
+    Q_INVOKABLE bool requestAirborneMissionResume(bool confirmUnknown = false);
+    void requestArmedFromJoystick(bool armed);
 
     bool flightModeSetAvailable             ();
     QStringList flightModes                 ();
@@ -518,6 +529,7 @@ public:
     int             sensorsEnabledBits          () const { return static_cast<int>(_onboardControlSensorsEnabled); }
     int             sensorsHealthBits           () const { return static_cast<int>(_onboardControlSensorsHealth); }
     int             sensorsUnhealthyBits        () const { return static_cast<int>(_onboardControlSensorsUnhealthy); }
+    bool            sysStatusReceived           () const { return _sysStatusReceived; }
     QString         missionFlightMode           () const;
     QString         pauseFlightMode             () const;
     QString         rtlFlightMode               () const;
@@ -697,6 +709,9 @@ public:
     QString gitHash() const { return _gitHash; }
     quint64 vehicleUID() const { return _uid; }
     QString vehicleUIDStr();
+#ifdef QGC_UNITTEST_BUILD
+    void setVehicleUIDUnitTest(quint64 uid) { if (_uid != uid) { _uid = uid; emit vehicleUIDChanged(); } }
+#endif
 
     bool soloFirmware() const { return _soloFirmware; }
     void setSoloFirmware(bool soloFirmware);
@@ -764,6 +779,7 @@ public:
     void setActuatorsMetadata(uint8_t compid, const QString& metadataJsonFileName);
 
     HealthAndArmingCheckReport* healthAndArmingCheckReport() { return &_healthAndArmingCheckReport; }
+    VehicleReadiness* readiness() { return _readiness; }
 
     GimbalController* gimbalController  () { return _gimbalController; }
 
@@ -815,6 +831,7 @@ signals:
     void sensorsEnabledBitsChanged      (int sensorsEnabledBits);
     void sensorsHealthBitsChanged       (int sensorsHealthBits);
     void sensorsUnhealthyBitsChanged    (int sensorsUnhealthyBits);
+    void sysStatusReceivedChanged       (bool sysStatusReceived);
     void orbitActiveChanged             (bool orbitActive);
     void readyToFlyAvailableChanged     (bool readyToFlyAvailable);
     void readyToFlyChanged              (bool readyToFy);
@@ -950,6 +967,9 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     void _flightTimerStart              ();
     void _flightTimerStop               ();
     void _setMessageInterval            (int messageId, int rate);
+    void _handleCommunicationLostChanged(bool communicationLost);
+    void _invalidateReadinessState();
+    bool _canDispatchReadinessAction(bool canRequest, bool confirmationRequired, bool confirmUnknown, const QString& reason);
     EventHandler& _eventHandler         (uint8_t compid);
     bool setFlightModeCustom            (const QString& flightMode, uint8_t* base_mode, uint32_t* custom_mode);
     QString _formatMavCommand           (MAV_CMD command, float param1);
@@ -996,6 +1016,7 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     uint32_t        _onboardControlSensorsEnabled = 0;
     uint32_t        _onboardControlSensorsHealth = 0;
     uint32_t        _onboardControlSensorsUnhealthy = 0;
+    bool            _sysStatusReceived = false;
     bool            _gpsRawIntMessageAvailable              = false;
     bool            _gps2RawMessageAvailable                = false;
     bool            _globalPositionIntMessageAvailable      = false;
@@ -1107,6 +1128,7 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
 
     QMap<uint8_t, QSharedPointer<EventHandler>> _events; ///< One protocol handler for each component ID
     HealthAndArmingCheckReport _healthAndArmingCheckReport;
+    VehicleReadiness* _readiness = nullptr;
 
     MAVLinkStreamConfig _mavlinkStreamConfig;
 

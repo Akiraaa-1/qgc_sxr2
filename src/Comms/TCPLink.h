@@ -12,6 +12,7 @@
 
 class QTcpSocket;
 class QThread;
+class QTimer;
 
 Q_DECLARE_LOGGING_CATEGORY(TCPLinkLog)
 
@@ -112,9 +113,18 @@ private slots:
 
 private:
     bool _connect() override;
+    void _scheduleReconnect();
+    void _stopReconnect();
 
     const TCPConfiguration *_tcpConfig = nullptr;
     TCPWorker *_worker = nullptr;
     QThread *_workerThread = nullptr;
+    QTimer *_reconnectTimer = nullptr;
+    std::atomic<bool> _connectedCache{false};
     std::atomic<bool> _disconnectedEmitted{false};
+    bool _intentionalDisconnect = false;
+    int _reconnectAttempt = 0;
+
+    static constexpr int _reconnectBaseIntervalMSecs = 1000;
+    static constexpr int _reconnectMaxIntervalMSecs = 5000;
 };

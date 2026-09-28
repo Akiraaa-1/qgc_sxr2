@@ -6,6 +6,7 @@
 #include "MAVLinkProtocol.h"
 #include "FirmwarePluginManager.h"
 #include "AppSettings.h"
+#include "Fact.h"
 #include "FlightMapSettings.h"
 #include "SettingsManager.h"
 #include "PositionManager.h"
@@ -150,6 +151,15 @@ QGroundControlQmlGlobal::QGroundControlQmlGlobal(QObject *parent)
             _flightMapPositionSettledTimer.start();
         }
     });
+
+    if (_settingsManager && _settingsManager->flightMapSettings()) {
+        (void) connect(_settingsManager->flightMapSettings()->mapProvider(), &Fact::rawValueChanged, this, [this]() {
+            emit chinaOffsetMapActiveChanged();
+        });
+        (void) connect(_settingsManager->flightMapSettings()->mapType(), &Fact::rawValueChanged, this, [this]() {
+            emit chinaOffsetMapActiveChanged();
+        });
+    }
 }
 
 QGroundControlQmlGlobal::~QGroundControlQmlGlobal()
@@ -302,9 +312,17 @@ bool QGroundControlQmlGlobal::linesIntersect(QPointF line1A, QPointF line1B, QPo
 
 bool QGroundControlQmlGlobal::isChinaOffsetMapActive() const
 {
-    return _settingsManager
-        && _settingsManager->flightMapSettings()
-        && (_settingsManager->flightMapSettings()->mapProvider()->rawValue().toString() == QStringLiteral("TianDiTu"));
+    if (!_settingsManager || !_settingsManager->flightMapSettings()) {
+        return false;
+    }
+
+    const QString mapProvider = _settingsManager->flightMapSettings()->mapProvider()->rawValue().toString();
+    const QString mapType = _settingsManager->flightMapSettings()->mapType()->rawValue().toString();
+
+    // TianDiTu vec_w/img_w tiles use CGCS2000/WebMercator and line up with
+    // WGS84 telemetry closely enough for GCS display. Only offset map layers
+    // that are known to use China-offset road data.
+    return (mapProvider == QStringLiteral("Bing")) && (mapType == QStringLiteral("Road"));
 }
 
 QGeoCoordinate QGroundControlQmlGlobal::mapDisplayCoordinate(const QGeoCoordinate &coordinate) const

@@ -96,7 +96,7 @@ Item {
             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.16
             spacing: ScreenTools.defaultFontPixelWidth * 0.16
 
-            QGCLabel {
+            QGCPixelLabel {
                 Layout.fillWidth: true
                 color: "#FFFFFF"
                 font.weight: Font.DemiBold
@@ -151,7 +151,7 @@ Item {
                     anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                     spacing: ScreenTools.defaultFontPixelHeight * 0.1
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#FFFFFF"
                         font.pixelSize: communicationLinkPage._cardTitleFontSize
@@ -159,21 +159,21 @@ Item {
                         text: qsTr("Telemetry Link")
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("RSSI %1dBm").arg(Math.round(communicationLinkPage._telemetryRssiDbm))
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("Packet Loss %1%").arg(Math.round(communicationLinkPage._telemetryLossPercent))
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: communicationLinkPage._telemetryStatusColor
                         font.pixelSize: communicationLinkPage._metricFontSize
@@ -236,7 +236,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: ScreenTools.defaultFontPixelWidth * 0.18
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             Layout.fillWidth: true
                             color: "#FFFFFF"
                             font.pixelSize: communicationLinkPage._cardTitleFontSize
@@ -250,7 +250,7 @@ Item {
                             color: Qt.rgba(0.09, 0.12, 0.11, 0.92)
                             radius: ScreenTools.defaultFontPixelHeight * 0.44
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.centerIn: parent
                                 color: communicationLinkPage._videoStatusColor
                                 font.pixelSize: communicationLinkPage._metricSecondaryFontSize
@@ -260,21 +260,21 @@ Item {
                         }
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("Bitrate %1Mbps").arg(communicationLinkPage._videoBitrateMbps.toFixed(1))
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("Latency %1ms").arg(Math.round(communicationLinkPage._videoLatencyMs))
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
@@ -355,7 +355,7 @@ Item {
                     anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                     spacing: ScreenTools.defaultFontPixelHeight * 0.1
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#FFFFFF"
                         font.pixelSize: communicationLinkPage._cardTitleFontSize
@@ -363,21 +363,21 @@ Item {
                         text: qsTr("Mesh Network")
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("Nodes %1/%2").arg(communicationLinkPage._meshOnlineNodes).arg(communicationLinkPage._meshTotalNodes)
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#E6E8EB"
                         font.pixelSize: communicationLinkPage._metricFontSize
                         text: qsTr("Link Quality %1%").arg(Math.round(communicationLinkPage._meshQualityPercent))
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: communicationLinkPage._meshStatusColor
                         font.pixelSize: communicationLinkPage._metricFontSize

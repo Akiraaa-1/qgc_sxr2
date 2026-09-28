@@ -1,6 +1,8 @@
 #include "FactGroup.h"
 #include "QGCLoggingCategory.h"
 
+#include <QtQml/QQmlEngine>
+
 QGC_LOGGING_CATEGORY(FactGroupLog, "FactSystem.FactGroup")
 
 FactGroup::FactGroup(int updateRateMsecs, const QString &metaDataFile, QObject *parent, bool ignoreCamelCase)
@@ -121,6 +123,11 @@ void FactGroup::_addFact(Fact *fact, const QString &name)
     if (_nameToFactMetaDataMap.contains(name)) {
         fact->setMetaData(_nameToFactMetaDataMap[name], true /* setDefaultFromMetaData */);
     }
+
+    // Fact groups retain and update these Facts for their full lifetime. They
+    // are often C++ member objects, so QML must never schedule their deletion
+    // when a view is incubated or destroyed during an active-vehicle switch.
+    QQmlEngine::setObjectOwnership(fact, QQmlEngine::CppOwnership);
     _nameToFactMap[name] = fact;
     _factNames.append(name);
 

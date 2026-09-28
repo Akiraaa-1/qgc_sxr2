@@ -13,9 +13,9 @@ ActuatorComponent::ActuatorComponent(Vehicle* vehicle, AutoPilotPlugin* autopilo
     , _name(tr("Actuators"))
     , _actuators(*vehicle->actuators())
 {
-    if (!imageProviderAdded) {
-        // TODO: qmlAppEngine should not be accessed inside app
-        qgcApp()->qmlAppEngine()->addImageProvider(QLatin1String("actuators"), GeometryImage::VehicleGeometryImageProvider::instance());
+    QQmlApplicationEngine* const qmlAppEngine = qgcApp()->qmlAppEngine();
+    if (!imageProviderAdded && qmlAppEngine) {
+        qmlAppEngine->addImageProvider(QLatin1String("actuators"), GeometryImage::VehicleGeometryImageProvider::instance());
         imageProviderAdded = true;
     }
 

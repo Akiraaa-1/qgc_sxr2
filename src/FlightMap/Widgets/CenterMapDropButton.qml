@@ -181,7 +181,7 @@ DropButton {
 
                 onClicked: {
                     dropButton.hideDropDown()
-                    map.center = fitHomePosition()
+                    map.center = QGroundControl.mapDisplayCoordinate(fitHomePosition())
                 }
             }
 
@@ -192,7 +192,7 @@ DropButton {
 
                 onClicked: {
                     dropButton.hideDropDown()
-                    map.center = map.gcsPosition
+                    map.center = QGroundControl.mapDisplayCoordinate(map.gcsPosition)
                 }
             }
 
@@ -214,7 +214,7 @@ DropButton {
 
                 onClicked: {
                     dropButton.hideDropDown()
-                    map.center = globals.activeVehicle.coordinate
+                    map.center = QGroundControl.mapDisplayCoordinate(globals.activeVehicle.coordinate)
                 }
             }
 

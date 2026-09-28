@@ -167,5 +167,6 @@ private:
     const UDPConfiguration *_udpConfig = nullptr;
     UDPWorker *_worker = nullptr;
     QThread *_workerThread = nullptr;
+    std::atomic<bool> _isConnected{false};
     std::atomic<bool> _disconnectedEmitted{false};
 };

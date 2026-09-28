@@ -110,7 +110,7 @@ Item {
         id: launchIndicatorComponent
 
         MapQuickItem {
-            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.launchCoordinate)
+            coordinate:     QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_missionItem.launchCoordinate)
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             visible:        !_missionItem.launchTakeoffAtSameLocation && _root.interactive

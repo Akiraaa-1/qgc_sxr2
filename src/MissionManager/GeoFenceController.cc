@@ -244,7 +244,6 @@ void GeoFenceController::sendToVehicle(void)
     } else {
         qCDebug(GeoFenceControllerLog) << "GeoFenceController::sendToVehicle";
         _geoFenceManager->sendToVehicle(_breachReturnPoint, _polygons, _circles);
-        setDirty(false);
     }
 }
 
@@ -334,6 +333,10 @@ void GeoFenceController::_managerLoadComplete(void)
 
 void GeoFenceController::_managerSendComplete(bool error)
 {
+    if (!error) {
+        setDirty(false);
+    }
+
     // Fly view always reloads on manager sendComplete
     if (!error && _flyView) {
         showPlanFromManagerVehicle();
@@ -342,6 +345,10 @@ void GeoFenceController::_managerSendComplete(bool error)
 
 void GeoFenceController::_managerRemoveAllComplete(bool error)
 {
+    if (_masterController->removeAllFromVehicleInProgress()) {
+        return;
+    }
+
     if (!error) {
         // Remove all from vehicle so we always update
         showPlanFromManagerVehicle();

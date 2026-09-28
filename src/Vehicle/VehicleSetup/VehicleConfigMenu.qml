@@ -195,7 +195,8 @@ Rectangle {
                         { title: qsTr("执行器"), icon: "/qmlimages/MotorComponentIcon.svg", keys: ["actuatorcomponent.qml", "actuators"], fallbackKeys: ["motorcomponent.qml"] },
                         { title: qsTr("传感器"), icon: "/qmlimages/SensorsComponentIcon.png", keys: ["sensor", "calibration"] },
                         { title: qsTr("安全"), icon: "/qmlimages/SafetyComponentIcon.png", keys: ["safety", "failsafe"] },
-                        { title: qsTr("固件"), icon: "/qmlimages/FirmwareUpgradeIcon.png", special: "firmware" }
+                        { title: qsTr("固件"), icon: "/qmlimages/FirmwareUpgradeIcon.png", special: "firmware" },
+                        { title: qsTr("电源"), icon: "/qmlimages/PowerComponentIcon.png", keys: ["power", "battery"] }
                     ]
 
                     delegate: Item {
@@ -330,8 +331,8 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { title: qsTr("电源"), icon: "/qmlimages/PowerComponentIcon.png", keys: ["power", "battery"] },
                         { title: qsTr("遥控器"), icon: "/qmlimages/RadioComponentIcon.png", keys: ["radio", "remote"] },
+                        { title: qsTr("摇杆"), icon: "/qmlimages/Joystick.png", keys: ["joystick"] },
                         { title: qsTr("飞行模式"), icon: "/qmlimages/FlightModesComponentIcon.png", keys: ["flight mode", "flightmodes"] },
                         { title: qsTr("机架"), icon: "/qmlimages/AirframeComponentIcon.png", keys: ["airframe", "subframecomponent.qml", "apmairframecomponent.qml"] },
                         { title: qsTr("参数"), icon: "/qmlimages/subMenuButtonImage.png", special: "parameters" }

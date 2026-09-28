@@ -44,6 +44,9 @@ public:
     ///     Signals removeAllComplete when done
     void removeAll(void);
 
+    /// Cancels the current transfer without sending any additional mission protocol commands.
+    void cancelTransaction(void);
+
     /// Error codes returned in error signal
     typedef enum {
         InternalError,

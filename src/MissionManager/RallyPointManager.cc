@@ -9,7 +9,7 @@ RallyPointManager::RallyPointManager(Vehicle* vehicle)
 {
     connect(this, &PlanManager::inProgressChanged,          this, &RallyPointManager::inProgressChanged);
     connect(this, &PlanManager::error,                      this, &RallyPointManager::error);
-    connect(this, &PlanManager::removeAllComplete,          this, &RallyPointManager::removeAllComplete);
+    connect(this, &PlanManager::removeAllComplete,          this, &RallyPointManager::_removeAllComplete);
     connect(this, &PlanManager::sendComplete,               this, &RallyPointManager::_sendComplete);
     connect(this, &PlanManager::newMissionItemsAvailable,   this, &RallyPointManager::_planManagerLoadComplete);
 }
@@ -56,8 +56,13 @@ void RallyPointManager::sendToVehicle(const QList<QGeoCoordinate>& rgPoints)
 
 void RallyPointManager::removeAll(void)
 {
-    _rgPoints.clear();
     PlanManager::removeAll();
+}
+
+void RallyPointManager::cancelTransaction(void)
+{
+    _rgSendPoints.clear();
+    PlanManager::cancelTransaction();
 }
 
 bool RallyPointManager::supported(void) const
@@ -99,4 +104,13 @@ void RallyPointManager::_sendComplete(bool error)
     }
     _rgSendPoints.clear();
     emit sendComplete(error);
+}
+
+void RallyPointManager::_removeAllComplete(bool error)
+{
+    if (!error) {
+        _rgPoints.clear();
+    }
+
+    emit removeAllComplete(error);
 }

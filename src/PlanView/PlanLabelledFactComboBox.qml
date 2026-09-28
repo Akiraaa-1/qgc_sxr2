@@ -1,6 +1,7 @@
 import QtQuick
 
 import QGroundControl
+import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.PlanView
 
@@ -10,7 +11,6 @@ LabelledFactComboBox {
     property real uiScale: 1.0
 
     labelPointSize: ScreenTools.defaultFontPointSize * uiScale
-    comboBox.font.pointSize: ScreenTools.defaultFontPointSize * uiScale
     labelColor: theme.secondaryTextColor
     comboBoxBackgroundColor: theme.inputColor
     comboBoxBorderColor: theme.borderColor

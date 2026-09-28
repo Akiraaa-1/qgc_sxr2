@@ -15,6 +15,7 @@ QGCPopupDialog {
     property alias coordinate:      controller.coordinate
     property var    altitudeFact:   null
     property int    altitudeFrame:  QGroundControl.AltitudeFrameNone
+    property var    vehicle:        globals.activeVehicle
 
     property real _margin:          ScreenTools.defaultFontPixelWidth / 2
     property real _textFieldWidth:  ScreenTools.defaultFontPixelWidth * 20
@@ -31,6 +32,7 @@ QGCPopupDialog {
 
     TransformPositionController {
         id: controller
+        vehicle: root.vehicle
 
         Component.onCompleted: initValues()
     }
@@ -42,7 +44,7 @@ QGCPopupDialog {
             id:                 coordinateSystemCombo
             Layout.fillWidth:   true
             label:              qsTr("Coordinate System")
-            model:              globals.activeVehicle ?
+            model:              root.vehicle ?
                                     [ qsTr("Geographic"), qsTr("Universal Transverse Mercator"), qsTr("Military Grid Reference"), qsTr("Vehicle Position") ] :
                                     [ qsTr("Geographic"), qsTr("Universal Transverse Mercator"), qsTr("Military Grid Reference") ]
         }
@@ -105,35 +107,35 @@ QGCPopupDialog {
 
         LabelledLabel {
             label:              qsTr("Latitude")
-            labelText:          globals.activeVehicle ? globals.activeVehicle.coordinate.latitude.toFixed(7) : ""
+            labelText:          root.vehicle ? root.vehicle.coordinate.latitude.toFixed(7) : ""
             Layout.fillWidth:   true
             visible:            _showVehicle
         }
 
         LabelledLabel {
             label:              qsTr("Longitude")
-            labelText:          globals.activeVehicle ? globals.activeVehicle.coordinate.longitude.toFixed(7) : ""
+            labelText:          root.vehicle ? root.vehicle.coordinate.longitude.toFixed(7) : ""
             Layout.fillWidth:   true
             visible:            _showVehicle
         }
 
         LabelledLabel {
             label:              qsTr("Alt (AMSL)")
-            labelText:          globals.activeVehicle ? globals.activeVehicle.altitudeAMSL.valueString + " " + globals.activeVehicle.altitudeAMSL.units : ""
+            labelText:          root.vehicle ? root.vehicle.altitudeAMSL.valueString + " " + root.vehicle.altitudeAMSL.units : ""
             Layout.fillWidth:   true
             visible:            _showVehicle && _supportsAltitude && altitudeFrame === QGroundControl.AltitudeFrameAbsolute
         }
 
         LabelledLabel {
             label:              qsTr("Alt (Rel)")
-            labelText:          globals.activeVehicle ? globals.activeVehicle.altitudeRelative.valueString + " " + globals.activeVehicle.altitudeRelative.units : ""
+            labelText:          root.vehicle ? root.vehicle.altitudeRelative.valueString + " " + root.vehicle.altitudeRelative.units : ""
             Layout.fillWidth:   true
             visible:            _showVehicle && _supportsAltitude && altitudeFrame === QGroundControl.AltitudeFrameRelative
         }
 
         LabelledLabel {
             label:              qsTr("Alt (AGL)")
-            labelText:          globals.activeVehicle ? globals.activeVehicle.altitudeAboveTerr.valueString + " " + globals.activeVehicle.altitudeAboveTerr.units : ""
+            labelText:          root.vehicle ? root.vehicle.altitudeAboveTerr.valueString + " " + root.vehicle.altitudeAboveTerr.units : ""
             Layout.fillWidth:   true
             visible:            _showVehicle && _supportsAltitude && (altitudeFrame === QGroundControl.AltitudeFrameTerrain || altitudeFrame === QGroundControl.AltitudeFrameCalcAboveTerrain)
         }
@@ -165,15 +167,15 @@ QGCPopupDialog {
                 else if (_showVehicle) {
                     if (setPositionCheckBox.checked)
                         controller.setFromVehicle()
-                    if (setAltitudeCheckBox.checked && _supportsAltitude && globals.activeVehicle) {
+                    if (setAltitudeCheckBox.checked && _supportsAltitude && root.vehicle) {
                         let sourceAltitude = NaN
 
                         if (altitudeFrame === QGroundControl.AltitudeFrameRelative)
-                            sourceAltitude = globals.activeVehicle.altitudeRelative.rawValue
+                            sourceAltitude = root.vehicle.altitudeRelative.rawValue
                         else if (altitudeFrame === QGroundControl.AltitudeFrameAbsolute)
-                            sourceAltitude = globals.activeVehicle.altitudeAMSL.rawValue
+                            sourceAltitude = root.vehicle.altitudeAMSL.rawValue
                         else if (altitudeFrame === QGroundControl.AltitudeFrameTerrain || altitudeFrame === QGroundControl.AltitudeFrameCalcAboveTerrain)
-                            sourceAltitude = globals.activeVehicle.altitudeAboveTerr.rawValue
+                            sourceAltitude = root.vehicle.altitudeAboveTerr.rawValue
 
                         if (_isFiniteAltitude(sourceAltitude))
                             altitudeFact.rawValue = sourceAltitude

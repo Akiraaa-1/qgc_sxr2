@@ -247,7 +247,7 @@ Item {
                 spacing: root.headerSpacing
                 visible: root.showHeader
 
-                QGCLabel {
+                QGCPixelLabel {
                     Layout.fillWidth: true
                     color: titleColor
                     font.pixelSize: root.headerTitleSize
@@ -374,7 +374,7 @@ Item {
                                     Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.16
                                     spacing: ScreenTools.defaultFontPixelHeight * 0.06
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         color: _checked ? root.detailColor : root.titleColor
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
@@ -386,7 +386,7 @@ Item {
                                     Repeater {
                                         model: modelData.details
 
-                                        delegate: QGCLabel {
+                                        delegate: QGCPixelLabel {
                                             required property var modelData
 
                                             Layout.fillWidth: true
@@ -397,7 +397,7 @@ Item {
                                         }
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         visible: _hintText.length > 0
                                         color: root._rowHintColor(modelData.key)

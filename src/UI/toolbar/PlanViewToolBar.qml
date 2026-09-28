@@ -15,8 +15,15 @@ Rectangle {
 
     property var planMasterController
     property bool showRallyPointsHelp: false
+    property bool clearRemovesVehicleByDefault: false
 
     signal toolbarButtonClicked()
+    signal uploadRequested()
+    signal downloadRequested()
+    signal openRequested()
+    signal saveRequested()
+    signal saveKmlRequested()
+    signal clearRequested(bool removeFromVehicle)
 
     property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property real _controllerProgressPct: planMasterController.missionController.progressPct
@@ -57,7 +64,14 @@ Rectangle {
             anchors.bottom: parent.bottom
             planMasterController: _root.planMasterController
             showRallyPointsHelp: _root.showRallyPointsHelp
+            clearRemovesVehicleByDefault: _root.clearRemovesVehicleByDefault
             onToolbarButtonClicked: _root.toolbarButtonClicked()
+            onUploadRequested: _root.uploadRequested()
+            onDownloadRequested: _root.downloadRequested()
+            onOpenRequested: _root.openRequested()
+            onSaveRequested: _root.saveRequested()
+            onSaveKmlRequested: _root.saveKmlRequested()
+            onClearRequested: (removeFromVehicle) => _root.clearRequested(removeFromVehicle)
         }
     }
 

@@ -133,8 +133,9 @@ Item {
     ]
     property int _vehicleStatusPageIndex: 0
     property bool _videoOverlayExpanded: false
-    property var activeVehicleFactsController: activeVehicleFactsLoader.item
+    property bool _useExternalGuidedActionConfirm: false
     property var guidedController: guidedActionsController
+    property alias guidedValueSliderItem: guidedValueSlider
     property real last_x: 0
     property var planController: planControllerInternal
     property alias preFlightChecklistPopupItem: preFlightChecklistPopup
@@ -364,6 +365,7 @@ Item {
 
                 points.push({
                     "label": pointData.label,
+                    "sequenceNumber": pointData.sequenceNumber,
                     "distance": pointDistance,
                     "altitude": pointData.altitude,
                     "coordinate": coord
@@ -553,6 +555,10 @@ Item {
         return vehicle.parameterManager.getParameter(-1, paramName);
     }
 
+    function _activeVehicleParameterFact(paramName) {
+        return _clusterFact(_activeVehicle, paramName);
+    }
+
     function _clusterGroup(vehicle) {
         const fact = _clusterFact(vehicle, "SWARM_GROUP_ID");
         if (!fact) {
@@ -591,7 +597,7 @@ Item {
 
             let quality = _communicationTelemetryQualityPercent(vehicle);
             if (isNaN(quality)) {
-                quality = vehicle.communicationLost ? 45 : 88;
+                quality = _vehicleCommunicationLost(vehicle) ? 45 : 88;
             }
 
             totalQuality += Math.max(0, Math.min(100, quality));
@@ -618,7 +624,7 @@ Item {
                 continue;
             }
             const telemetryQuality = _communicationTelemetryQualityPercent(vehicle);
-            const communicationHealthy = (vehicle.communicationLost !== undefined) ? !vehicle.communicationLost : true;
+            const communicationHealthy = !_vehicleCommunicationLost(vehicle);
             if (communicationHealthy || (!isNaN(telemetryQuality) && telemetryQuality > 30)) {
                 online++;
             }
@@ -866,12 +872,22 @@ Item {
         return camera ? camera.currentStreamInstance : null;
     }
 
+    function _vehicleCommunicationLost(vehicle) {
+        const linkManager = vehicle ? vehicle.vehicleLinkManager : null;
+        return !!(linkManager && linkManager.communicationLost);
+    }
+
     function _compactPrearmReason(vehicle) {
         if (!vehicle) {
             return qsTr("连接飞行器后查看就绪状态");
         }
-        if (vehicle.communicationLost) {
+        if (_vehicleCommunicationLost(vehicle)) {
             return qsTr("通信已中断");
+        }
+
+        const readiness = vehicle.readiness
+        if (readiness && readiness.armReason !== "") {
+            return readiness.armReason
         }
 
         const report = vehicle.healthAndArmingCheckReport;
@@ -887,10 +903,6 @@ Item {
             if (prearmError !== "") {
                 return prearmError;
             }
-        }
-
-        if (vehicle.readyToFlyAvailable !== undefined && !vehicle.readyToFly) {
-            return qsTr("飞行器仍在完成飞行前检查");
         }
 
         return _compactReadinessLevel(vehicle) === 0 ? qsTr("飞行器可以解锁") : qsTr("起飞前请检查飞行器状态");
@@ -911,24 +923,15 @@ Item {
         if (!vehicle) {
             return 1;
         }
-        if (vehicle.communicationLost) {
+        if (_vehicleCommunicationLost(vehicle)) {
             return 2;
         }
-        const report = vehicle.healthAndArmingCheckReport;
-        if (report && report.supported) {
+        const readiness = vehicle.readiness;
+        if (readiness) {
             if (vehicle.armed || vehicle.flying) {
-                return report.canArm === false ? 2 : (report.hasWarningsOrErrors ? 1 : 0);
+                return readiness.hasHealthWarnings ? 1 : 0;
             }
-            if (report.canArm === false) {
-                return 2;
-            }
-            return report.hasWarningsOrErrors ? 1 : 0;
-        }
-        if (vehicle.readyToFlyAvailable !== undefined) {
-            return vehicle.readyToFly ? 0 : 1;
-        }
-        if (vehicle.allSensorsHealthy !== undefined && vehicle.autopilotPlugin) {
-            return (vehicle.allSensorsHealthy && vehicle.autopilotPlugin.setupComplete) ? 0 : 1;
+            return readiness.statusLevel;
         }
         return 1;
     }
@@ -937,7 +940,7 @@ Item {
         if (!vehicle) {
             return qsTr("Not Ready");
         }
-        if (vehicle.communicationLost) {
+        if (_vehicleCommunicationLost(vehicle)) {
             return qsTr("Not Ready");
         }
         return _compactReadinessLevel(vehicle) >= 2 ? qsTr("Not Ready") : qsTr("Ready");
@@ -955,6 +958,22 @@ Item {
         if (!pts || pts.length < 2)
             return -1;
         const totalDist = Math.max(Number(_profileStats(pts).totalDistance), 1);
+        const missionController = planControllerInternal ? planControllerInternal.missionController : null;
+        const currentSequence = missionController ? Number(missionController.currentMissionIndex) : NaN;
+        let hasCurrentSequenceTarget = false;
+
+        // Prefer the segment ending at the MAVLink MISSION_CURRENT waypoint.
+        // This prevents a crossing or looped route from matching a nearby but
+        // unrelated segment solely because their coordinates are close.
+        if (!includeReturnSegment && !isNaN(currentSequence) && currentSequence >= 0) {
+            for (let i = 1; i < pts.length; i++) {
+                if (pts[i].profileGenerated !== true && Number(pts[i].sequenceNumber) === currentSequence) {
+                    hasCurrentSequenceTarget = true;
+                    break;
+                }
+            }
+        }
+
         let bestDist = -1;
         let minPerpDistSq = Infinity;
         if (includeReturnSegment && _coordinatesClose(vCoord, pts[0].coordinate, 2) && root._vehicleClimbRate < -0.5) {
@@ -971,6 +990,9 @@ Item {
                 continue;
             if (!includeReturnSegment && (A.profileGenerated || B.profileGenerated)) {
                 //console.log("_computeVehicleProgressAlongMission",A.profileGenerated,B.profileGenerated,)
+                continue;
+            }
+            if (hasCurrentSequenceTarget && Number(B.sequenceNumber) !== currentSequence) {
                 continue;
             }
             const segLen = A.coordinate.distanceTo(B.coordinate);
@@ -1017,25 +1039,11 @@ Item {
         const arm = !root._activeVehicle.armed;
         QGroundControl.showMessageDialog(root, arm ? qsTr("解锁") : qsTr("上锁"), arm ? qsTr("确认解锁飞行器？") : qsTr("确认上锁飞行器？"), Dialog.Yes | Dialog.Cancel, function () {
             if (root._activeVehicle) {
-                root._activeVehicle.armed = arm;
-            }
-        });
-    }
-
-    function _confirmOneKeyRTL() {
-        if (!root._activeVehicle) {
-            root._showMapStripUnavailable("oneKeyRTL", true);
-            return;
-        }
-        if (!root._isGuidedPanelActionAvailable(guidedActionsController.actionRTL)) {
-            QGroundControl.showMessageDialog(root, qsTr("一键返航"), root._guidedPanelActionUnavailableMessage(guidedActionsController.actionRTL));
-            return;
-        }
-
-        QGroundControl.showMessageDialog(root, qsTr("一键返航"), qsTr("确认执行一键返航？"), Dialog.Yes | Dialog.Cancel, function () {
-            if (root._activeVehicle) {
-                root._activeVehicle.guidedModeRTL(false);
-                QGroundControl.showMessageDialog(root, qsTr("一键返航"), qsTr("返航指令已发送。"));
+                if (arm) {
+                    root._activeVehicle.requestArm(true);
+                } else {
+                    root._activeVehicle.armed = false;
+                }
             }
         });
     }
@@ -1251,15 +1259,14 @@ Item {
             return vehicle.allSensorsHealthy ? 0 : 1;
         }
 
-        const report = vehicle.healthAndArmingCheckReport;
-        if (report && report.supported) {
-            if (report.canArm === false) {
+        const readiness = vehicle.readiness;
+        if (readiness) {
+            if (readiness.armDenied) {
                 return 2;
             }
-            if (report.hasWarningsOrErrors === true) {
-                return 1;
+            if (readiness.armAllowed && !readiness.hasHealthWarnings) {
+                return 0;
             }
-            return 0;
         }
 
         return 1;
@@ -1294,7 +1301,7 @@ Item {
             return rawValue / 100;
         }
         if (parameterName === "RTL_ALT_M") {
-            const rtlAltIsMeters = activeVehicleFactsController ? activeVehicleFactsController.parameterExists(-1, "noremap.RTL_ALT_M") : false;
+            const rtlAltIsMeters = !!_activeVehicleParameterFact("noremap.RTL_ALT_M");
             return rtlAltIsMeters ? rawValue : (rawValue / 100);
         }
         if (parameterName === "RTL_ALTITUDE") {
@@ -1546,6 +1553,8 @@ Item {
             return guidedActionsController.landMessage;
         case guidedActionsController.actionEmergencyStop:
             return guidedActionsController.emergencyStopMessage;
+        case guidedActionsController.actionPause:
+            return guidedActionsController.pauseMessage;
         default:
             return qsTr("Execute the selected action?");
         }
@@ -1559,6 +1568,8 @@ Item {
             return guidedActionsController.landTitle;
         case guidedActionsController.actionEmergencyStop:
             return guidedActionsController.emergencyStopTitle;
+        case guidedActionsController.actionPause:
+            return guidedActionsController.pauseTitle;
         default:
             return qsTr("Confirm");
         }
@@ -1572,6 +1583,8 @@ Item {
             return qsTr("降落仅在飞行器已解锁并支持引导降落时可用。");
         case guidedActionsController.actionEmergencyStop:
             return qsTr("紧急停止仅在飞行器已解锁且正在飞行时可用。");
+        case guidedActionsController.actionPause:
+            return qsTr("暂停仅在飞行器已解锁、正在飞行且尚未处于保持状态时可用。");
         default:
             return qsTr("当前无法执行此操作。");
         }
@@ -1598,6 +1611,7 @@ Item {
 
     function _healthProblemAlertLevel(vehicle) {
         const report = vehicle ? vehicle.healthAndArmingCheckReport : null;
+        const readiness = vehicle ? vehicle.readiness : null;
         const problems = report ? report.problemsForCurrentMode : null;
         if (problems && problems.count > 0) {
             for (let i = 0; i < problems.count; i++) {
@@ -1608,10 +1622,10 @@ Item {
             }
             return 2;
         }
-        if (report && report.supported && report.canArm === false) {
+        if (readiness && readiness.armDenied) {
             return 3;
         }
-        if (report && report.hasWarningsOrErrors) {
+        if (readiness && readiness.hasHealthWarnings) {
             return 2;
         }
         return 0;
@@ -1649,6 +1663,8 @@ Item {
             return root._activeVehicle.armed && root._activeVehicle.supports.guidedMode && !root._activeVehicle.fixedWing && root._activeVehicle.flightMode !== root._activeVehicle.landFlightMode;
         case guidedActionsController.actionEmergencyStop:
             return root._activeVehicle.armed && root._activeVehicle.flying;
+        case guidedActionsController.actionPause:
+            return guidedActionsController.showPause;
         default:
             return true;
         }
@@ -1679,7 +1695,7 @@ Item {
             return guidedActionsController.showPause;
         }
         if (key === "play") {
-            return guidedActionsController.showContinueMission;
+            return root._startMissionEntryVisible;
         }
         if (key === "up" || key === "down") {
             return guidedActionsController.showChangeAlt;
@@ -1894,7 +1910,7 @@ Item {
         case "oneKeyRTL":
             return qsTr("一键返航");
         case "play":
-            return qsTr("继续任务");
+            return root._mapPrimaryActionDialogTitle();
         case "pause":
             return qsTr("暂停");
         case "pan":
@@ -1962,7 +1978,7 @@ Item {
             }
             return qsTr("当前飞行模式不允许暂停。");
         case "play":
-            return qsTr("当前没有可继续的任务。");
+            return root._startMissionUnavailableMessage();
         case "up":
         case "down":
             if (root._activeVehicle && !root._activeVehicle.armed) {
@@ -2047,6 +2063,7 @@ Item {
 
         return {
             "label": sequence,
+            "sequenceNumber": sequence,
             "distance": !isNaN(itemDistanceFromStart) ? (itemDistanceFromStart + itemComplexDistance) : NaN,
             "altitude": altitude,
             "coordinate": coord
@@ -2054,23 +2071,17 @@ Item {
     }
 
     function _missionReadyForStart() {
-        const report = root._activeVehicle && root._activeVehicle.healthAndArmingCheckReport ? root._activeVehicle.healthAndArmingCheckReport : null;
+        const readiness = root._activeVehicle ? root._activeVehicle.readiness : null;
         const gpsLock = root._networkGpsLock(root._activeVehicle);
         const gpsSatellites = root._networkGpsSatelliteCount(root._activeVehicle);
         const gpsReady = root._activeVehicle && root._activeVehicle.fixedWing
                        ? true
                        : (!isNaN(gpsLock) && gpsLock >= 3 && !isNaN(gpsSatellites) && gpsSatellites > 0);
-        const prearmReady = root._activeVehicle && root._activeVehicle.readyToFlyAvailable !== undefined && root._activeVehicle.readyToFlyAvailable
-                          ? root._activeVehicle.readyToFly
-                          : true;
-        const vehicleReady = report && report.supported
-                           ? (report.canArm && report.canStartMission)
-                           : (root._activeVehicle.readyToFlyAvailable ? root._activeVehicle.readyToFly : guidedActionsController._canStartMission);
+        const vehicleReady = !!(readiness && readiness.canRequestMissionStart);
 
         return !!(root._activeVehicle &&
                   guidedActionsController &&
                   vehicleReady &&
-                  prearmReady &&
                   gpsReady &&
                   root._hasStartMissionItems() &&
                   !root._missionPlanSyncInProgress() &&
@@ -2085,6 +2096,20 @@ Item {
         const totalMissionSeconds = Number(_missionController.missionTime);
         if (isNaN(totalMissionSeconds) || totalMissionSeconds <= 0) {
             return NaN;
+        }
+
+        const missionProgressActive = !!(vehicle && (vehicle.flightMode === vehicle.missionFlightMode || (guidedActionsController && guidedActionsController._missionActive)));
+        if (missionProgressActive && (vehicle.armed || vehicle.flying)) {
+            const points = root._profileMissionPoints;
+            const vehicleCoord = vehicle.coordinate;
+            if (points && points.length >= 2 && vehicleCoord && vehicleCoord.isValid) {
+                const landingPosition = root._verticalSegmentLivePosition(points, points.length - 2, points.length - 1, root._vehicleActualAltitude, vehicleCoord);
+                const progress = root._computeVehicleProgressAlongMission(root._shouldTrackReturnProfileSegment(landingPosition.valid, root._vehicleClimbRate));
+                if (!isNaN(progress) && progress >= 0) {
+                    root._profileProgress = Math.max(0, Math.min(1, progress));
+                    return Math.max(0, totalMissionSeconds * (1 - root._profileProgress));
+                }
+            }
         }
 
         const visualItems = _missionController.visualItems;
@@ -2453,14 +2478,10 @@ Item {
         const fixedWing = !!(_activeVehicle && _activeVehicle.fixedWing);
 
         if (px4Firmware) {
-            // 使用 activeVehicleFactsController 来获取当前 vehicle 的参数
             let returnAltMeters = NaN;
-
-            if (activeVehicleFactsController) {
-                const returnAltFact = activeVehicleFactsController.getParameterFact(-1, "RTL_RETURN_ALT", false);
-                if (returnAltFact && _hasFactValue(returnAltFact)) {
-                    returnAltMeters = Number(returnAltFact.rawValue);
-                }
+            const returnAltFact = _activeVehicleParameterFact("RTL_RETURN_ALT");
+            if (returnAltFact && _hasFactValue(returnAltFact)) {
+                returnAltMeters = Number(returnAltFact.rawValue);
             }
 
             const thresholdMeters = _px4RtlReturnDistanceThresholdMeters();
@@ -2487,7 +2508,7 @@ Item {
         }
 
         if (apmFirmware && multiRotor) {
-            const rtlAltFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_ALT", false) : null;
+            const rtlAltFact = _activeVehicleParameterFact("RTL_ALT");
             const rtlAltMeters = _factMetersValue(rtlAltFact, "RTL_ALT");
 
             // ArduPilot多旋翼：如果RTL_ALT > 0，则爬升到该高度或当前高度（取较大值）
@@ -2500,7 +2521,7 @@ Item {
         }
 
         if (apmFirmware && fixedWing) {
-            const rtlAltFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_ALTITUDE", false) : null;
+            const rtlAltFact = _activeVehicleParameterFact("RTL_ALTITUDE");
             const rtlAltMeters = _factMetersValue(rtlAltFact, "RTL_ALTITUDE");
             if (!isNaN(rtlAltMeters)) {
                 const result = !isNaN(safeLastAltitude) ? Math.max(safeLastAltitude, rtlAltMeters) : rtlAltMeters;
@@ -2710,16 +2731,9 @@ Item {
     }
 
     function _px4RtlReturnDistanceThresholdMeters() {
-        const rtlMinDistFact = activeVehicleFactsController ? activeVehicleFactsController.getParameterFact(-1, "RTL_MIN_DIST", false) : null;
+        const rtlMinDistFact = _activeVehicleParameterFact("RTL_MIN_DIST");
         const rtlMinDistMeters = _factMetersValue(rtlMinDistFact, "RTL_MIN_DIST");
         return isNaN(rtlMinDistMeters) ? 10 : Math.max(0, rtlMinDistMeters);
-    }
-
-    function _rebuildActiveVehicleFactsController() {
-        activeVehicleFactsLoader.sourceComponent = null;
-        if (_activeVehicle) {
-            activeVehicleFactsLoader.sourceComponent = activeVehicleFactsControllerComponent;
-        }
     }
 
     function _refreshVehicleTelemetry() {
@@ -2908,7 +2922,6 @@ Item {
         if (vehicle && vehicle !== QGroundControl.multiVehicleManager.activeVehicle && !_activeVehicleSwitchPending) {
             _activeVehicleSwitchPending = true;
             _missionPathSwitchSuppressed = true;
-            console.log("FlyIntegratedPage: switching active vehicle to", vehicle.id);
             QGroundControl.multiVehicleManager.activeVehicle = vehicle;
             activeVehicleSwitchGuard.restart();
             missionPathSwitchGuard.restart();
@@ -3075,11 +3088,6 @@ Item {
             if (!guidedActionsController._checklistPassed) {
                 return qsTr("飞行前检查单尚未通过。");
             }
-            const report = root._activeVehicle && root._activeVehicle.healthAndArmingCheckReport ? root._activeVehicle.healthAndArmingCheckReport : null;
-            if (report && report.supported && !report.canArm) {
-                const reason = root._compactPrearmReason(root._activeVehicle);
-                return reason !== "" ? qsTr("飞行器当前尚未准备好开始任务：%1").arg(reason) : qsTr("飞行器当前尚未准备好开始任务：解锁检查未通过。");
-            }
             if (!guidedActionsController._canStartMission) {
                 const reason = root._compactPrearmReason(root._activeVehicle);
                 return reason !== "" ? qsTr("飞行器当前尚未准备好开始任务：%1").arg(reason) : qsTr("飞行器当前尚未准备好开始任务。");
@@ -3236,16 +3244,21 @@ Item {
         }
 
         if (!root._isGuidedPanelActionAvailable(action)) {
-            QGroundControl.showMessageDialog(root, root._guidedPanelActionTitle(action), root._guidedPanelActionUnavailableMessage(action));
+            QGroundControl.showMessageDialog(mainWindow, root._guidedPanelActionTitle(action), root._guidedPanelActionUnavailableMessage(action));
             return;
         }
 
-        QGroundControl.showMessageDialog(root, root._guidedPanelActionTitle(action), root._guidedPanelActionMessage(action), Dialog.Yes | Dialog.Cancel, function () {
-            guidedActionsController.executeAction(action, null, 0, false);
-        });
+        // Keep the custom map strip as an entry point, but use QGC's standard
+        // guided-action confirmation lifecycle for the actual command.
+        guidedActionsController.closeAll();
+        guidedActionsController.confirmAction(action);
     }
 
     function _triggerMapPrimaryAction() {
+        if (root._mapPrimaryActionCode() === guidedActionsController.actionContinueMission) {
+            root._triggerGuidedPanelAction(guidedActionsController.actionContinueMission);
+            return;
+        }
         root._showStartMissionSlider();
     }
 
@@ -3299,20 +3312,16 @@ Item {
             }
             break;
         case "oneKeyRTL":
-            root._confirmOneKeyRTL();
+            root._triggerGuidedPanelAction(guidedActionsController.actionRTL);
             break;
         case "play":
-            if (guidedActionsController.showContinueMission) {
-                guidedActionsController.confirmAction(guidedActionsController.actionContinueMission);
-            }
+            root._triggerMapPrimaryAction();
             break;
         case "startMission":
             root._showStartMissionSlider();
             break;
         case "pause":
-            if (root._activeVehicle) {
-                guidedActionsController.confirmAction(guidedActionsController.actionPause);
-            }
+            root._triggerGuidedPanelAction(guidedActionsController.actionPause);
             break;
         case "pan":
             if (root._mapNavigationSelection === "pan") {
@@ -3409,14 +3418,12 @@ Item {
         // 如果从起飞段离开，禁止再次进入起飞段
         if (previousSegment === "takeoff" && newSegment !== "takeoff") {
             root._allowTakeoffSegment = false;
-            console.log(">>> 离开起飞段: " + previousSegment + " -> " + newSegment + ", 禁止再次进入起飞段");
         }
 
         // 如果降落完成（降落段且高度很低），允许再次进入起飞段
         if (newSegment === "landing" && !isNaN(liveAltitude) && liveAltitude < 2.0) {
             if (!root._allowTakeoffSegment) {
                 root._allowTakeoffSegment = true;
-                console.log(">>> 降落完成 (高度=" + liveAltitude.toFixed(2) + "m), 允许再次进入起飞段");
             }
         }
 
@@ -3454,7 +3461,7 @@ Item {
         if (!vehicle) {
             return 0;
         }
-        if (vehicle.communicationLost || vehicle.messageTypeError) {
+        if (_vehicleCommunicationLost(vehicle) || vehicle.messageTypeError) {
             return 3;
         }
         const healthLevel = root._healthProblemAlertLevel(vehicle);
@@ -3481,7 +3488,7 @@ Item {
         if (!vehicle) {
             return "";
         }
-        if (vehicle.communicationLost) {
+        if (_vehicleCommunicationLost(vehicle)) {
             return qsTr("通信丢失");
         }
         const latestMessage = root._cleanVehicleMessageText(root._latestVehicleMessageText);
@@ -3543,7 +3550,7 @@ Item {
         if (!vehicle) {
             return messages;
         }
-        if (vehicle.communicationLost) {
+        if (_vehicleCommunicationLost(vehicle)) {
             addMessage(qsTr("通信丢失"), 3);
         }
         addMessage(root._latestVehicleMessageText, root._latestVehicleMessageLevel);
@@ -3875,7 +3882,6 @@ Item {
     width: parent ? parent.width : 0
 
     Component.onCompleted: {
-        root._rebuildActiveVehicleFactsController();
         root._refreshVehicleTelemetry();
         root._profileMissionPoints = root._buildMissionProfilePoints();
         root._profileReturnAltitudeSnapshot = NaN;
@@ -3890,19 +3896,16 @@ Item {
         if (flightModeMenu.opened) {
             flightModeMenu.close();
         }
-        root._rebuildActiveVehicleFactsController();
-        root._refreshVehicleTelemetry();
-        profileVehicleSwitchRefresh.restart();
         root._profileReturnAltitudeSnapshot = NaN;
         root._profileReturnSegmentActive = false;
         root._profileLiveDistance = 0;
         root._profileLiveAltitude = NaN;
         root._profileLivePointIndex = -1;
         root._profileLiveSegment = "";
-        root._latestVehicleMessageText = root._activeVehicle ? root._cleanVehicleMessageText(root._activeVehicle.formattedMessages).split("\n")[0] : "";
-        root._latestVehicleMessageLevel = root._latestVehicleMessageText === "" ? 0 : 1;
-        root._latestVehicleMessageVisible = root._latestVehicleMessageText !== "";
-        root._syncPendingFlightMode();
+
+        // MultiVehicleManager emits an intermediate null vehicle before it
+        // publishes the requested vehicle. Refresh once after that handoff.
+        profileVehicleSwitchRefresh.restart();
     }
     on_StartMissionAlreadyStartedChanged: {
         if (root._startMissionAlreadyStarted) {
@@ -3924,23 +3927,6 @@ Item {
         if (_vehicleStatusPageIndex === 1) {
             _vehicleStatusPageIndex = 0;
         }
-    }
-
-    FactPanelController {
-        id: profileFactsController
-
-    }
-
-    Component {
-        id: activeVehicleFactsControllerComponent
-
-        FactPanelController {
-        }
-    }
-
-    Loader {
-        id: activeVehicleFactsLoader
-
     }
 
     QGCPalette {
@@ -4186,12 +4172,17 @@ Item {
     Timer {
         id: profileVehicleSwitchRefresh
 
-        interval: 100
+        interval: 50
         repeat: false
 
         onTriggered: {
+            root._refreshVehicleTelemetry();
             root._profileMissionPoints = root._buildMissionProfilePoints();
             root._updateProfileLiveState();
+            root._latestVehicleMessageText = root._activeVehicle ? root._cleanVehicleMessageText(root._activeVehicle.formattedMessages).split("\n")[0] : "";
+            root._latestVehicleMessageLevel = root._latestVehicleMessageText === "" ? 0 : 1;
+            root._latestVehicleMessageVisible = root._latestVehicleMessageText !== "";
+            root._syncPendingFlightMode();
         }
     }
 
@@ -4213,9 +4204,9 @@ Item {
     Timer {
         id: vehicleMissionTrackTimer
 
-        interval: 100
+        interval: root._profilePanelExpanded ? 100 : 500
         repeat: true
-        running: root._profilePanelExpanded && root._activeVehicle && (root._vehicleIsFlying || root._activeVehicle.armed)
+        running: root._activeVehicle && (root._vehicleIsFlying || root._activeVehicle.armed)
 
         onTriggered: {
             root._refreshVehicleTelemetry();
@@ -4292,7 +4283,6 @@ Item {
             // 解锁时重置起飞段标志，允许进入起飞段
             if (root._activeVehicle && root._activeVehicle.armed) {
                 root._allowTakeoffSegment = true;
-                console.log(">>> 飞机解锁，允许进入起飞段");
             } else {
                 root._clearPendingStartMission();
                 root._startMissionCommandIssued = false;
@@ -4414,7 +4404,7 @@ Item {
                         source: modelData.source
                     }
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         color: "#000000"
                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
@@ -4443,7 +4433,6 @@ Item {
         id: flightModeMenu
 
         parent: Overlay.overlay
-        width: Math.max(implicitWidth, root._flightModeMenuMinimumWidth())
 
         Instantiator {
             model: root._activeVehicle && root._activeVehicle.flightModeSetAvailable ? root._activeVehicle.flightModes : []
@@ -4563,7 +4552,8 @@ Item {
                 QGCListView {
                     id: vehicleList
 
-                    readonly property real _targetHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.8, Math.min(ScreenTools.defaultFontPixelHeight * 6.6, contentHeight))
+                    // Reserve enough room for five connected vehicles before the list scrolls.
+                    readonly property real _targetHeight: Math.max(ScreenTools.defaultFontPixelHeight * 1.8, Math.min(ScreenTools.defaultFontPixelHeight * 8.25, contentHeight))
 
                     Layout.fillHeight: false
                     Layout.fillWidth: true
@@ -4616,7 +4606,7 @@ Item {
                                     opacity: root._activeVehicleSwitchPending ? 0.55 : 1
                                     radius: ScreenTools.defaultFontPixelHeight * 0.16
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         anchors.centerIn: parent
                                         color: parent._iconColor
                                         font.pixelSize: selected ? ScreenTools.defaultFontPixelHeight * 0.42 : ScreenTools.defaultFontPixelHeight * 0.52
@@ -4673,7 +4663,7 @@ Item {
                                     color: selected ? Qt.rgba(0.20, 0.34, 0.43, 0.96) : Qt.rgba(0.10, 0.13, 0.16, 0.94)
                                     radius: ScreenTools.defaultFontPixelHeight * 0.16
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         id: modeLabel
 
                                         anchors.fill: parent
@@ -4914,7 +4904,7 @@ Item {
                                             Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                             spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.alignment: Qt.AlignVCenter
                                                 Layout.fillWidth: true
                                                 color: vehicleStatusCard._textPrimaryColor
@@ -5080,7 +5070,7 @@ Item {
                                                 anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.22
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.2
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     elide: Text.ElideRight
@@ -5153,7 +5143,7 @@ Item {
                                                         target: root
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.centerIn: parent
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
@@ -5294,7 +5284,7 @@ Item {
                                                     source: "/InstrumentValueIcons/clipboard.svg"
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
@@ -5302,7 +5292,7 @@ Item {
                                                     text: qsTr("飞行前检查单")
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
                                                     text: qsTr("打开")
@@ -5336,7 +5326,7 @@ Item {
                                                 anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
                                                 spacing: ScreenTools.defaultFontPixelWidth * 0.24
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
                                                     text: qsTr("显示航迹")
@@ -5369,7 +5359,7 @@ Item {
                                                 anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
                                                 spacing: ScreenTools.defaultFontPixelWidth * 0.24
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     color: root._activeVehicle ? "#FFFFFF" : "#888888"
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.72
                                                     text: root._activeVehicle ? (root._activeVehicle.armed ? qsTr("滑动上锁") : qsTr("滑动解锁")) : qsTr("未连接飞行器")
@@ -5448,17 +5438,12 @@ Item {
                                                     }
                                                     onValueChanged: {
                                                         if (_dragInProgress && value >= 95) {
-                                                            console.log("Slider triggered at value:", value);
-                                                            console.log("Vehicle armed:", root._activeVehicle ? root._activeVehicle.armed : "no vehicle");
-
                                                             if (root._activeVehicle && root._activeVehicle.armed) {
                                                                 // Disarm the vehicle
-                                                                console.log("Disarming vehicle");
                                                                 root._activeVehicle.armed = false;
                                                             } else if (root._activeVehicle) {
                                                                 // Arm the vehicle
-                                                                console.log("Arming vehicle");
-                                                                root._activeVehicle.armed = true;
+                                                                root._activeVehicle.requestArm(true);
                                                             }
                                                             _dragInProgress = false;
                                                             value = 0;
@@ -5526,7 +5511,7 @@ Item {
                                                         source: modelData.icon
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: modelData.foreground
                                                         elide: Text.ElideRight
@@ -5576,7 +5561,7 @@ Item {
                                                     Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                                     spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -5635,7 +5620,7 @@ Item {
                                                         anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
                                                         spacing: ScreenTools.defaultFontPixelWidth * 0.28
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.alignment: Qt.AlignVCenter
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
@@ -5676,7 +5661,7 @@ Item {
                                                                     source: "/InstrumentValueIcons/target.svg"
                                                                 }
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     Layout.alignment: Qt.AlignVCenter
                                                                     Layout.fillWidth: true
                                                                     Layout.minimumWidth: 0
@@ -5783,7 +5768,7 @@ Item {
                                             Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                             spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -5848,7 +5833,7 @@ Item {
                                                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.04
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.16
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: networkStatusPage._primaryFontSize
@@ -5863,7 +5848,7 @@ Item {
                                                         source: root._networkSignalIcon(networkStatusPage._gpsPercent)
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: root._networkStatusColor(networkStatusPage._gpsPercent)
                                                         font.pixelSize: networkStatusPage._primaryFontSize
                                                         font.weight: Font.DemiBold
@@ -5882,7 +5867,7 @@ Item {
                                                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.96
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.14
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textSecondaryColor
                                                         font.pixelSize: networkStatusPage._secondaryFontSize
@@ -5890,7 +5875,7 @@ Item {
                                                         text: qsTr("卫星数量")
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: vehicleStatusCard._textSecondaryColor
                                                         font.pixelSize: networkStatusPage._secondaryFontSize
                                                         horizontalAlignment: Text.AlignRight
@@ -5903,7 +5888,7 @@ Item {
                                                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.96
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.14
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textSecondaryColor
                                                         font.pixelSize: networkStatusPage._secondaryFontSize
@@ -5911,7 +5896,7 @@ Item {
                                                         text: qsTr("HDOP")
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: vehicleStatusCard._textSecondaryColor
                                                         font.pixelSize: networkStatusPage._secondaryFontSize
                                                         horizontalAlignment: Text.AlignRight
@@ -5947,7 +5932,7 @@ Item {
                                                     anchors.rightMargin: networkStatusPage._innerRightMargin
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.16
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: networkStatusPage._primaryFontSize
@@ -5962,7 +5947,7 @@ Item {
                                                         source: root._networkSignalIcon(modelData.percent)
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: root._networkStatusColor(modelData.percent)
                                                         font.pixelSize: networkStatusPage._primaryFontSize
                                                         font.weight: Font.DemiBold
@@ -6003,7 +5988,7 @@ Item {
                                             Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                             spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -6069,7 +6054,7 @@ Item {
                                                 anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.28
                                                 spacing: ScreenTools.defaultFontPixelWidth * 0.16
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
@@ -6141,7 +6126,7 @@ Item {
                                                     anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.2
                                                     spacing: ScreenTools.defaultFontPixelHeight * 0.16
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: vehicleStatusCard._textPrimaryColor
                                                         font.pixelSize: vehicleSetupPage._moduleTitleFontSize
@@ -6168,7 +6153,7 @@ Item {
                                                                 }
                                                             }
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 anchors.centerIn: parent
                                                                 color: vehicleStatusCard._textPrimaryColor
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
@@ -6191,7 +6176,7 @@ Item {
                                                             }
                                                         }
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: modelData.statusColor
                                                             font.pixelSize: vehicleSetupPage._statusFontSize
@@ -6397,7 +6382,7 @@ Item {
                                             Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                             spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -6497,7 +6482,7 @@ Item {
                                                         anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.18
                                                         spacing: ScreenTools.defaultFontPixelHeight * 0.12
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
@@ -6555,7 +6540,7 @@ Item {
                                                                             }
                                                                         }
 
-                                                                        QGCLabel {
+                                                                        QGCPixelLabel {
                                                                             anchors.bottom: parent.bottom
                                                                             anchors.left: parent.left
                                                                             anchors.right: parent.right
@@ -6602,7 +6587,7 @@ Item {
                                                                             }
                                                                         }
 
-                                                                        QGCLabel {
+                                                                        QGCPixelLabel {
                                                                             anchors.bottom: parent.bottom
                                                                             anchors.left: parent.left
                                                                             anchors.right: parent.right
@@ -6641,7 +6626,7 @@ Item {
                                                                             width: Math.min(parent.width, parent.height) * 0.28
                                                                         }
 
-                                                                        QGCLabel {
+                                                                        QGCPixelLabel {
                                                                             anchors.bottom: parent.bottom
                                                                             anchors.left: parent.left
                                                                             anchors.right: parent.right
@@ -6676,7 +6661,7 @@ Item {
                                                         anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.18
                                                         spacing: ScreenTools.defaultFontPixelHeight * 0.1
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
@@ -6815,7 +6800,7 @@ Item {
                                                                         radius: height * 0.5
                                                                     }
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         Layout.fillWidth: true
                                                                         color: vehicleStatusCard._textSecondaryColor
                                                                         elide: Text.ElideRight
@@ -6846,7 +6831,7 @@ Item {
                                                         anchors.topMargin: ScreenTools.defaultFontPixelHeight * 0.18
                                                         spacing: ScreenTools.defaultFontPixelHeight * 0.1
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: sensorsTelemetryPage._sectionTitleFontSize
@@ -6888,20 +6873,20 @@ Item {
                                                                             Layout.fillWidth: true
                                                                             spacing: ScreenTools.defaultFontPixelHeight * 0.03
 
-                                                                            QGCLabel {
+                                                                            QGCPixelLabel {
                                                                                 color: vehicleStatusCard._textPrimaryColor
                                                                                 font.pixelSize: sensorsTelemetryPage._valueFontSize
                                                                                 font.weight: Font.DemiBold
                                                                                 text: modelData.title
                                                                             }
 
-                                                                            QGCLabel {
+                                                                            QGCPixelLabel {
                                                                                 color: summaryCard._healthy ? sensorsTelemetryPage._okColor : "#F0BB6C"
                                                                                 font.pixelSize: sensorsTelemetryPage._textFontSize
                                                                                 text: qsTr("状态：%1").arg(root._sensorStatusTextForBit(root._activeVehicle, modelData.bit, modelData.goodText, modelData.badText, qsTr("离线")))
                                                                             }
 
-                                                                            QGCLabel {
+                                                                            QGCPixelLabel {
                                                                                 color: vehicleStatusCard._textSecondaryColor
                                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
                                                                                 text: qsTr("卫星：%1").arg(root._sensorGpsSatelliteText(root._activeVehicle))
@@ -7021,7 +7006,7 @@ Item {
                                                 anchors.topMargin: vehicleStatusCard._sectionContentTopMargin
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.16
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -7034,6 +7019,8 @@ Item {
 
                                                     delegate: Rectangle {
                                                         required property int index
+                                                        readonly property int _statusLevel: flyPrepBatteryPage._rowLevel(index)
+                                                        readonly property color _statusColor: root._summaryStateColor(_statusLevel)
 
                                                         Layout.fillWidth: true
                                                         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.16
@@ -7052,11 +7039,11 @@ Item {
                                                                 Layout.alignment: Qt.AlignVCenter
                                                                 Layout.preferredHeight: Layout.preferredWidth
                                                                 Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.4
-                                                                color: root._summaryStateColor(flyPrepBatteryPage._rowLevel(index))
+                                                                color: _statusColor
                                                                 radius: Layout.preferredWidth * 0.5
                                                             }
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 Layout.fillWidth: true
                                                                 color: vehicleStatusCard._textSecondaryColor
                                                                 elide: Text.ElideRight
@@ -7064,8 +7051,8 @@ Item {
                                                                 text: flyPrepBatteryPage._rowLabel(index)
                                                             }
 
-                                                            QGCLabel {
-                                                                color: root._summaryStateColor(flyPrepBatteryPage._rowLevel(index))
+                                                            QGCPixelLabel {
+                                                                color: _statusColor
                                                                 elide: Text.ElideRight
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
                                                                 font.weight: Font.DemiBold
@@ -7137,7 +7124,7 @@ Item {
                                                             spacing: vehicleStatusCard._sectionHeaderSpacing
                                                             visible: _isClusterPage
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 Layout.fillWidth: true
                                                                 color: vehicleStatusCard._textPrimaryColor
                                                                 font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -7154,7 +7141,7 @@ Item {
                                                                 color: openClusterMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (openClusterMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
                                                                 radius: vehicleStatusCard._controlRadius
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     id: openClusterLabel
 
                                                                     anchors.centerIn: parent
@@ -7211,7 +7198,7 @@ Item {
                                                                         spacing: ScreenTools.defaultFontPixelHeight * 0.02
                                                                         width: parent.width - ScreenTools.defaultFontPixelWidth * 0.3
 
-                                                                        QGCLabel {
+                                                                        QGCPixelLabel {
                                                                             Layout.alignment: Qt.AlignHCenter
                                                                             color: vehicleStatusCard._textPrimaryColor
                                                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
@@ -7219,7 +7206,7 @@ Item {
                                                                             text: modelData.value
                                                                         }
 
-                                                                        QGCLabel {
+                                                                        QGCPixelLabel {
                                                                             Layout.alignment: Qt.AlignHCenter
                                                                             color: vehicleStatusCard._textSecondaryColor
                                                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -7245,13 +7232,13 @@ Item {
                                                                 anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
                                                                 spacing: ScreenTools.defaultFontPixelWidth * 0.18
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     color: vehicleStatusCard._textSecondaryColor
                                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.54
                                                                     text: qsTr("当前")
                                                                 }
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     Layout.fillWidth: true
                                                                     color: vehicleStatusCard._textPrimaryColor
                                                                     elide: Text.ElideRight
@@ -7299,7 +7286,7 @@ Item {
                                                                         radius: Layout.preferredWidth * 0.5
                                                                     }
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         Layout.fillWidth: true
                                                                         color: vehicleStatusCard._textPrimaryColor
                                                                         elide: Text.ElideRight
@@ -7308,7 +7295,7 @@ Item {
                                                                         text: root._vehicleTitle(object)
                                                                     }
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         color: vehicleStatusCard._textSecondaryColor
                                                                         elide: Text.ElideRight
                                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
@@ -7367,7 +7354,7 @@ Item {
                                                                     opacity: _enabled ? 1 : 0.45
                                                                     radius: vehicleStatusCard._controlRadius
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         anchors.centerIn: parent
                                                                         color: vehicleStatusCard._textPrimaryColor
                                                                         elide: Text.ElideRight
@@ -7391,7 +7378,7 @@ Item {
                                                             }
                                                         }
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
                                                             elide: Text.ElideRight
@@ -7432,7 +7419,7 @@ Item {
                                                         Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
                                                         spacing: vehicleStatusCard._sectionHeaderSpacing
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: vehicleStatusCard._textPrimaryColor
                                                             font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -7449,7 +7436,7 @@ Item {
                                                             color: clusterOpenMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterOpenMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
                                                             radius: vehicleStatusCard._controlRadius
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 id: clusterOpenLabel
 
                                                                 anchors.centerIn: parent
@@ -7505,7 +7492,7 @@ Item {
                                                                     spacing: ScreenTools.defaultFontPixelHeight * 0.02
                                                                     width: parent.width - ScreenTools.defaultFontPixelWidth * 0.3
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         Layout.alignment: Qt.AlignHCenter
                                                                         color: vehicleStatusCard._textPrimaryColor
                                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
@@ -7513,7 +7500,7 @@ Item {
                                                                         text: modelData.value
                                                                     }
 
-                                                                    QGCLabel {
+                                                                    QGCPixelLabel {
                                                                         Layout.alignment: Qt.AlignHCenter
                                                                         color: vehicleStatusCard._textSecondaryColor
                                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -7538,13 +7525,13 @@ Item {
                                                             anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
                                                             spacing: ScreenTools.defaultFontPixelWidth * 0.18
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 color: vehicleStatusCard._textSecondaryColor
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.54
                                                                 text: qsTr("当前")
                                                             }
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 Layout.fillWidth: true
                                                                 color: vehicleStatusCard._textPrimaryColor
                                                                 elide: Text.ElideRight
@@ -7591,7 +7578,7 @@ Item {
                                                                     radius: Layout.preferredWidth * 0.5
                                                                 }
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     Layout.fillWidth: true
                                                                     color: vehicleStatusCard._textPrimaryColor
                                                                     elide: Text.ElideRight
@@ -7600,7 +7587,7 @@ Item {
                                                                     text: root._vehicleTitle(object)
                                                                 }
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     color: vehicleStatusCard._textSecondaryColor
                                                                     elide: Text.ElideRight
                                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
@@ -7658,7 +7645,7 @@ Item {
                                                                 opacity: _enabled ? 1 : 0.45
                                                                 radius: vehicleStatusCard._controlRadius
 
-                                                                QGCLabel {
+                                                                QGCPixelLabel {
                                                                     anchors.centerIn: parent
                                                                     color: vehicleStatusCard._textPrimaryColor
                                                                     elide: Text.ElideRight
@@ -7682,7 +7669,7 @@ Item {
                                                         }
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
                                                         elide: Text.ElideRight
@@ -7698,11 +7685,9 @@ Item {
                         }
 
                         Rectangle {
-                            anchors.bottom: parent.bottom
-                            anchors.left: parent.left
-                            anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 3.95
-                            anchors.right: parent.right
-                            anchors.top: parent.top
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            Layout.leftMargin: ScreenTools.defaultFontPixelWidth * 3.95
                             border.color: vehicleStatusCard._controlBorderColor
                             border.width: vehicleStatusCard._controlBorderWidth
                             clip: true
@@ -7722,7 +7707,7 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: vehicleStatusCard._sectionHeaderHeight
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         color: vehicleStatusCard._textPrimaryColor
                                         font.pixelSize: vehicleStatusCard._sectionHeaderTitleSize
@@ -7738,7 +7723,7 @@ Item {
                                         color: clusterCardOpenMouseArea.pressed ? vehicleStatusCard._highlightPressedColor : (clusterCardOpenMouseArea.containsMouse ? vehicleStatusCard._highlightHoverColor : vehicleStatusCard._highlightColor)
                                         radius: vehicleStatusCard._controlRadius
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             id: clusterCardOpenLabel
 
                                             anchors.centerIn: parent
@@ -7784,7 +7769,7 @@ Item {
                                                 anchors.centerIn: parent
                                                 spacing: 0
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.alignment: Qt.AlignHCenter
                                                     color: vehicleStatusCard._textPrimaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.78
@@ -7792,7 +7777,7 @@ Item {
                                                     text: modelData.value
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.alignment: Qt.AlignHCenter
                                                     color: vehicleStatusCard._textSecondaryColor
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -7811,7 +7796,7 @@ Item {
                                     color: vehicleStatusCard._fieldColor
                                     radius: vehicleStatusCard._controlRadius
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         anchors.fill: parent
                                         anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.34
                                         anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
@@ -7859,7 +7844,7 @@ Item {
                                                 radius: Layout.preferredWidth * 0.5
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 elide: Text.ElideRight
@@ -7868,7 +7853,7 @@ Item {
                                                 text: root._vehicleTitle(object)
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 color: vehicleStatusCard._textSecondaryColor
                                                 elide: Text.ElideRight
                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
@@ -7910,7 +7895,7 @@ Item {
                                             opacity: _enabled ? 1 : 0.45
                                             radius: vehicleStatusCard._controlRadius
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 anchors.centerIn: parent
                                                 color: vehicleStatusCard._textPrimaryColor
                                                 elide: Text.ElideRight
@@ -7934,7 +7919,7 @@ Item {
                                     }
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     color: clusterManager.lastCommandSuccess || clusterManager.lastAckSuccess ? "#65D4A7" : vehicleStatusCard._textSecondaryColor
                                     elide: Text.ElideRight
@@ -7978,6 +7963,7 @@ Item {
                             autoResumeVehicleTracking: false
                             mapName: "FlyIntegratedMap"
                             pipMode: false
+                            fullWindowItemDark: root._isFullWindowItemDark
                             planMasterController: planControllerInternal
                             rightPanelWidth: 0
                             showMissionPaths: root._showFlightPath && !root._missionPathSwitchSuppressed
@@ -8122,7 +8108,7 @@ Item {
                                                     "accent": false,
                                                     "requiresVehicle": true,
                                                     "slashed": false,
-                                                    "visible": guidedActionsController.showContinueMission
+                                                    "visible": root._startMissionEntryVisible
                                                 },
                                                 {
                                                     "key": "pause",
@@ -8194,7 +8180,7 @@ Item {
                                                 Layout.preferredHeight: visible ? (_isSeparator ? ScreenTools.defaultFontPixelHeight * 0.42 : (_isStartMission ? floatingMapStrip._buttonHeight * 1.08 : floatingMapStrip._buttonHeight)) : 0
                                                 border.color: _isStartMission ? Qt.rgba(1, 1, 1, 0.28) : "transparent"
                                                 border.width: _isStartMission ? 2 : 0
-                                                color: _isSeparator ? "transparent" : (_selected ? "#2F6FC7" : (_isStartMission ? (stripMouseArea.pressed ? "#9A3412" : "#EA580C") : (_isFlightMode ? (stripMouseArea.pressed ? "#1A1C1F" : "#121315") : (stripMouseArea.pressed ? "#1A1C1F" : "#121315"))))
+                                                color: _isSeparator ? "transparent" : (_selected ? "#2F6FC7" : (_isStartMission ? (stripActionMouseArea.pressed ? "#9A3412" : "#EA580C") : (_isFlightMode ? (stripActionMouseArea.pressed ? "#1A1C1F" : "#121315") : (stripActionMouseArea.pressed ? "#1A1C1F" : "#121315"))))
                                                 opacity: root._mapStripExpanded ? (_isSeparator ? 1 : (_enabled ? 1 : 0.42)) : 0
                                                 radius: ScreenTools.defaultFontPixelHeight * 0.18
                                                 visible: modelData.visible === undefined ? true : !!modelData.visible
@@ -8235,7 +8221,7 @@ Item {
                                                         width: parent.height * (_isStartMission ? 0.46 : 0.42)
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.centerIn: parent
                                                         color: "#FFFFFF"
                                                         font.bold: true
@@ -8251,7 +8237,7 @@ Item {
                                                         wrapMode: Text.Wrap
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.centerIn: parent
                                                         color: "#FFFFFF"
                                                         elide: Text.ElideRight
@@ -8268,7 +8254,7 @@ Item {
                                                         wrapMode: Text.Wrap
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.bottom: parent.bottom
                                                         anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.12
                                                         anchors.horizontalCenter: parent.horizontalCenter
@@ -8302,10 +8288,11 @@ Item {
                                                 }
 
                                                 QGCMouseArea {
-                                                    id: stripMouseArea
+                                                    id: stripActionMouseArea
 
                                                     anchors.fill: parent
                                                     enabled: root._mapStripExpanded && !parent._isSeparator
+                                                    preventStealing: true
 
                                                     onClicked: {
                                                         if (parent._enabled) {
@@ -8361,7 +8348,7 @@ Item {
                                     sourceSize.width: width
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillHeight: true
                                     Layout.fillWidth: true
                                     color: "#FFFFFF"
@@ -8373,7 +8360,7 @@ Item {
                                     verticalAlignment: Text.AlignVCenter
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     color: Qt.rgba(1, 1, 1, 0.78)
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
                                     text: root._activeVehicle ? qsTr("%1 条").arg(root._activeVehicle.messageCount) : ""
@@ -8452,13 +8439,13 @@ Item {
                                         radius: Layout.preferredWidth * 0.5
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         color: "#D7DBDF"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
                                         text: qsTr("状态")
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         color: root._compactReadinessColor(root._activeVehicle)
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
                                         font.weight: Font.DemiBold
@@ -8466,7 +8453,7 @@ Item {
                                     }
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     color: "#EEF1F4"
                                     elide: Text.ElideRight
@@ -8605,7 +8592,7 @@ Item {
                                 color: Qt.rgba(0.10, 0.10, 0.11, 0.98)
                                 height: trafficViewPanel._headerHeight
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     anchors.left: parent.left
                                     anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.72
                                     anchors.verticalCenter: parent.verticalCenter
@@ -8615,7 +8602,7 @@ Item {
                                     text: qsTr("交通视图")
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     anchors.right: parent.right
                                     anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.68
                                     anchors.verticalCenter: parent.verticalCenter
@@ -8694,7 +8681,7 @@ Item {
                                 }
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.bottom: parent.bottom
                                 anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                                 anchors.left: parent.left
@@ -8704,7 +8691,7 @@ Item {
                                 text: qsTr("范围 %1 km").arg((trafficViewPanel.displayRangeMeters / 1000).toFixed(1))
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.centerIn: parent
                                 anchors.verticalCenterOffset: ScreenTools.defaultFontPixelHeight * 0.18
                                 color: "#9CA3AF"
@@ -8734,8 +8721,11 @@ Item {
                             readonly property real _valueFontSize: Math.max(10, Math.min(ScreenTools.defaultFontPixelHeight * 0.74, width * 0.044))
                             property var _vehicle: root._activeVehicle
                             property var airSpeedFact: _vehicle ? _vehicle.airSpeed : null
-                            readonly property real airSpeedNeedleRotation: Math.max(-125, Math.min(125, (airSpeedValue / 20) * 250 - 125))
-                            readonly property real airSpeedValue: hasAirspeed ? Math.max(0, Number(airSpeedFact.rawValue)) : 0
+                            property var groundSpeedFact: _vehicle ? _vehicle.groundSpeed : null
+                            readonly property bool isFixedWingSpeed: !!(_vehicle && (_vehicle.fixedWing || (_vehicle.vtol && _vehicle.vtolInFwdFlight)))
+                            readonly property real speedValue: root._hasFactValue(speedFact) ? Math.max(0, Number(speedFact.rawValue)) : 0
+                            readonly property real speedNeedleRotation: Math.max(-125, Math.min(125, (speedValue / 20) * 250 - 125))
+                            readonly property string speedLabel: isFixedWingSpeed && hasAirspeed ? qsTr("空速") : qsTr("速度")
                             property var altitudeFact: _vehicle ? _vehicle.altitudeRelative : null
                             property var batteryFact: _activeBattery ? _activeBattery.percentRemaining : null
                             readonly property real climbRate: hasClimbRate ? Number(climbRateFact.rawValue) : 0
@@ -8746,6 +8736,7 @@ Item {
                             property var gpsSatelliteFact: gpsFactGroup ? gpsFactGroup.count : null
                             property var gpsVdopFact: gpsFactGroup ? gpsFactGroup.vdop : null
                             readonly property bool hasAirspeed: root._hasFactValue(airSpeedFact)
+                            readonly property var speedFact: isFixedWingSpeed && hasAirspeed ? airSpeedFact : groundSpeedFact
                             readonly property bool hasClimbRate: root._hasFactValue(climbRateFact)
                             property var headingFact: _vehicle ? _vehicle.heading : null
                             property var pitchFact: _vehicle ? _vehicle.pitch : null
@@ -8774,7 +8765,7 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.35
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         color: "#ECECEC"
                                         elide: Text.ElideRight
                                         font.pixelSize: instrumentPanel._headerFontSize
@@ -8812,7 +8803,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._columnSpacing * 0.9
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -8821,7 +8812,7 @@ Item {
                                                 text: qsTr("飞行时间")
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 color: "#EFEFEF"
                                                 font.pixelSize: instrumentPanel._valueFontSize
                                                 font.weight: Font.DemiBold
@@ -8843,7 +8834,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._columnSpacing * 0.75
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -8860,7 +8851,7 @@ Item {
                                                 source: root._batteryIcon(root._batteryPercentForVehicle(instrumentPanel._vehicle))
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 color: root._hasFactValue(instrumentPanel.batteryFact) ? (Number(instrumentPanel.batteryFact.rawValue) <= 20 ? "#E35F63" : (Number(instrumentPanel.batteryFact.rawValue) <= 40 ? "#D0B34D" : "#2DC46D")) : "#E0E0E0"
                                                 font.pixelSize: instrumentPanel._valueFontSize
                                                 font.weight: Font.DemiBold
@@ -8888,7 +8879,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -8925,7 +8916,7 @@ Item {
                                                     height: ScreenTools.defaultFontPixelHeight * 1.15
                                                     spacing: instrumentPanel._columnSpacing * 0.6
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         Layout.minimumWidth: 0
                                                         color: "#F1F1F1"
@@ -8937,7 +8928,7 @@ Item {
                                                         verticalAlignment: Text.AlignVCenter
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         Layout.minimumWidth: 0
                                                         color: "#F1F1F1"
@@ -8965,7 +8956,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -8994,7 +8985,7 @@ Item {
                                                     }
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     id: integratedHeadingValueLabel
 
                                                     anchors.bottom: parent.bottom
@@ -9032,7 +9023,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -9058,7 +9049,7 @@ Item {
                                                     width: Math.min(parent.width, parent.height) * 0.86
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     anchors.centerIn: altitudeDial
                                                     color: "#F1F1F1"
                                                     font.pixelSize: instrumentPanel._dialValueFontSize
@@ -9087,13 +9078,13 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
                                                 elide: Text.ElideRight
                                                 font.pixelSize: instrumentPanel._labelFontSize
-                                                text: qsTr("空速")
+                                                text: instrumentPanel.speedLabel
                                             }
 
                                             Item {
@@ -9146,7 +9137,7 @@ Item {
                                                     color: "#E7E7E7"
                                                     height: Math.max(2, ScreenTools.defaultFontPixelWidth / 3)
                                                     radius: height / 2
-                                                    rotation: instrumentPanel.airSpeedNeedleRotation
+                                                    rotation: instrumentPanel.speedNeedleRotation
                                                     transformOrigin: Item.Left
                                                     width: airSpeedDial.width * 0.33
                                                     x: airSpeedDial.x + (airSpeedDial.width / 2)
@@ -9161,7 +9152,7 @@ Item {
                                                     width: ScreenTools.defaultFontPixelWidth
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     anchors.centerIn: airSpeedDial
                                                     color: "#F1F1F1"
                                                     font.pixelSize: instrumentPanel._dialValueFontSize
@@ -9170,7 +9161,7 @@ Item {
                                                     height: airSpeedDial.height * 0.3
                                                     horizontalAlignment: Text.AlignHCenter
                                                     minimumPixelSize: 8
-                                                    text: root._formatFactValue(instrumentPanel.airSpeedFact, true, "--")
+                                                    text: root._formatFactValue(instrumentPanel.speedFact, true, "--")
                                                     verticalAlignment: Text.AlignVCenter
                                                     width: airSpeedDial.width * 0.76
                                                 }
@@ -9198,7 +9189,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -9218,7 +9209,7 @@ Item {
                                                     Layout.fillHeight: true
                                                     spacing: instrumentPanel._columnSpacing * 0.8
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: "#F1F1F1"
                                                         font.pixelSize: instrumentPanel._dialValueFontSize * 1.35
                                                         font.weight: Font.DemiBold
@@ -9229,7 +9220,7 @@ Item {
                                                         verticalAlignment: Text.AlignVCenter
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: "#D8D9DA"
                                                         font.pixelSize: instrumentPanel._labelFontSize
                                                         text: qsTr("星数")
@@ -9243,13 +9234,13 @@ Item {
                                                     columns: 2
                                                     rowSpacing: instrumentPanel._rowSpacing
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: "#D8D9DA"
                                                         font.pixelSize: instrumentPanel._labelFontSize
                                                         text: qsTr("HDOP")
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.alignment: Qt.AlignRight
                                                         color: "#F1F1F1"
                                                         font.pixelSize: instrumentPanel._dialValueFontSize * 0.82
@@ -9257,13 +9248,13 @@ Item {
                                                         text: root._formatFactValue(instrumentPanel.gpsHdopFact, false, "--")
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: "#D8D9DA"
                                                         font.pixelSize: instrumentPanel._labelFontSize
                                                         text: qsTr("VDOP")
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.alignment: Qt.AlignRight
                                                         color: "#F1F1F1"
                                                         font.pixelSize: instrumentPanel._dialValueFontSize * 0.82
@@ -9289,7 +9280,7 @@ Item {
                                             anchors.margins: instrumentPanel._cardMargin
                                             spacing: instrumentPanel._dialTitleSpacing
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.minimumWidth: 0
                                                 color: "#D8D9DA"
@@ -9334,7 +9325,7 @@ Item {
                                                     width: ScreenTools.defaultFontPixelWidth
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     anchors.centerIn: verticalSpeedDial
                                                     color: "#F1F1F1"
                                                     font.pixelSize: instrumentPanel._dialValueFontSize * 0.92
@@ -9362,8 +9353,10 @@ Item {
                             anchors.topMargin: root._margin
                             guidedController: guidedActionsController
                             guidedValueSlider: guidedValueSlider
-                            height: ScreenTools.toolbarHeight
+                            height: implicitHeight
                             messageDisplay: guidedMessageDisplay
+                            registerWithController: !root._useExternalGuidedActionConfirm
+                            z: QGroundControl.zOrderTopMost + 10
                         }
 
                         Rectangle {
@@ -9376,8 +9369,9 @@ Item {
                             height: guidedMessageLabel.contentHeight + (root._margin * 1.2)
                             opacity: 0.9
                             radius: ScreenTools.defaultFontPixelHeight * 0.28
-                            visible: guidedConfirm.visible
+                            visible: false
                             width: guidedMessageLabel.contentWidth + (root._margin * 2)
+                            z: guidedConfirm.z
 
                             QGCLabel {
                                 id: guidedMessageLabel
@@ -9436,14 +9430,20 @@ Item {
                                 Rectangle {
                                     color: qgcPal.window
 
-                                    QGCColoredImage {
+                                    QGCLabel {
                                         anchors.centerIn: parent
-                                        color: "#FFFFFF"
-                                        fillMode: Image.PreserveAspectFit
-                                        height: width
-                                        source: "/InstrumentValueIcons/drone.svg"
-                                        width: ScreenTools.defaultFontPixelHeight * 2.4
+                                        color: qgcPal.text
+                                        font.bold: true
+                                        font.pointSize: ScreenTools.smallFontPointSize
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: !QGroundControl.settingsManager.videoSettings.streamEnabled.rawValue ||
+                                              QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
+                                              ? qsTr("视频已关闭")
+                                              : qsTr("视频源未配置")
+                                        wrapMode: Text.WordWrap
+                                        width: parent.width - ScreenTools.defaultFontPixelWidth * 2
                                     }
+
                                 }
                             }
 
@@ -9536,7 +9536,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.4
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     color: "#F8FAFC"
                                     font.bold: true
@@ -9567,7 +9567,7 @@ Item {
                                 }
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 color: "#E5E7EB"
                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
@@ -9615,7 +9615,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: ScreenTools.defaultFontPixelWidth * 0.38
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         color: "#F8FAFC"
                                         font.bold: true
@@ -9646,7 +9646,7 @@ Item {
                                     }
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     color: "#E5E7EB"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.7
@@ -9710,7 +9710,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 0
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         color: "#F5FBFC"
                                         elide: Text.ElideRight
@@ -9719,7 +9719,7 @@ Item {
                                         text: root._mapPrimaryActionDialogTitle()
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         color: "#8FB0B8"
                                         elide: Text.ElideRight
@@ -9786,7 +9786,7 @@ Item {
                                             anchors.margins: ScreenTools.defaultFontPixelHeight * 0.14
                                             spacing: 0
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: "#7E9AA4"
                                                 elide: Text.ElideRight
@@ -9795,7 +9795,7 @@ Item {
                                                 text: modelData.label
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 color: "#E7F7F9"
                                                 elide: Text.ElideRight
@@ -9813,7 +9813,7 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.32
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     color: "#8FB0B8"
                                     elide: Text.ElideRight
@@ -9821,7 +9821,7 @@ Item {
                                     text: qsTr("距离 %1").arg(root._startMissionDistanceText())
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     color: "#CBE5EA"
                                     elide: Text.ElideRight
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
@@ -9851,7 +9851,7 @@ Item {
                                     width: parent.width * startMissionHoldButton.holdProgress
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     anchors.centerIn: parent
                                     color: "#EFFFFC"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.66
@@ -10130,7 +10130,7 @@ Item {
                                                 width: parent.width * 0.4
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 anchors.bottom: parent.bottom
                                                 anchors.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.18
                                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -10220,7 +10220,7 @@ Item {
                                                     source: modelData.icon
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     color: "#E6E6E6"
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
                                                     text: modelData.text
@@ -10241,7 +10241,7 @@ Item {
                                         color: "#202020"
                                         radius: ScreenTools.defaultFontPixelHeight * 0.08
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             anchors.centerIn: parent
                                             color: "#D9D9D9"
                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.62
@@ -10351,7 +10351,7 @@ Item {
                                                             Layout.fillHeight: true
                                                             Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.82
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 anchors.centerIn: parent
                                                                 color: "#D7E6FF"
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.5
@@ -10373,7 +10373,7 @@ Item {
                                                             source: "/InstrumentValueIcons/drone.svg"
                                                         }
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: "#F4F9FF"
                                                             elide: Text.ElideRight
@@ -10401,7 +10401,7 @@ Item {
                                                             Layout.fillHeight: true
                                                             Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.74
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 anchors.centerIn: parent
                                                                 color: "#D4D4D4"
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -10423,7 +10423,7 @@ Item {
                                                             source: "/InstrumentValueIcons/map.svg"
                                                         }
 
-                                                        QGCLabel {
+                                                        QGCPixelLabel {
                                                             Layout.fillWidth: true
                                                             color: "#E1E1E1"
                                                             elide: Text.ElideRight
@@ -10477,7 +10477,7 @@ Item {
                                                             anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
                                                             spacing: ScreenTools.defaultFontPixelWidth * 0.22
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 color: "#B7B7B7"
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.42
                                                                 text: "\u25B8"
@@ -10491,7 +10491,7 @@ Item {
                                                                 source: "/InstrumentValueIcons/drone.svg"
                                                             }
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 Layout.fillWidth: true
                                                                 color: _current ? "#F6F8FB" : "#D1D5DB"
                                                                 elide: Text.ElideRight
@@ -10499,7 +10499,7 @@ Item {
                                                                 text: modelData.label
                                                             }
 
-                                                            QGCLabel {
+                                                            QGCPixelLabel {
                                                                 color: "#8F98A3"
                                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
                                                                 text: root._formatProfileAltitude(modelData.altitude)
@@ -10747,7 +10747,7 @@ Item {
                                             y: profileChart.plotTop - (height * 0.8)
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             color: "#71757B"
                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
                                             text: root._formatReplayTime(profileChart.elapsedSeconds)
@@ -10758,7 +10758,7 @@ Item {
                                         Repeater {
                                             model: 4
 
-                                            delegate: QGCLabel {
+                                            delegate: QGCPixelLabel {
                                                 required property int index
 
                                                 color: "#696E74"
@@ -10772,7 +10772,7 @@ Item {
                                         Repeater {
                                             model: 4
 
-                                            delegate: QGCLabel {
+                                            delegate: QGCPixelLabel {
                                                 readonly property real altitudeValue: Number(profileChart.stats.maxAlt) - ((Number(profileChart.stats.maxAlt) - Number(profileChart.stats.minAlt)) * index / 3)
                                                 required property int index
 
@@ -10817,7 +10817,7 @@ Item {
                                                     width: parent.width + (ScreenTools.defaultFontPixelHeight * 0.75)
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     anchors.centerIn: parent
                                                     color: "#FFFFFF"
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.55
@@ -10873,7 +10873,7 @@ Item {
                                         Repeater {
                                             model: 6
 
-                                            delegate: QGCLabel {
+                                            delegate: QGCPixelLabel {
                                                 required property int index
 
                                                 anchors.bottom: parent.bottom

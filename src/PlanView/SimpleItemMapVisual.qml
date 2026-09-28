@@ -166,7 +166,7 @@ Item {
 
         MapQuickItem {
             id:                               loiterMapQuickItem
-            coordinate:                       QGroundControl.mapDisplayCoordinate(_root._missionItem.coordinate)
+            coordinate:                       QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_root._missionItem.coordinate)
             visible:                          _root.interactive && _missionItem.isSimpleItem && _missionItem.showLoiterRadius
 
             property alias blockSignals:      loiterMapCircleVisuals.blockSignals

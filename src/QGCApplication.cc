@@ -272,10 +272,9 @@ bool QGCApplication::_initVideo()
         QOpenGLContext testCtx;
         if (testCtx.create()) {
 #if defined(Q_OS_LINUX)
-            qCDebug(QGCApplicationLog) << "OpenGL is available; keeping Qt default RHI graphics API for Qt Quick 3D views.";
-#else
-            QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+            (void) qputenv("QSG_RHI_BACKEND", "opengl");
 #endif
+            QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
         } else {
             qCWarning(QGCApplicationLog) << "OpenGL not available; GStreamer video will be disabled."
                                          << "Using default graphics API (Metal/Vulkan).";
@@ -440,8 +439,7 @@ void QGCApplication::showAppMessage(const QString &message, const QString &title
         QMetaObject::invokeMethod(rootQmlObject, "_showMessageDialog", Q_RETURN_ARG(QVariant, varReturn), Q_ARG(QVariant, dialogTitle), Q_ARG(QVariant, varMessage));
     } else if (runningUnitTests()) {
         // Unit tests can run without UI
-        // We don't use a logging category to make it easier to debug unit tests
-        qDebug() << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << message;
+        qCDebug(QGCApplicationLog) << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << message;
     } else {
         // UI isn't ready yet
         _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));

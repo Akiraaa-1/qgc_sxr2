@@ -5,7 +5,6 @@
 #include "PlanViewSettings.h"
 #include "PlanMasterController.h"
 #include "MissionSettingsItem.h"
-#include "MultiVehicleManager.h"
 #include "Vehicle.h"
 
 TakeoffMissionItem::TakeoffMissionItem(PlanMasterController* masterController, bool flyView, MissionSettingsItem* settingsItem, bool forLoad)
@@ -48,9 +47,12 @@ void TakeoffMissionItem::_init(bool forLoad)
 
     QGeoCoordinate homePosition = _settingsItem->coordinate();
     if (!homePosition.isValid()) {
-        Vehicle* activeVehicle = MultiVehicleManager::instance()->activeVehicle();
-        if (activeVehicle) {
-            homePosition = activeVehicle->homePosition();
+        Vehicle* planVehicle = _masterController->boundVehicle();
+        if (!planVehicle && !_masterController->managerVehicle()->isOfflineEditingVehicle()) {
+            planVehicle = _masterController->managerVehicle();
+        }
+        if (planVehicle) {
+            homePosition = planVehicle->homePosition();
             if (homePosition.isValid()) {
                 _settingsItem->setCoordinate(homePosition);
             }

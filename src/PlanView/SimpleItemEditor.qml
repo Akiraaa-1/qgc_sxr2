@@ -64,7 +64,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
                 color: theme.secondaryTextColor
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
+                font.pointSize: ScreenTools.defaultFontPointSize * root.uiScale
             }
 
             QGCLabel {
@@ -73,7 +73,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: !initialClickLabel.visible
                 color: theme.secondaryTextColor
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
+                font.pointSize: ScreenTools.defaultFontPointSize * root.uiScale
             }
 
             PlanButton {
@@ -94,7 +94,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 visible: missionItem.isTakeoffItem && !missionItem.launchCoordinate.isValid
                 color: theme.secondaryTextColor
-                font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
+                font.pointSize: ScreenTools.defaultFontPointSize * root.uiScale
             }
         }
 
@@ -169,7 +169,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: qsTr("高度框架")
                             color: theme.secondaryTextColor
-                            font.pixelSize: ScreenTools.defaultFontPixelHeight * root.uiScale
+                            font.pointSize: ScreenTools.defaultFontPointSize * root.uiScale
                         }
 
                         AltFrameCombo {
@@ -257,7 +257,7 @@ Rectangle {
 
                 PlanFactTextFieldSlider {
                     Layout.fillWidth: true
-                    label: qsTr("飞行速度")
+                    label: qsTr("后续飞行速度")
                     fact: missionItem.speedSection.flightSpeed
                     showEnableCheckbox: true
                     enableCheckBoxChecked: missionItem.speedSection.specifyFlightSpeed

@@ -39,8 +39,7 @@
                 "decimalPlaces":    0,
                 "min":              0,
                 "userMin":          0,
-                "userMax":          600,
-                "advanced":        true
+                "userMax":          600
             },
             "param2": {
                 "label":            "Acceptance",
@@ -64,8 +63,7 @@
                 "default":          null,
                 "decimalPlaces":    1,
                 "userMin":          -180,
-                "userMax":          180,
-                "advanced":        true
+                "userMax":          180
             }
         },
         {

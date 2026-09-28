@@ -33,19 +33,19 @@ MAVLinkConsoleController::~MAVLinkConsoleController()
 
 void MAVLinkConsoleController::sendCommand(const QString &command)
 {
-    if (!_vehicle) {
-        return;
-    }
-
-    QString output = command;
-
     // there might be multiple commands, add them separately to the history
-    const QStringList lines = output.split('\n');
+    const QStringList lines = command.split('\n');
     for (const QString &line : lines) {
         if (!line.isEmpty()) {
             _history.append(line);
         }
     }
+
+    if (!_vehicle) {
+        return;
+    }
+
+    QString output = command;
 
     (void) output.append("\n");
     _sendSerialData(qPrintable(output));

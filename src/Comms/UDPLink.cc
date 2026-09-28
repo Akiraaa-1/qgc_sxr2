@@ -520,7 +520,7 @@ UDPLink::~UDPLink()
 
 bool UDPLink::isConnected() const
 {
-    return _worker && _worker->isConnected();
+    return _isConnected.load();
 }
 
 bool UDPLink::_connect()
@@ -537,12 +537,14 @@ void UDPLink::disconnect()
 
 void UDPLink::_onConnected()
 {
+    _isConnected.store(true);
     _disconnectedEmitted = false;
     emit connected();
 }
 
 void UDPLink::_onDisconnected()
 {
+    _isConnected.store(false);
     if (!_disconnectedEmitted.exchange(true)) {
         emit disconnected();
     }

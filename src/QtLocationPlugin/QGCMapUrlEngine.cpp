@@ -154,8 +154,7 @@ QGCTileSet UrlFactory::getTileCount(int zoom, double topleftLon, double topleftL
 {
     const SharedMapProvider provider = getMapProviderFromProviderType(mapType);
     if (provider) {
-        // TODO: zoom = qBound(QGeoCameraCapabilities.minimumZoomLevel(), zoom, QGeoCameraCapabilities.maximumZoomLevel());
-        zoom = qBound(1, zoom, QGC_MAX_MAP_ZOOM);
+        zoom = qBound(1, zoom, provider->maximumZoomLevel());
         return provider->getTileCount(zoom, topleftLon, topleftLat, bottomRightLon, bottomRightLat);
     }
 

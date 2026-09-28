@@ -8,7 +8,6 @@
 #include "AppSettings.h"
 #include "PlanMasterController.h"
 #include "SpeedSection.h"
-#include "MultiVehicleManager.h"
 #include "CameraSection.h"
 #include "Vehicle.h"
 #include "QGC.h"
@@ -506,7 +505,10 @@ void SimpleMissionItem::_rebuildNaNFacts(void)
                 if (showUI && paramInfo && paramInfo->nanUnchanged()) {
                     // Show hide Heading field on waypoint based on vehicle yaw to next waypoint setting. This needs to come from the actual vehicle if it exists
                     // and not _controllerVehicle which is always offline.
-                    Vehicle* firmwareVehicle = MultiVehicleManager::instance()->activeVehicle();
+                    Vehicle* firmwareVehicle = _masterController->boundVehicle();
+                    if (!firmwareVehicle && !_masterController->managerVehicle()->isOfflineEditingVehicle()) {
+                        firmwareVehicle = _masterController->managerVehicle();
+                    }
                     if (!firmwareVehicle) {
                         firmwareVehicle = _controllerVehicle;
                     }

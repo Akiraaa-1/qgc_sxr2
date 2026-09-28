@@ -77,6 +77,7 @@ Rectangle {
     /// Get the section name for a sidebar entry.
     function _sectionName(compIndex, sectionIndex) {
         if (sectionIndex < 0 || !_fullParameterVehicleAvailable) return ""
+        if (!_activeVehicle || !_activeVehicle.autopilotPlugin) return ""
         var components = _activeVehicle.autopilotPlugin.vehicleComponents
         if (compIndex < 0 || compIndex >= components.length) return ""
         var secs = components[compIndex].sections
@@ -289,6 +290,20 @@ Rectangle {
         ignoreUnknownSignals: true
 
         function onCountChanged() {
+            if (QGroundControl.multiVehicleManager.vehicles.count === 0 && vehicleConfigView._hadConnectedVehicle) {
+                returnToMenuAfterDisconnectTimer.restart()
+            } else {
+                returnToMenuAfterDisconnectTimer.stop()
+            }
+        }
+    }
+
+    Timer {
+        id: returnToMenuAfterDisconnectTimer
+        interval: 1500
+        repeat: false
+
+        onTriggered: {
             if (QGroundControl.multiVehicleManager.vehicles.count === 0 && vehicleConfigView._hadConnectedVehicle) {
                 vehicleConfigView._showMenuPanel()
             }
@@ -581,7 +596,7 @@ Rectangle {
                     // Vehicle component tree
                     Repeater {
                         id:     componentRepeater
-                        model:  _fullParameterVehicleAvailable ? _activeVehicle.autopilotPlugin.vehicleComponents : 0
+                        model:  _fullParameterVehicleAvailable && _activeVehicle && _activeVehicle.autopilotPlugin ? _activeVehicle.autopilotPlugin.vehicleComponents : 0
 
                         ColumnLayout {
                             id:             compColumn

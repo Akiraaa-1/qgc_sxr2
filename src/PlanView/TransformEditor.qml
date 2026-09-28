@@ -10,6 +10,7 @@ Rectangle {
     id: _root
 
     required property var missionController
+    required property var planMasterController
 
     property real uiScale: 1.0
 
@@ -24,11 +25,17 @@ Rectangle {
     property real _textFieldWidth: ScreenTools.defaultFontPixelWidth * 20 * uiScale
     property real _labelWidth:     ScreenTools.defaultFontPixelWidth * 14 * uiScale
     property bool _hasHome:        missionController ? missionController.plannedHomePosition.isValid : false
+    property var  _planVehicle:    planMasterController.boundVehicle
+                                      ? planMasterController.boundVehicle
+                                      : (planMasterController.managerVehicle && !planMasterController.managerVehicle.isOfflineEditingVehicle
+                                         ? planMasterController.managerVehicle
+                                         : null)
 
     PlanEditorTheme { id: theme }
 
     TransformPositionController {
         id: positionController
+        vehicle: _root._planVehicle
         Component.onCompleted: {
             if (_hasHome) {
                 coordinate = _root.missionController.plannedHomePosition
@@ -168,7 +175,7 @@ Rectangle {
                 PlanComboBox {
                     id:               coordinateSystemCombo
                     Layout.fillWidth: true
-                    model:            globals.activeVehicle
+                    model:            _root._planVehicle
                                       ? [ qsTr("Geographic"), qsTr("Universal Transverse Mercator"), qsTr("Military Grid Reference"), qsTr("Vehicle Position") ]
                                       : [ qsTr("Geographic"), qsTr("Universal Transverse Mercator"), qsTr("Military Grid Reference") ]
                 }
@@ -272,7 +279,7 @@ Rectangle {
             PlanButton {
                 Layout.alignment: Qt.AlignHCenter
                 text:             qsTr("Move to Vehicle Position")
-                enabled:          _hasHome
+                enabled:          _hasHome && _root._planVehicle
                 visible:          repositionContent._showVehicle
                 onClicked: {
                     positionController.setFromVehicle()

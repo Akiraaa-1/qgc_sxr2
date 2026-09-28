@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QtCore/QFuture>
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QPromise>
+#include <QtCore/QPointer>
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtQmlIntegration/QtQmlIntegration>
@@ -13,6 +15,7 @@
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
+class QQuickItem;
 class SubtitleWriter;
 class Vehicle;
 class VideoReceiver;
@@ -59,6 +62,7 @@ public:
     Q_INVOKABLE void startVideo();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
+    Q_INVOKABLE void setVideoSinkTarget(const QString &name, QQuickItem *item);
 
     void init(QQuickWindow *mainWindow);
     void startGStreamerInit();
@@ -122,6 +126,9 @@ private:
     void _onGstInitComplete(bool success);
     void _createVideoReceivers();
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
+    QQuickItem *_findReceiverWidget(const QString &name) const;
+    bool _ensureReceiverSink(VideoReceiver *receiver);
+    void _scheduleReceiverStartWhenVideoItemReady(VideoReceiver *receiver);
     bool _updateAutoStream(VideoReceiver *receiver);
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
@@ -130,9 +137,13 @@ private:
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
     void _stopReceiver(VideoReceiver *receiver);
+    void _blockReceiverRestart(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 
     QList<VideoReceiver*> _videoReceivers;
+    QList<VideoReceiver*> _pendingVideoItemReceivers;
+    QList<VideoReceiver*> _restartBlockedReceivers;
+    QHash<QString, QPointer<QQuickItem>> _preferredVideoWidgets;
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
     QQuickWindow *_mainWindow = nullptr;

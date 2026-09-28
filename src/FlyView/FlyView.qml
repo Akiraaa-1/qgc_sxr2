@@ -77,6 +77,7 @@ Item {
             rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
             pipView:                _pipView
             pipMode:                !_mainWindowIsMap
+            fullWindowItemDark:     _isFullWindowItemDark
             toolInsets:             customOverlay.totalToolInsets
             mapName:                "FlightDisplayView"
             enabled:                !_is3DMode

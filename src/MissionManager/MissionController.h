@@ -81,6 +81,13 @@ public:
     Q_PROPERTY(double               missionCruiseTime               READ missionCruiseTime              NOTIFY missionCruiseTimeChanged)
     Q_PROPERTY(double               missionMaxTelemetry             READ missionMaxTelemetry            NOTIFY missionMaxTelemetryChanged)
     Q_PROPERTY(double               missionBatteryPercentRemaining  READ missionBatteryPercentRemaining NOTIFY missionBatteryPercentRemainingChanged)
+    Q_PROPERTY(bool                 missionLoopAvailable            READ missionLoopAvailable           NOTIFY missionLoopChanged)
+    Q_PROPERTY(bool                 missionLoopEnabled              READ missionLoopEnabled             WRITE setMissionLoopEnabled NOTIFY missionLoopChanged)
+    Q_PROPERTY(bool                 missionLoopConflict             READ missionLoopConflict            NOTIFY missionLoopChanged)
+    Q_PROPERTY(int                  missionLoopRepeatCount          READ missionLoopRepeatCount         WRITE setMissionLoopRepeatCount NOTIFY missionLoopChanged)
+    Q_PROPERTY(double               missionLoopTotalDistance        READ missionLoopTotalDistance       NOTIFY missionLoopChanged)
+    Q_PROPERTY(double               missionLoopTotalTime            READ missionLoopTotalTime           NOTIFY missionLoopChanged)
+    Q_PROPERTY(QString              missionLoopStatusText           READ missionLoopStatusText          NOTIFY missionLoopChanged)
     Q_PROPERTY(int                  batteryChangePoint              READ batteryChangePoint             NOTIFY batteryChangePointChanged)
     Q_PROPERTY(int                  batteriesRequired               READ batteriesRequired              NOTIFY batteriesRequiredChanged)
     Q_PROPERTY(QGCGeoBoundingCube*  travelBoundingCube              READ travelBoundingCube             NOTIFY missionBoundingCubeChanged)
@@ -97,6 +104,7 @@ public:
     Q_PROPERTY(bool                 flyThroughCommandsAllowed       MEMBER _flyThroughCommandsAllowed   NOTIFY planViewStateChanged)
     Q_PROPERTY(double               minAMSLAltitude                 MEMBER _minAMSLAltitude             NOTIFY minAMSLAltitudeChanged)          ///< Minimum altitude associated with this mission. Used to calculate percentages for terrain status.
     Q_PROPERTY(double               maxAMSLAltitude                 MEMBER _maxAMSLAltitude             NOTIFY maxAMSLAltitudeChanged)          ///< Maximum altitude associated with this mission. Used to calculate percentages for terrain status.
+    Q_PROPERTY(QString              sendToVehiclePreCheckFailureMessage READ sendToVehiclePreCheckFailureMessage NOTIFY sendToVehiclePreCheckFailureMessageChanged)
 
     Q_PROPERTY(QGroundControlQmlGlobal::AltitudeFrame globalAltitudeFrame         READ globalAltitudeFrame         WRITE setGlobalAltitudeFrame NOTIFY globalAltitudeFrameChanged)
     Q_PROPERTY(QGroundControlQmlGlobal::AltitudeFrame globalAltitudeFrameDefault  READ globalAltitudeFrameDefault  NOTIFY globalAltitudeFrameChanged)                               ///< Default to use for newly created items
@@ -220,10 +228,12 @@ public:
         SendToVehiclePreCheckStateNoActiveVehicle,          // There is no active vehicle
         SendToVehiclePreCheckStateFirwmareVehicleMismatch,  // Firmware/Vehicle type for plan mismatch with actual vehicle
         SendToVehiclePreCheckStateActiveMission,            // Vehicle is currently flying a mission
+        SendToVehiclePreCheckStateMissionTooTight,          // Consecutive mission waypoints are too close to execute reliably
+        SendToVehiclePreCheckStateMissionLoopConflict,      // Mission has unsupported/ambiguous loop commands
     };
     Q_ENUM(SendToVehiclePreCheckState)
 
-    Q_INVOKABLE SendToVehiclePreCheckState sendToVehiclePreCheck(void);
+    Q_INVOKABLE SendToVehiclePreCheckState sendToVehiclePreCheck(bool allowFirmwareVehicleMismatch = false);
 
     /// Determines if the mission has all data needed to be saved or sent to the vehicle.
     /// IMPORTANT NOTE: The return value is a VisualMissionItem::ReadForSaveState value. It is an int here to work around
@@ -280,6 +290,7 @@ public:
     bool                multipleLandPatternsAllowed (void) const;
     double              minAMSLAltitude             (void) const { return _minAMSLAltitude; }
     double              maxAMSLAltitude             (void) const { return _maxAMSLAltitude; }
+    QString             sendToVehiclePreCheckFailureMessage(void) const { return _sendToVehiclePreCheckFailureMessage; }
 
     int currentMissionIndex         (void) const;
     int resumeMissionIndex          (void) const;
@@ -310,6 +321,15 @@ public:
 
     bool isFirstLandingComplexItem  (const LandingComplexItem* item) const;
     bool isEmpty                    (void) const;
+    bool missionLoopAvailable       (void) const;
+    bool missionLoopEnabled         (void) const;
+    bool missionLoopConflict        (void) const;
+    int  missionLoopRepeatCount     (void) const;
+    void setMissionLoopEnabled      (bool enabled);
+    void setMissionLoopRepeatCount  (int repeatCount);
+    double missionLoopTotalDistance (void) const;
+    double missionLoopTotalTime     (void) const;
+    QString missionLoopStatusText   (void) const;
 
     QGroundControlQmlGlobal::AltitudeFrame globalAltitudeFrame(void);
     QGroundControlQmlGlobal::AltitudeFrame globalAltitudeFrameDefault(void);
@@ -357,6 +377,8 @@ signals:
     void _recalcMissionFlightStatusSignal   (void);
     void _recalcFlightPathSegmentsSignal    (void);
     void globalAltitudeFrameChanged          (void);
+    void sendToVehiclePreCheckFailureMessageChanged(void);
+    void missionLoopChanged                  (void);
 
 private slots:
     void _newMissionItemsAvailableFromVehicle   (bool removeAllRequested);
@@ -412,6 +434,16 @@ private:
     FlightPathSegment*      _createFlightPathSegmentWorker      (VisualItemPair& pair, bool mavlinkTerrainFrame);
     void                    _allItemsRemoved                    (void);
     void                    _firstItemAdded                     (void);
+    bool                    _checkMissionSpacingForUpload       (QString& failureMessage);
+    bool                    _checkMissionLoopForUpload          (QString& failureMessage) const;
+    double                  _missionWaypointAcceptanceRadiusMeters(QString& radiusSource) const;
+    void                    _setSendToVehiclePreCheckFailureMessage(const QString& message);
+    int                     _missionLoopTargetVIIndex           (void) const;
+    int                     _missionLoopItemVIIndex             (void) const;
+    int                     _missionLoopTerminalItemVIIndex     (void) const;
+    bool                    _missionLoopHasConflict             (void) const;
+    void                    _syncMissionLoopTargetSequence      (void);
+    void                    _updateMissionLoopItem              (bool enabled, int repeatCount);
 
     static double           _normalizeLat                       (double lat);
     static double           _normalizeLon                       (double lon);
@@ -472,6 +504,7 @@ private:
     double                      _minAMSLAltitude =              0;
     double                      _maxAMSLAltitude =              0;
     bool                        _missionContainsVTOLTakeoff =   false;
+    QString                     _sendToVehiclePreCheckFailureMessage;
 
     QGroundControlQmlGlobal::AltitudeFrame _globalAltFrame = QGroundControlQmlGlobal::AltitudeFrameRelative;
 

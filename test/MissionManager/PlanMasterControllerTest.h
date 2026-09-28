@@ -25,6 +25,9 @@ private slots:
     void _testSaveWithCurrentNameNoFile();
     void _testResolvedPlanFileExists();
     void _testFileNamesClearedOnRemoveAll();
+    void _testMissionClearFromVehiclePreservesPlanFile();
+    void _testFlyControllerRefreshesAfterMissionClear();
+    void _testPassiveControllerIgnoresUploadFailure();
     void _testFileNamesClearedOnRemoveAllFromVehicle();
     void _testSaveUpdatesOriginalFileName();
 

@@ -1905,13 +1905,33 @@ Item {
 
             QGCTextField {
                 id:                     searchText
-                Layout.preferredWidth:  Math.min(editorCard.width * 0.42, ScreenTools.defaultFontPixelWidth * 30)
-                placeholderText:        qsTr("搜索")
+                Layout.preferredWidth:  Math.min(editorCard.width * 0.52, ScreenTools.defaultFontPixelWidth * 38)
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.6
+                placeholderText:        qsTr("搜索参数名称或说明")
+                placeholderTextColor:   popupStyle.secondaryTextColor
+                useExplicitPopupColors: true
+                backgroundColor:        activeFocus || text.trim() !== "" ? popupStyle.hoverColor(popupStyle.inputBackground) : popupStyle.inputBackground
+                borderColor:            text.trim() !== "" ? popupStyle.accentColor : popupStyle.secondaryTextColor
+                focusBorderColor:       popupStyle.accentColor
+                focusGlowColor:         popupStyle.accentColor
+                borderRadius:           popupStyle.cornerRadius
+                borderWidth:            1
+                focusBorderWidth:       2
+                showFocusGlow:          true
+                textColor:              popupStyle.primaryTextColor
+                font.weight:            Font.DemiBold
+                leftPadding:            ScreenTools.defaultFontPixelWidth * 1.6
                 onDisplayTextChanged:   controller.searchText = displayText
             }
 
             QGCButton {
-                text: qsTr("清除")
+                text:                   qsTr("清除")
+                primary:                searchText.text.trim() !== ""
+                enabled:                searchText.text.trim() !== ""
+                useExplicitPopupColors: true
+                backgroundColor:        enabled ? popupStyle.secondaryButtonColor : popupStyle.inputBackground
+                borderColor:            enabled ? popupStyle.secondaryTextColor : popupStyle.borderColor
+                textColor:              enabled ? popupStyle.primaryTextColor : popupStyle.disabledTextColor
                 onClicked: {
                     if(ScreenTools.isMobile) {
                         Qt.inputMethod.hide();

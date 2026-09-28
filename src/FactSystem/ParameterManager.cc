@@ -8,6 +8,7 @@
 #include "MAVLinkProtocol.h"
 #include "QGC.h"
 #include "QGCApplication.h"
+#include <QtQml/QQmlEngine>
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 #include "QGCStateMachine.h"
@@ -766,10 +767,19 @@ Fact *ParameterManager::getParameter(int componentId, const QString &paramName)
     const QString mappedParamName = _remapParamNameToVersion(paramName);
     if (!_mapCompId2FactMap.contains(componentId) || !_mapCompId2FactMap[componentId].contains(mappedParamName)) {
         qgcApp()->reportMissingParameter(componentId, mappedParamName);
-        return &_defaultFact;
+        // A missing parameter must not return a member Fact. QML can retain
+        // and destroy values returned from this method, which made the former
+        // member fallback crash during a vehicle switch.
+        Fact *const missingFact = new Fact(this);
+        QQmlEngine::setObjectOwnership(missingFact, QQmlEngine::CppOwnership);
+        return missingFact;
     }
 
-    return _mapCompId2FactMap[componentId][mappedParamName];
+    Fact *const fact = _mapCompId2FactMap[componentId][mappedParamName];
+    // Facts are owned by this ParameterManager. This method is also called
+    // from QML, which would otherwise schedule the returned object for deletion.
+    QQmlEngine::setObjectOwnership(fact, QQmlEngine::CppOwnership);
+    return fact;
 }
 
 QStringList ParameterManager::parameterNames(int componentId) const

@@ -7130,7 +7130,7 @@
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_WAYPOINT].param1.label, .mavCmdInfo[MAV_CMD_NAV_SPLINE_WAYPOINT].param1.label, .mavCmdInfo[MAV_CMD_NAV_DELAY].param1.label</extracomment>
       <location filename="/Users/don/repos/qgroundcontrol/src/MissionManager/MavCmdInfoCommon.json" />
       <source>Hold</source>
-      <translation>保持</translation>
+      <translation>等待时间</translation>
     </message>
     <message>
       <extracomment>.mavCmdInfo[MAV_CMD_NAV_WAYPOINT].param2.label</extracomment>

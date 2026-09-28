@@ -47,8 +47,8 @@ Item {
     function _defaultPolylineVertices() {
         var x = mapControl.centerViewport.x + (mapControl.centerViewport.width / 2)
         var yInset = mapControl.centerViewport.height / 4
-        var topPointCoord =     mapControl.toCoordinate(Qt.point(x, mapControl.centerViewport.y + yInset),                                false /* clipToViewPort */)
-        var bottomPointCoord =  mapControl.toCoordinate(Qt.point(x, mapControl.centerViewport.y + mapControl.centerViewport.height - yInset),    false /* clipToViewPort */)
+        var topPointCoord =     QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(x, mapControl.centerViewport.y + yInset),                                false /* clipToViewPort */))
+        var bottomPointCoord =  QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(x, mapControl.centerViewport.y + mapControl.centerViewport.height - yInset),    false /* clipToViewPort */))
         return [ topPointCoord, bottomPointCoord ]
     }
 
@@ -436,7 +436,7 @@ Item {
 
             onClicked: (mouse) => {
                 if (mouse.button === Qt.LeftButton && _root.interactive) {
-                    mapPolyline.appendVertex(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
+                    mapPolyline.appendVertex(QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)))
                 }
             }
         }

@@ -7,6 +7,8 @@
 #include <QtNetwork/QHostInfo>
 #include <QtNetwork/QTcpSocket>
 
+#include <algorithm>
+
 QGC_LOGGING_CATEGORY(TCPLinkLog, "Comms.TCPLink")
 
 namespace {
@@ -252,10 +254,12 @@ TCPLink::TCPLink(SharedLinkConfigurationPtr &config, QObject *parent)
     , _tcpConfig(qobject_cast<const TCPConfiguration*>(config.get()))
     , _worker(new TCPWorker(_tcpConfig))
     , _workerThread(new QThread(this))
+    , _reconnectTimer(new QTimer(this))
 {
     qCDebug(TCPLinkLog) << this;
 
     _workerThread->setObjectName(QStringLiteral("TCP_%1").arg(_tcpConfig->name()));
+    _reconnectTimer->setSingleShot(true);
 
     _worker->moveToThread(_workerThread);
 
@@ -267,12 +271,21 @@ TCPLink::TCPLink(SharedLinkConfigurationPtr &config, QObject *parent)
     (void) connect(_worker, &TCPWorker::errorOccurred, this, &TCPLink::_onErrorOccurred, Qt::QueuedConnection);
     (void) connect(_worker, &TCPWorker::dataReceived, this, &TCPLink::_onDataReceived, Qt::QueuedConnection);
     (void) connect(_worker, &TCPWorker::dataSent, this, &TCPLink::_onDataSent, Qt::QueuedConnection);
+    (void) connect(_reconnectTimer, &QTimer::timeout, this, [this]() {
+        if (!_intentionalDisconnect && !_connectedCache.load()) {
+            qCDebug(TCPLinkLog) << "Attempting TCP reconnect to host:" << _tcpConfig->host() << "port:" << _tcpConfig->port();
+            (void) QMetaObject::invokeMethod(_worker, "connectToHost", Qt::QueuedConnection);
+        }
+    });
 
     _workerThread->start();
 }
 
 TCPLink::~TCPLink()
 {
+    _intentionalDisconnect = true;
+    _stopReconnect();
+
     if (isConnected()) {
         (void) QMetaObject::invokeMethod(_worker, "disconnectFromHost", Qt::BlockingQueuedConnection);
         _onDisconnected();
@@ -288,29 +301,53 @@ TCPLink::~TCPLink()
 
 bool TCPLink::isConnected() const
 {
-    return _worker && _worker->isConnected();
+    return _connectedCache.load();
 }
 
 bool TCPLink::_connect()
 {
+    _intentionalDisconnect = false;
+    _stopReconnect();
     return QMetaObject::invokeMethod(_worker, "connectToHost", Qt::QueuedConnection);
 }
 
 void TCPLink::disconnect()
 {
-    if (isConnected()) {
+    _intentionalDisconnect = true;
+    _stopReconnect();
+
+    if (_worker) {
         (void) QMetaObject::invokeMethod(_worker, "disconnectFromHost", Qt::QueuedConnection);
+    }
+
+    if (!isConnected()) {
+        _onDisconnected();
     }
 }
 
 void TCPLink::_onConnected()
 {
+    if (_intentionalDisconnect) {
+        (void) QMetaObject::invokeMethod(_worker, "disconnectFromHost", Qt::QueuedConnection);
+        return;
+    }
+
+    _connectedCache.store(true);
+    _stopReconnect();
+    _reconnectAttempt = 0;
     _disconnectedEmitted = false;
     emit connected();
 }
 
 void TCPLink::_onDisconnected()
 {
+    _connectedCache.store(false);
+
+    if (!_intentionalDisconnect) {
+        _scheduleReconnect();
+        return;
+    }
+
     if (!_disconnectedEmitted.exchange(true)) {
         emit disconnected();
     }
@@ -319,7 +356,9 @@ void TCPLink::_onDisconnected()
 void TCPLink::_onErrorOccurred(const QString &errorString)
 {
     qCWarning(TCPLinkLog) << "Communication error:" << errorString;
-    emit communicationError(tr("TCP Link Error"), tr("Link %1: (Host: %2 Port: %3) %4").arg(_tcpConfig->name(), _tcpConfig->host()).arg(_tcpConfig->port()).arg(errorString));
+    if (_connectedCache.load() || (_reconnectAttempt == 0)) {
+        emit communicationError(tr("TCP Link Error"), tr("Link %1: (Host: %2 Port: %3) %4").arg(_tcpConfig->name(), _tcpConfig->host()).arg(_tcpConfig->port()).arg(errorString));
+    }
 }
 
 void TCPLink::_onDataReceived(const QByteArray &data)
@@ -334,10 +373,35 @@ void TCPLink::_onDataSent(const QByteArray &data)
 
 void TCPLink::_writeBytes(const QByteArray& bytes)
 {
+    if (!_connectedCache.load()) {
+        return;
+    }
+
     (void) QMetaObject::invokeMethod(_worker, "writeData", Qt::QueuedConnection, Q_ARG(QByteArray, bytes));
 }
 
 bool TCPLink::isSecureConnection() const
 {
     return QGCNetworkHelper::isNetworkEthernet();
+}
+
+void TCPLink::_scheduleReconnect()
+{
+    if (_intentionalDisconnect || !_worker || !_reconnectTimer) {
+        return;
+    }
+
+    const int interval = std::min(_reconnectBaseIntervalMSecs * (1 << std::min(_reconnectAttempt, 3)), _reconnectMaxIntervalMSecs);
+    _reconnectAttempt++;
+    if (!_reconnectTimer->isActive()) {
+        qCDebug(TCPLinkLog) << "Scheduling TCP reconnect to host:" << _tcpConfig->host() << "port:" << _tcpConfig->port() << "in" << interval << "ms";
+        _reconnectTimer->start(interval);
+    }
+}
+
+void TCPLink::_stopReconnect()
+{
+    if (_reconnectTimer) {
+        _reconnectTimer->stop();
+    }
 }

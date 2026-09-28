@@ -1,16 +1,14 @@
 #include "SwarmCommandBridge.h"
 
-#include "HealthAndArmingCheckReport.h"
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "QGCLoggingCategory.h"
 #include "SwarmUiSharedState.h"
 #include "Vehicle.h"
+#include "VehicleReadiness.h"
 #include "VehicleSupports.h"
 
 #include "../MissionManager/MissionManager.h"
-
-#include <QtCore/QMetaType>
 
 QGC_LOGGING_CATEGORY(SwarmCommandBridgeLog, "Cluster.SwarmCommandBridge")
 
@@ -203,7 +201,7 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
         return validation;
     }
 
-    int successCount = 0;
+    QList<Vehicle*> vehicles;
     QStringList failures;
 
     for (const int vehicleId : vehicleIds) {
@@ -214,120 +212,88 @@ QVariantMap SwarmCommandBridge::_executeGroupAction(const QString &action, int g
         }
 
         VehicleSupports *const supports = vehicle->supports();
-        HealthAndArmingCheckReport *const report = vehicle->healthAndArmingCheckReport();
-
-        const bool healthChecksBlockArm = report && report->supported() && !report->canArm();
-        const bool healthChecksBlockMission = report && report->supported() && !report->canStartMission();
+        VehicleReadiness *const readiness = vehicle->readiness();
+        VehicleLinkManager *const linkManager = vehicle->vehicleLinkManager();
+        if (!linkManager || linkManager->communicationLost()) {
+            failures.append(tr("Vehicle %1 communication is unavailable.").arg(vehicleId));
+            continue;
+        }
 
         if (action == QStringLiteral("arm")) {
-            if (vehicle->armed()) {
-                successCount++;
-                continue;
+            if (!vehicle->armed() && (!readiness || !readiness->armAllowed())) {
+                failures.append(tr("Vehicle %1 does not have a current explicit arm approval.").arg(vehicleId));
             }
-
-            if (healthChecksBlockArm) {
-                failures.append(tr("Vehicle %1 cannot arm because health and arming checks are blocking arming.").arg(vehicleId));
-                continue;
-            }
-
-            vehicle->setArmed(true, true);
-            successCount++;
         } else if (action == QStringLiteral("disarm")) {
-            if (!vehicle->armed()) {
-                successCount++;
-                continue;
-            }
-
-            if (vehicle->flying()) {
+            if (!vehicle->armed() || vehicle->flying()) {
                 failures.append(tr("Vehicle %1 cannot disarm while it is still flying.").arg(vehicleId));
-                continue;
             }
-
-            vehicle->setArmed(false, true);
-            successCount++;
         } else if (action == QStringLiteral("takeoff")) {
             if (!supports || (!supports->guidedTakeoffWithAltitude() && !supports->guidedTakeoffWithoutAltitude())) {
                 failures.append(tr("Vehicle %1 does not support guided takeoff.").arg(vehicleId));
-                continue;
-            }
-
-            if (vehicle->flying()) {
+            } else if (vehicle->flying()) {
                 failures.append(tr("Vehicle %1 is already airborne.").arg(vehicleId));
-                continue;
+            } else if (!readiness || !readiness->takeoffAllowed()) {
+                failures.append(tr("Vehicle %1 does not have a current explicit takeoff approval.").arg(vehicleId));
             }
-
-            if (supports->guidedTakeoffWithAltitude()) {
-                vehicle->guidedModeTakeoff(qMax(5.0, vehicle->minimumTakeoffAltitudeMeters()));
-            } else {
-                vehicle->startTakeoff();
-            }
-            successCount++;
         } else if (action == QStringLiteral("land")) {
             if (!supports || !supports->guidedMode()) {
                 failures.append(tr("Vehicle %1 does not support guided landing.").arg(vehicleId));
-                continue;
-            }
-
-            if (!vehicle->armed() || !vehicle->flying()) {
+            } else if (!vehicle->armed() || !vehicle->flying()) {
                 failures.append(tr("Vehicle %1 is not in a landing-capable flight state.").arg(vehicleId));
-                continue;
             }
-
-            vehicle->guidedModeLand();
-            successCount++;
         } else if (action == QStringLiteral("pause")) {
             if (!supports || !supports->pauseVehicle()) {
                 failures.append(tr("Vehicle %1 does not support pause.").arg(vehicleId));
-                continue;
-            }
-
-            if (!vehicle->armed() || !vehicle->flying()) {
+            } else if (!vehicle->armed() || !vehicle->flying()) {
                 failures.append(tr("Vehicle %1 is not in a pausable flight state.").arg(vehicleId));
-                continue;
             }
-
-            vehicle->pauseVehicle();
-            successCount++;
         } else if (action == QStringLiteral("resume")) {
             MissionManager *const missionManager = vehicle->missionManager();
             if (!missionManager || missionManager->missionItems().isEmpty()) {
                 failures.append(tr("Vehicle %1 has no mission available to resume.").arg(vehicleId));
-                continue;
-            }
-
-            if (!vehicle->armed() || !vehicle->flying()) {
+            } else if (!vehicle->armed() || !vehicle->flying()) {
                 failures.append(tr("Vehicle %1 is not in a resumable mission state.").arg(vehicleId));
-                continue;
+            } else if (!readiness || !readiness->missionResumeAllowed()) {
+                failures.append(tr("Vehicle %1 does not have a current explicit mission-resume approval.").arg(vehicleId));
             }
-
-            if (healthChecksBlockMission) {
-                failures.append(tr("Vehicle %1 cannot resume mission because health and arming checks are blocking mission start.").arg(vehicleId));
-                continue;
-            }
-
-            vehicle->startMission();
-            successCount++;
         } else {
             return _buildResult(ResultError, action, groupId, tr("Unknown cluster command: %1").arg(action));
         }
-    }
 
-    if (successCount <= 0) {
-        return _buildResult(ResultError, action, groupId, failures.join(QLatin1Char('\n')));
+        vehicles.append(vehicle);
     }
 
     if (!failures.isEmpty()) {
-        return _buildResult(ResultError, action, groupId, tr("Group %1 accepted %2 on %3 vehicles, but some vehicles were blocked before dispatch. %4")
+        return _buildResult(ResultError, action, groupId, tr("Group %1 did not dispatch %2 because every assigned vehicle must pass preflight validation. %3")
             .arg(groupId)
             .arg(action)
-            .arg(successCount)
             .arg(failures.join(QLatin1Char('\n'))));
     }
 
-    return _buildResult(ResultSuccess, action, groupId, tr("Group %1 accepted %2 for dispatch through the current vehicle command pipeline on %3 vehicles. Vehicle-side completion is still pending.")
+    for (Vehicle* const vehicle : vehicles) {
+        if (action == QStringLiteral("arm")) {
+            if (!vehicle->armed()) {
+                vehicle->requestArm(false);
+            }
+        } else if (action == QStringLiteral("disarm")) {
+            vehicle->setArmed(false, true);
+        } else if (action == QStringLiteral("takeoff")) {
+            vehicle->requestTakeoff(qMax(5.0, vehicle->minimumTakeoffAltitudeMeters()), false);
+        } else if (action == QStringLiteral("land")) {
+            vehicle->guidedModeLand();
+        } else if (action == QStringLiteral("pause")) {
+            vehicle->pauseVehicle();
+        } else if (action == QStringLiteral("resume")) {
+            vehicle->requestAirborneMissionResume(false);
+        }
+    }
+
+    QVariantMap result = _buildResult(ResultSuccess, action, groupId, tr("Group %1 dispatched %2 to %3 vehicles after all members passed preflight validation. Per-vehicle command acknowledgement and state confirmation are pending.")
         .arg(groupId)
         .arg(action)
-        .arg(successCount));
+        .arg(vehicles.count()));
+    result[QStringLiteral("phase")] = QStringLiteral("dispatched");
+    return result;
 }
 
 QVariantMap SwarmCommandBridge::_setVehicleParameter(int vehicleId, const QString &paramName, const QVariant &value, const QString &action, int groupId) const
@@ -342,14 +308,13 @@ QVariantMap SwarmCommandBridge::_setVehicleParameter(int vehicleId, const QStrin
         return _buildResult(ResultError, action, groupId, tr("Vehicle %1 parameter manager is not available.").arg(vehicleId));
     }
 
-    const FactMetaData::ValueType_t valueType = value.typeId() == QMetaType::Double
-        ? FactMetaData::valueTypeFloat
-        : FactMetaData::valueTypeInt32;
+    if (!parameterManager->parametersReady()) {
+        return _buildResult(ResultError, action, groupId, tr("Vehicle %1 parameters are not ready yet. Wait for parameter download to finish before sending %2.").arg(vehicleId).arg(paramName));
+    }
 
-    if (!parameterManager->parametersReady() || !parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
-        parameterManager->sendSwarmParameter(ParameterManager::defaultComponentId, paramName, valueType, value);
-        qCInfo(SwarmCommandBridgeLog) << "Swarm parameter direct write routed without Fact cache" << "vehicle" << vehicleId << "param" << paramName << "value" << value;
-        return _buildResult(ResultSuccess, action, groupId, tr("Vehicle %1 swarm parameter %2 was sent directly because the normal parameter cache is not ready or does not expose it yet. Vehicle-side confirmation is still pending.").arg(vehicleId).arg(paramName));
+    if (!parameterManager->parameterExists(ParameterManager::defaultComponentId, paramName)) {
+        qCWarning(SwarmCommandBridgeLog) << "Firmware does not expose swarm parameter" << "vehicle" << vehicleId << "param" << paramName;
+        return _buildResult(ResultError, action, groupId, tr("Vehicle %1 firmware does not expose swarm parameter %2. No parameter write was sent.").arg(vehicleId).arg(paramName));
     }
 
     Fact *const fact = parameterManager->getParameter(ParameterManager::defaultComponentId, paramName);

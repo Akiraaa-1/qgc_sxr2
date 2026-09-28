@@ -16,15 +16,33 @@ Item {
     property var rallyPointController
     property var planMasterController
 
-    function removePlanFromVehicle() {
-        if (planMasterController && planMasterController.removeAllFromVehicle) {
-            planMasterController.removeAllFromVehicle()
-        } else {
+    function removePlanFromVehicle(targetVehicle) {
+        if (!targetVehicle || targetVehicle !== QGroundControl.multiVehicleManager.activeVehicle) {
             QGroundControl.showMessageDialog(
                 missionCompleteDialogHelper,
                 qsTr("清除计划"),
-                qsTr("计划控制器不可用。"))
+                qsTr("当前飞行器已切换。请在目标飞行器上重新确认清除计划。"))
+            return
         }
+
+        const linkManager = targetVehicle.vehicleLinkManager
+        if (!linkManager || linkManager.communicationLost) {
+            QGroundControl.showMessageDialog(
+                missionCompleteDialogHelper,
+                qsTr("清除计划"),
+                qsTr("当前飞行器通信已丢失，不能清除飞控计划。"))
+            return
+        }
+
+        if (!planMasterController || !planMasterController.removeAllFromVehicle || planMasterController.managerVehicle !== targetVehicle) {
+            QGroundControl.showMessageDialog(
+                missionCompleteDialogHelper,
+                qsTr("清除计划"),
+                qsTr("计划控制器与当前飞行器不一致。请重新打开飞行界面后再操作。"))
+            return
+        }
+
+        planMasterController.removeAllFromVehicle()
     }
 
     // The following code is used to track vehicle states for showing the mission complete dialog
@@ -33,6 +51,8 @@ Item {
     property bool _vehicleWasArmed:                 false
     property bool _vehicleInMissionFlightMode:      _activeVehicle ? (_activeVehicle.flightMode === _activeVehicle.missionFlightMode) : false
     property bool _vehicleWasInMissionFlightMode:   false
+    property bool _vehicleSawMissionProgress:       false
+    property int  _missionCurrentIndex:             missionController ? missionController.currentMissionIndex : -1
     property bool _showMissionCompleteDialog:       _vehicleWasArmed && _vehicleWasInMissionFlightMode &&
                                                     (missionController.containsItems || geoFenceController.containsItems || rallyPointController.containsItems ||
                                                      (_activeVehicle ? _activeVehicle.cameraTriggerPoints.count !== 0 : false))
@@ -41,18 +61,50 @@ Item {
         if (_vehicleArmed) {
             _vehicleWasArmed = true
             _vehicleWasInMissionFlightMode = _vehicleInMissionFlightMode
+            _vehicleSawMissionProgress = false
         } else {
             if (_showMissionCompleteDialog) {
                 missionCompleteDialogFactory.open()
             }
             _vehicleWasArmed = false
             _vehicleWasInMissionFlightMode = false
+            _vehicleSawMissionProgress = false
         }
     }
 
     on_VehicleInMissionFlightModeChanged: {
         if (_vehicleInMissionFlightMode && _vehicleArmed) {
             _vehicleWasInMissionFlightMode = true
+        }
+    }
+
+    on_MissionCurrentIndexChanged: {
+        if (_vehicleArmed && _missionCurrentIndex > 0) {
+            _vehicleSawMissionProgress = true
+            _vehicleWasInMissionFlightMode = true
+        }
+    }
+
+    on_VehicleSawMissionProgressChanged: {
+        if (_vehicleSawMissionProgress && _vehicleArmed) {
+            _vehicleWasInMissionFlightMode = true
+        }
+    }
+
+    on_ActiveVehicleChanged: {
+        _vehicleWasArmed = false
+        _vehicleWasInMissionFlightMode = false
+        _vehicleSawMissionProgress = false
+    }
+
+    Connections {
+        target: _activeVehicle
+
+        function onTextMessageReceived(sysid, componentid, severity, text, description) {
+            if (_vehicleArmed && text && ("" + text).match(/Mission finished/i)) {
+                _vehicleSawMissionProgress = true
+                _vehicleWasInMissionFlightMode = true
+            }
         }
     }
 
@@ -70,7 +122,8 @@ Item {
             title:      qsTr("飞行计划已完成")
             buttons:    Dialog.Close
 
-            property var activeVehicleCopy: _activeVehicle
+            property var activeVehicleCopy: null
+            Component.onCompleted: activeVehicleCopy = missionCompleteDialogHelper._activeVehicle
             onActiveVehicleCopyChanged:
                 if (!activeVehicleCopy) {
                     missionCompleteDialog.close()
@@ -83,17 +136,17 @@ Item {
 
                 QGCLabel {
                     Layout.fillWidth:       true
-                    text:                   qsTr("已拍摄 %1 张图像").arg(_activeVehicle.cameraTriggerPoints.count)
+                    text:                   activeVehicleCopy ? qsTr("已拍摄 %1 张图像").arg(activeVehicleCopy.cameraTriggerPoints.count) : ""
                     horizontalAlignment:    Text.AlignHCenter
-                    visible:                _activeVehicle.cameraTriggerPoints.count !== 0
+                    visible:                activeVehicleCopy && activeVehicleCopy.cameraTriggerPoints.count !== 0
                 }
 
                 QGCButton {
                     Layout.fillWidth:   true
                     text:               qsTr("从飞行器清除计划")
-                    visible:            !_activeVehicle.communicationLost// && !_activeVehicle.apmFirmware  // ArduPilot has a bug somewhere with mission clear
+                    visible:            activeVehicleCopy && activeVehicleCopy === missionCompleteDialogHelper._activeVehicle && activeVehicleCopy.vehicleLinkManager && !activeVehicleCopy.vehicleLinkManager.communicationLost// && !_activeVehicle.apmFirmware  // ArduPilot has a bug somewhere with mission clear
                     onClicked: {
-                        missionCompleteDialogHelper.removePlanFromVehicle()
+                        missionCompleteDialogHelper.removePlanFromVehicle(activeVehicleCopy)
                         missionCompleteDialog.close()
                     }
                 }
@@ -115,7 +168,7 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth:   true
                     spacing:            ScreenTools.defaultFontPixelHeight
-                    visible:            !_activeVehicle.communicationLost && globals.guidedControllerFlyView.showResumeMission
+                    visible:            activeVehicleCopy && activeVehicleCopy === missionCompleteDialogHelper._activeVehicle && activeVehicleCopy.vehicleLinkManager && !activeVehicleCopy.vehicleLinkManager.communicationLost && globals.guidedControllerFlyView.showResumeMission
 
                     QGCButton {
                         Layout.fillWidth:   true

@@ -27,6 +27,8 @@ private slots:
     void _testMissionOffset();
     void _testMissionRotate();
     void _testMissionTransformsInvalidHome();
+    void _testSendPreCheckRejectsTightWaypointSegments();
+    void _testSendPreCheckAllowsVerticalTakeoffAndLand();
 
     // Parameterized tests - runs once per autopilot type
     UT_PARAMETERIZED_TEST(_testEmptyVehicle);

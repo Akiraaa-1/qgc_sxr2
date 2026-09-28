@@ -124,35 +124,65 @@ Rectangle {
 
     function _groupActionEnabled(groupId, action) {
         const vehicles = _groupVehicles(groupId)
+        if (vehicles.length === 0) {
+            return false
+        }
+
+        let actionNeeded = false
         for (let i = 0; i < vehicles.length; i++) {
             const vehicle = vehicles[i]
-            const report = vehicle.healthAndArmingCheckReport
-            const canArm = !(report && report.supported && !report.canArm)
-            const canTakeoff = !(report && report.supported && !report.canTakeoff)
-            const canStartMission = !(report && report.supported && !report.canStartMission)
-
-            if (action === "arm" && !vehicle.armed && canArm) {
-                return true
+            const readiness = vehicle ? vehicle.readiness : null
+            if (!_isVehicleConnected(vehicle)) {
+                return false
             }
-            if (action === "disarm" && vehicle.armed && !vehicle.flying) {
-                return true
+            if (action === "arm") {
+                if (!vehicle.armed) {
+                    actionNeeded = true
+                    if (!readiness || !readiness.armAllowed) {
+                        return false
+                    }
+                }
+                continue
             }
-            if (action === "takeoff" && vehicle.armed && !vehicle.flying && vehicle.supports
-                    && (vehicle.supports.guidedTakeoffWithAltitude || vehicle.supports.guidedTakeoffWithoutAltitude) && canTakeoff) {
-                return true
+            if (action === "disarm") {
+                if (!vehicle.armed || vehicle.flying) {
+                    return false
+                }
+                actionNeeded = true
+                continue
             }
-            if (action === "land" && vehicle.armed && vehicle.flying && vehicle.supports && vehicle.supports.guidedMode) {
-                return true
+            if (action === "takeoff") {
+                if (vehicle.flying || !vehicle.supports
+                        || (!vehicle.supports.guidedTakeoffWithAltitude && !vehicle.supports.guidedTakeoffWithoutAltitude)
+                        || !readiness || !readiness.takeoffAllowed) {
+                    return false
+                }
+                actionNeeded = true
+                continue
             }
-            if (action === "pause" && vehicle.armed && vehicle.flying && vehicle.supports && vehicle.supports.pauseVehicle) {
-                return true
+            if (action === "land") {
+                if (!vehicle.armed || !vehicle.flying || !vehicle.supports || !vehicle.supports.guidedMode) {
+                    return false
+                }
+                actionNeeded = true
+                continue
             }
-            if (action === "resume" && vehicle.armed && vehicle.flying && canStartMission) {
-                return true
+            if (action === "pause") {
+                if (!vehicle.armed || !vehicle.flying || !vehicle.supports || !vehicle.supports.pauseVehicle) {
+                    return false
+                }
+                actionNeeded = true
+                continue
+            }
+            if (action === "resume") {
+                if (!vehicle.armed || !vehicle.flying || !readiness || !readiness.missionResumeAllowed) {
+                    return false
+                }
+                actionNeeded = true
             }
         }
 
-        return false
+        return actionNeeded
     }
 
     function _countConnectedVehicles() {
@@ -194,8 +224,8 @@ Rectangle {
         let count = 0
         for (let i = 0; i < _vehicles.count; i++) {
             const vehicle = _vehicles.get(i)
-            const report = vehicle ? vehicle.healthAndArmingCheckReport : null
-            if (report && report.supported && !report.canArm) {
+            const readiness = vehicle ? vehicle.readiness : null
+            if (readiness && readiness.armDenied) {
                 count++
             }
         }
@@ -223,9 +253,12 @@ Rectangle {
             return qsTr("Armed")
         }
 
-        const report = vehicle.healthAndArmingCheckReport
-        if (report && report.supported && !report.canArm) {
+        const readiness = vehicle.readiness
+        if (readiness && readiness.armDenied) {
             return qsTr("Arm Blocked")
+        }
+        if (readiness && readiness.armUnconfirmed) {
+            return qsTr("Arm Unconfirmed")
         }
         return qsTr("Standby")
     }
@@ -238,8 +271,8 @@ Rectangle {
             return _cardSuccessColor
         }
 
-        const report = vehicle.healthAndArmingCheckReport
-        if (report && report.supported && !report.canArm) {
+        const readiness = vehicle.readiness
+        if (readiness && readiness.armDenied) {
             return _cardDangerColor
         }
         return _cardWarningColor
@@ -266,15 +299,16 @@ Rectangle {
             return "--"
         }
 
-        const report = vehicle.healthAndArmingCheckReport
-        if (report && report.supported) {
-            return report.canArm ? qsTr("Ready") : qsTr("Not Ready")
+        const readiness = vehicle.readiness
+        if (readiness) {
+            if (readiness.armAllowed) {
+                return qsTr("Ready")
+            }
+            if (readiness.armDenied) {
+                return qsTr("Not Ready")
+            }
+            return qsTr("Unconfirmed")
         }
-
-        if (vehicle.readyToFlyAvailable) {
-            return vehicle.readyToFly ? qsTr("Ready") : qsTr("Not Ready")
-        }
-
         return qsTr("Unknown")
     }
 
@@ -283,15 +317,15 @@ Rectangle {
             return _cardSecondaryTextColor
         }
 
-        const report = vehicle.healthAndArmingCheckReport
-        if (report && report.supported) {
-            return report.canArm ? _cardSuccessColor : _cardDangerColor
+        const readiness = vehicle.readiness
+        if (readiness) {
+            if (readiness.armAllowed) {
+                return _cardSuccessColor
+            }
+            if (readiness.armDenied) {
+                return _cardDangerColor
+            }
         }
-
-        if (vehicle.readyToFlyAvailable) {
-            return vehicle.readyToFly ? _cardSuccessColor : _cardDangerColor
-        }
-
         return _cardWarningColor
     }
 

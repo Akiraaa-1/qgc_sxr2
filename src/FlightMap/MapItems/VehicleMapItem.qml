@@ -22,7 +22,7 @@ MapQuickItem {
 
     anchorPoint.x:  vehicleItem.width  / 2
     anchorPoint.y:  vehicleItem.height / 2
-    coordinate:     QGroundControl.mapDisplayCoordinate(sourceCoordinate)
+    coordinate:     QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_displaySourceCoordinate && _displaySourceCoordinate.isValid ? _displaySourceCoordinate : sourceCoordinate)
     visible:        coordinate.isValid
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
@@ -30,9 +30,37 @@ MapQuickItem {
     property var    _map:           map
     property bool   _multiVehicle:  QGroundControl.multiVehicleManager.vehicles.count > 1
     property bool   _showStatusCard: !!vehicle && showStatusCard && _multiVehicle
+    property var    _displaySourceCoordinate: QtPositioning.coordinate()
+    property bool   _vehicleCanFly: !!(vehicle && (vehicle.airship || vehicle.fixedWing || vehicle.multiRotor || vehicle.vtol))
+    property bool   _vehicleFlying: vehicle ? vehicle.flying : false
+    property real   _groundSpeedMetersSecond: _hasFactValue(vehicle ? vehicle.groundSpeed : null) ? Number(vehicle.groundSpeed.rawValue) : 0
+    property bool   _holdGroundCoordinate: !_adsbVehicle && _vehicleCanFly && !_vehicleFlying && _groundSpeedMetersSecond < _groundHoldSpeedMetersSecond
+
+    readonly property real _groundHoldSpeedMetersSecond: 1.0
+    readonly property real _groundHoldJumpMeters: 10.0
+
+    Component.onCompleted: _updateDisplaySourceCoordinate()
+    onSourceCoordinateChanged: _updateDisplaySourceCoordinate()
+    on_HoldGroundCoordinateChanged: _updateDisplaySourceCoordinate()
 
     function _hasFactValue(fact) {
         return fact && fact.rawValue !== undefined && !isNaN(Number(fact.rawValue))
+    }
+
+    function _updateDisplaySourceCoordinate() {
+        if (!sourceCoordinate || !sourceCoordinate.isValid) {
+            _displaySourceCoordinate = sourceCoordinate
+            return
+        }
+
+        if (_holdGroundCoordinate && _displaySourceCoordinate && _displaySourceCoordinate.isValid) {
+            const distance = _displaySourceCoordinate.distanceTo(sourceCoordinate)
+            if (!isNaN(distance) && distance <= _groundHoldJumpMeters) {
+                return
+            }
+        }
+
+        _displaySourceCoordinate = sourceCoordinate
     }
 
     function _factText(fact, fallback) {

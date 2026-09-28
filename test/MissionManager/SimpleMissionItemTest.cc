@@ -143,7 +143,7 @@ void SimpleMissionItemTest::_testEditorFactsWorker(QGCMAVLinkTypes::VehicleClass
             Fact* fact = qobject_cast<Fact*>(simpleMissionItem.nanFacts()->get(j));
             TEST_DEBUG(QStringLiteral("nanFieldFact %1").arg(fact->name()));
             QCOMPARE(fact->name(), cExpectedNaNFieldInfo[j].second);
-            QCOMPARE(fact->rawValue().toDouble(), qQNaN());
+            QCOMPARE(fact->rawValue().toDouble(), (cExpectedNaNFieldInfo[j].first * 10.0) + 0.1234567);
         }
         QCOMPARE(simpleMissionItem.textFieldFactsAdvanced()->count(), cExpectedAdvancedTextFieldInfo.count());
         for (int j = 0; j < simpleMissionItem.textFieldFactsAdvanced()->count(); j++) {

@@ -73,16 +73,16 @@ public:
     /// Returns true if the specifed parameter exists
     ///     @param componentId: Component id or ParameterManager::defaultComponentId
     ///     @param name: Parameter name
-    bool parameterExists(int componentId, const QString &paramName) const;
+    Q_INVOKABLE bool parameterExists(int componentId, const QString &paramName) const;
 
     /// Returns all parameter names
     QStringList parameterNames(int componentId) const;
 
-    /// Returns the specified Parameter. Returns a default empty fact is parameter does not exists. Also will pop
+    /// Returns the specified Parameter. Returns a parent-owned empty Fact if the parameter does not exist. Also will pop
     /// a missing parameter error to user if parameter does not exist.
     ///     @param componentId: Component id or ParameterManager::defaultComponentId
     ///     @param name: Parameter name
-    Fact *getParameter(int componentId, const QString &paramName);
+    Q_INVOKABLE Fact *getParameter(int componentId, const QString &paramName);
 
     /// Sends swarm-specific parameters by name without requiring the parameter
     /// to already be present in the Fact cache. This preserves the imported
@@ -228,8 +228,6 @@ private:
     QTimer _hashCheckTimer;
     QTimer _paramRequestListTimer;
     QTimer _waitingParamTimeoutTimer;
-
-    Fact _defaultFact;   ///< Used to return default fact, when parameter not found
 
     bool _tryftp = false;
 };

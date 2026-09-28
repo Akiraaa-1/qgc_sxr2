@@ -43,9 +43,17 @@ class HealthAndArmingCheckReport : public QObject
 public:
 
     Q_PROPERTY(bool supported                              READ supported               NOTIFY updated)
+    Q_PROPERTY(bool healthAndArmingChecksSupported         READ healthAndArmingChecksSupported NOTIFY updated)
+    Q_PROPERTY(bool capabilityKnown                        READ capabilityKnown         NOTIFY updated)
+    Q_PROPERTY(bool valid                                  READ valid                   NOTIFY updated)
+    Q_PROPERTY(bool armCheckValid                          READ armCheckValid           NOTIFY updated)
     Q_PROPERTY(bool canArm                                 READ canArm                  NOTIFY updated)
+    Q_PROPERTY(bool takeoffCheckValid                      READ takeoffCheckValid       NOTIFY updated)
     Q_PROPERTY(bool canTakeoff                             READ canTakeoff              NOTIFY updated)
+    Q_PROPERTY(bool missionStartCheckValid                 READ missionStartCheckValid  NOTIFY updated)
     Q_PROPERTY(bool canStartMission                        READ canStartMission         NOTIFY updated)
+    Q_PROPERTY(bool missionResumeCheckValid                READ missionResumeCheckValid NOTIFY updated)
+    Q_PROPERTY(bool canResumeMission                       READ canResumeMission        NOTIFY updated)
     Q_PROPERTY(bool hasWarningsOrErrors                    READ hasWarningsOrErrors     NOTIFY updated)
     Q_PROPERTY(QString gpsState                            READ gpsState                NOTIFY updated)
     Q_PROPERTY(QmlObjectListModel* problemsForCurrentMode  READ problemsForCurrentMode  NOTIFY updated)
@@ -54,9 +62,17 @@ public:
     virtual ~HealthAndArmingCheckReport();
 
     bool supported() const { return _supported; }
+    bool healthAndArmingChecksSupported() const { return _healthAndArmingChecksSupported; }
+    bool capabilityKnown() const { return _capabilityKnown; }
+    bool valid() const { return _valid; }
+    bool armCheckValid() const { return _valid && _currentModeMapped; }
     bool canArm() const { return _canArm; }
+    bool takeoffCheckValid() const { return _valid && _takeoffModeGroup != -1; }
     bool canTakeoff() const { return _canTakeoff; }
+    bool missionStartCheckValid() const { return _valid && _missionModeGroup != -1; }
     bool canStartMission() const { return _canStartMission; }
+    bool missionResumeCheckValid() const { return _valid && _missionModeGroup != -1; }
+    bool canResumeMission() const { return _canResumeMission; }
     bool hasWarningsOrErrors() const { return _hasWarningsOrErrors; }
 
     const QString& gpsState() const { return _gpsState; }
@@ -65,16 +81,23 @@ public:
 
     void update(uint8_t compid, const events::HealthAndArmingChecks::Results& results, int flightModeGroup);
 
+    void setHealthAndArmingChecksCapability(bool supported);
     void setModeGroups(int takeoffModeGroup, int missionModeGroup);
+    void invalidate();
 
 signals:
     void updated();
 
 private:
     bool _supported{false};
-    bool _canArm{true}; ///< whether arming is possible for the current mode
-    bool _canTakeoff{true};
-    bool _canStartMission{true};
+    bool _healthAndArmingChecksSupported{false};
+    bool _capabilityKnown{false};
+    bool _valid{false};
+    bool _currentModeMapped{false};
+    bool _canArm{false}; ///< whether arming is possible for the current mode
+    bool _canTakeoff{false};
+    bool _canStartMission{false};
+    bool _canResumeMission{false};
     bool _hasWarningsOrErrors{false};
     QString _gpsState{};
 

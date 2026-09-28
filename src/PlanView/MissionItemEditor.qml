@@ -30,6 +30,11 @@ Rectangle {
 
     property var    _masterController:          missionItem.masterController
     property var    _missionController:         _masterController.missionController
+    property var    _planVehicle:               _masterController.boundVehicle
+                                                   ? _masterController.boundVehicle
+                                                   : (_masterController.managerVehicle && !_masterController.managerVehicle.isOfflineEditingVehicle
+                                                      ? _masterController.managerVehicle
+                                                      : null)
     property bool   _currentItem:               missionItem.isCurrentItem
     property color  _outerTextColor:            _currentItem ? theme.textColor : theme.secondaryTextColor
     property bool   _noMissionItemsAdded:       _missionController.visualItems ? _missionController.visualItems.count <= 1 : true
@@ -255,14 +260,12 @@ Rectangle {
                     PlanButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Move to vehicle position")
-                        enabled:            _activeVehicle && missionItem.specifiesCoordinate
+                        enabled:            _root._planVehicle && missionItem.specifiesCoordinate
 
                         onClicked: {
-                            missionItem.coordinate = _activeVehicle.coordinate
+                            missionItem.coordinate = _root._planVehicle.coordinate
                             hamburgerMenuDropPanel.close()
                         }
-
-                        property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
                     }
 
                     PlanButton {
@@ -286,6 +289,7 @@ Rectangle {
                                 coordinate:              editCenterCoordinate ? missionItem.centerCoordinate : missionItem.coordinate,
                                 altitudeFact:            !editCenterCoordinate && missionItem.specifiesAltitude ? missionItem.altitude : null,
                                 altitudeFrame:           !editCenterCoordinate && missionItem.specifiesAltitude ? missionItem.altitudeFrame : QGroundControl.AltitudeFrameNone,
+                                vehicle:                 _root._planVehicle,
                             })
                             hamburgerMenuDropPanel.close()
                         }

@@ -1075,7 +1075,7 @@ void Joystick::_startPollingForVehicle(Vehicle &vehicle)
 
     _buildAvailableButtonsActionList(_pollingVehicle);
 
-    (void) connect(this, &Joystick::setArmed,           _pollingVehicle, &Vehicle::setArmedShowError);
+    (void) connect(this, &Joystick::setArmed,           _pollingVehicle, &Vehicle::requestArmedFromJoystick);
     (void) connect(this, &Joystick::setVtolInFwdFlight, _pollingVehicle, &Vehicle::setVtolInFwdFlight);
     (void) connect(this, &Joystick::setFlightMode,      _pollingVehicle, &Vehicle::setFlightMode);
     (void) connect(this, &Joystick::emergencyStop,      _pollingVehicle, &Vehicle::emergencyStop);

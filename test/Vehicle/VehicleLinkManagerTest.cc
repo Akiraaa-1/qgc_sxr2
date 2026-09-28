@@ -7,6 +7,7 @@
 #include "MultiVehicleManager.h"
 #include "UnitTest.h"
 #include "Vehicle.h"
+#include "VehicleReadiness.h"
 
 void VehicleLinkManagerTest::_simpleLinkTest()
 {
@@ -29,6 +30,7 @@ void VehicleLinkManagerTest::_simpleLinkTest()
     // We wait for the full initial connect sequence to complete to catch anby ComponentInformationManager bugs
     QVERIFY_TRUE_WAIT(spyVehicleInitialConnectComplete.count() > 0 || vehicle->isInitialConnectComplete(),
                       TestTimeout::mediumMs());
+    QVERIFY(vehicle->sysStatusReceived());
     // Drain queued command traffic before disconnect to avoid racing pending writes with link teardown.
     UnitTest::settleEventLoopForCleanup(2, 10);
     mockLink->disconnect();
@@ -60,16 +62,23 @@ void VehicleLinkManagerTest::_simpleCommLossTest()
     QSignalSpy spyVehicleInitialConnectComplete(vehicle, &Vehicle::initialConnectComplete);
     QVERIFY_TRUE_WAIT(spyVehicleInitialConnectComplete.count() > 0 || vehicle->isInitialConnectComplete(),
                       TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(vehicle->sysStatusReceived(), TestTimeout::mediumMs());
+    QVERIFY(vehicle->readiness());
+    QVERIFY(vehicle->readiness()->source() != VehicleReadiness::SourceUnavailable);
     QSignalSpy spyCommLostChanged(vehicle->vehicleLinkManager(), &VehicleLinkManager::communicationLostChanged);
     pMockLink->setCommLost(true);
     QVERIFY_SIGNAL_WAIT(spyCommLostChanged, VehicleLinkManager::kTestCommLostDetectionTimeoutMs);
     QCOMPARE(spyCommLostChanged.count(), 1);
     QCOMPARE(spyCommLostChanged[0][0].toBool(), true);
+    QVERIFY(!vehicle->sysStatusReceived());
+    QCOMPARE(vehicle->readiness()->source(), VehicleReadiness::SourceUnavailable);
     spyCommLostChanged.clear();
     pMockLink->setCommLost(false);
     QVERIFY_SIGNAL_WAIT(spyCommLostChanged, VehicleLinkManager::kTestCommLostDetectionTimeoutMs);
     QCOMPARE(spyCommLostChanged.count(), 1);
     QCOMPARE(spyCommLostChanged[0][0].toBool(), false);
+    QVERIFY_TRUE_WAIT(vehicle->sysStatusReceived(), TestTimeout::mediumMs());
+    QVERIFY(vehicle->readiness()->source() != VehicleReadiness::SourceUnavailable);
     spyCommLostChanged.clear();
     vehicle->vehicleLinkManager()->setCommunicationLostEnabled(false);
     pMockLink->setCommLost(true);
@@ -78,6 +87,46 @@ void VehicleLinkManagerTest::_simpleCommLossTest()
     vehicle->vehicleLinkManager()->setCommunicationLostEnabled(true);
     QVERIFY_SIGNAL_WAIT(spyCommLostChanged, VehicleLinkManager::kTestCommLostDetectionTimeoutMs);
     QCOMPARE(spyCommLostChanged.count(), 1);
+}
+
+void VehicleLinkManagerTest::_unarmedNetworkVehicleExpiresAfterCommunicationLossTest()
+{
+    SharedLinkConfigurationPtr mockConfig;
+    SharedLinkInterfacePtr mockLink;
+    _startMockLink(1, false /*highLatency*/, true /*incrementVehicleId*/, mockConfig, mockLink);
+    MockLink* const pMockLink = qobject_cast<MockLink*>(mockLink.get());
+    Vehicle* const vehicle = waitForVehicleConnect(TestTimeout::shortMs());
+    QVERIFY(vehicle);
+    QSignalSpy spyVehicleDeleted(vehicle, &QObject::destroyed);
+
+    pMockLink->setCommLost(true);
+    QVERIFY_SIGNAL_WAIT(spyVehicleDeleted,
+                        VehicleLinkManager::kTestCommLostDetectionTimeoutMs
+                            + VehicleLinkManager::kTestLostUnarmedVehicleRemovalMSecs
+                            + TestTimeout::shortMs());
+    QVERIFY_TRUE_WAIT(MultiVehicleManager::instance()->vehicles()->count() == 0, TestTimeout::shortMs());
+}
+
+void VehicleLinkManagerTest::_armedNetworkVehicleRemainsAfterCommunicationLossTest()
+{
+    SharedLinkConfigurationPtr mockConfig;
+    SharedLinkInterfacePtr mockLink;
+    _startMockLink(1, false /*highLatency*/, true /*incrementVehicleId*/, mockConfig, mockLink);
+    MockLink* const pMockLink = qobject_cast<MockLink*>(mockLink.get());
+    Vehicle* const vehicle = waitForVehicleConnect(TestTimeout::shortMs());
+    QVERIFY(vehicle);
+
+    pMockLink->setArmed(true);
+    QVERIFY_TRUE_WAIT(vehicle->armed(), TestTimeout::mediumMs());
+
+    QSignalSpy spyVehicleDeleted(vehicle, &QObject::destroyed);
+    pMockLink->setCommLost(true);
+    QVERIFY_NO_SIGNAL_WAIT(spyVehicleDeleted,
+                           VehicleLinkManager::kTestCommLostDetectionTimeoutMs
+                               + VehicleLinkManager::kTestLostUnarmedVehicleRemovalMSecs
+                               + TestTimeout::shortMs());
+    QCOMPARE(spyVehicleDeleted.count(), 0);
+    QCOMPARE(MultiVehicleManager::instance()->vehicles()->count(), 1);
 }
 
 void VehicleLinkManagerTest::_multiLinkSingleVehicleTest()

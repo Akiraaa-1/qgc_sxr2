@@ -55,7 +55,7 @@ Column  {
             radius: parent.radius
         }
 
-        QGCLabel {
+        QGCPixelLabel {
             anchors.left: parent.left
             anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.95
             anchors.right: arrowLabel.left
@@ -68,7 +68,7 @@ Column  {
             text: name + (passed ? qsTr(" · 已通过") : "")
         }
 
-        QGCLabel {
+        QGCPixelLabel {
             id: arrowLabel
             anchors.right: parent.right
             anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.65

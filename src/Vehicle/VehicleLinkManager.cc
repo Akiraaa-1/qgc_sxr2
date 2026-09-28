@@ -25,6 +25,7 @@ VehicleLinkManager::VehicleLinkManager(Vehicle *vehicle)
 
     _commLostCheckTimer->setSingleShot(false);
     _commLostCheckTimer->setInterval(_commLostCheckTimeoutMSecs);
+    _lastMavlinkDispatchTimer.start();
 }
 
 VehicleLinkManager::~VehicleLinkManager()
@@ -37,6 +38,12 @@ void VehicleLinkManager::mavlinkMessageReceived(LinkInterface *link, const mavli
     // Radio status messages come from Sik Radios directly. It doesn't indicate there is any life on the other end.
     if (message.msgid == MAVLINK_MSG_ID_RADIO_STATUS) {
         return;
+    }
+
+    const qint64 dispatchGap = _lastMavlinkDispatchTimer.restart();
+    if (dispatchGap >= 500) {
+        qCWarning(VehicleLinkManagerLog) << "MAVLink dispatch gap" << dispatchGap << "ms for message" << message.msgid
+                                         << "vehicle" << _vehicle->id();
     }
 
     const int linkIndex = _containsLinkIndex(link);
@@ -83,7 +90,7 @@ void VehicleLinkManager::_commRegainedOnLink(LinkInterface *link)
 
     if (!primarySwitchMessage.isEmpty()) {
         AudioOutput::instance()->say(primarySwitchMessage.toLower());
-        qgcApp()->showAppMessage(primarySwitchMessage);
+        qCInfo(VehicleLinkManagerLog) << primarySwitchMessage;
     }
 
     emit linkStatusesChanged();
@@ -103,6 +110,7 @@ void VehicleLinkManager::_commRegainedOnLink(LinkInterface *link)
 
     if (noCommunicationLoss) {
         _communicationLost = false;
+        _communicationLostElapsedTimer.invalidate();
         emit communicationLostChanged(_communicationLost);
     }
 }
@@ -147,10 +155,13 @@ void VehicleLinkManager::_commLostCheck()
     if (_updatePrimaryLink()) {
         QString msg = tr("%1正在切换通信到备用链路。").arg(_vehicle->_vehicleIdSpeech());
         AudioOutput::instance()->say(msg.toLower());
-        qgcApp()->showAppMessage(msg);
+        qCInfo(VehicleLinkManagerLog) << msg;
     }
 
     if (_communicationLost) {
+        if (_shouldRemoveLostVehicle()) {
+            closeVehicle();
+        }
         return;
     }
 
@@ -170,12 +181,60 @@ void VehicleLinkManager::_commLostCheck()
         }
 
         AudioOutput::instance()->say(tr("%1Communication lost").arg(_vehicle->_vehicleIdSpeech()).toLower());
+        QStringList lostLinkNames;
+        for (const LinkInfo_t &linkInfo: _rgLinkInfo) {
+            const SharedLinkConfigurationPtr config = linkInfo.link ? linkInfo.link->linkConfiguration() : SharedLinkConfigurationPtr();
+            lostLinkNames.append(config ? config->name() : tr("unknown link"));
+        }
+        const QString lostLinksText = lostLinkNames.isEmpty() ? tr("active link") : lostLinkNames.join(QStringLiteral(", "));
+        qCWarning(VehicleLinkManagerLog) << tr("%1Communication lost: no MAVLink heartbeat received on %2. Check the UDP/TCP endpoint, vehicle power, and MAVLink output.")
+                                             .arg(_vehicle->_vehicleIdSpeech(), lostLinksText);
 
         emit mylink_disconnected(_vehicle->id());
 
         _communicationLost = true;
+        _communicationLostElapsedTimer.start();
         emit communicationLostChanged(_communicationLost);
     }
+}
+
+bool VehicleLinkManager::_shouldRemoveLostVehicle() const
+{
+    // An armed or airborne vehicle must remain visible after a lost network link so
+    // the operator retains its last known state and can recover the connection.
+    if (_vehicle->armed() || _vehicle->flying() || !_communicationLostElapsedTimer.isValid()) {
+        return false;
+    }
+
+    // UDP has no peer disconnect event, and a TCP peer can occasionally disappear
+    // without delivering one. Do not apply this expiry to serial, Bluetooth, or
+    // high-latency links, whose reconnect and loss semantics are different.
+    if (_rgLinkInfo.isEmpty()) {
+        return false;
+    }
+
+    for (const LinkInfo_t &linkInfo : _rgLinkInfo) {
+        const SharedLinkConfigurationPtr config = linkInfo.link ? linkInfo.link->linkConfiguration() : SharedLinkConfigurationPtr();
+        if (!config) {
+            return false;
+        }
+
+        const LinkConfiguration::LinkType type = config->type();
+        const bool isNetworkLink = type == LinkConfiguration::TypeUdp || type == LinkConfiguration::TypeTcp;
+#ifdef QGC_UNITTEST_BUILD
+        const bool isTestLink = qgcApp()->runningUnitTests() && type == LinkConfiguration::TypeMock;
+        if (!isNetworkLink && !isTestLink) {
+#else
+        if (!isNetworkLink) {
+#endif
+            return false;
+        }
+    }
+
+    const int removalTimeout = qgcApp()->runningUnitTests()
+        ? kTestLostUnarmedVehicleRemovalMSecs
+        : _lostUnarmedVehicleRemovalMSecs;
+    return _communicationLostElapsedTimer.elapsed() >= removalTimeout;
 }
 
 int VehicleLinkManager::_containsLinkIndex(const LinkInterface *link)
@@ -402,6 +461,13 @@ QString VehicleLinkManager::primaryLinkName() const
     }
 
     return QString();
+}
+
+int VehicleLinkManager::primaryMavlinkVersion() const
+{
+    const SharedLinkInterfacePtr primaryLink = _primaryLink.lock();
+    const SharedLinkConfigurationPtr config = primaryLink ? primaryLink->linkConfiguration() : SharedLinkConfigurationPtr();
+    return config ? config->mavlinkVersion() : 0;
 }
 
 void VehicleLinkManager::setPrimaryLinkByName(const QString &name)

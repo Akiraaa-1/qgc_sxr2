@@ -314,4 +314,7 @@ add_qgc_test(RequestMessageTest LABELS Integration Vehicle RESOURCE_LOCK MockLin
 add_qgc_test(RequestMetaDataTypeStateMachineTest LABELS Integration Vehicle RESOURCE_LOCK MockLink)
 add_qgc_test(SendMavCommandWithHandlerTest LABELS Integration Vehicle RESOURCE_LOCK MockLink)
 add_qgc_test(SendMavCommandWithSignallingTest LABELS Integration Vehicle RESOURCE_LOCK MockLink)
+add_qgc_test(TrajectoryPointsTest LABELS Integration Vehicle MissionManager RESOURCE_LOCK MockLink)
 add_qgc_test(VehicleLinkManagerTest LABELS Integration Vehicle RESOURCE_LOCK MockLink)
+add_qgc_test(VehiclePlanSessionManagerTest LABELS Integration Vehicle MissionManager RESOURCE_LOCK MockLink)
+add_qgc_test(VehicleReadinessTest LABELS Integration Vehicle RESOURCE_LOCK MockLink)

@@ -181,11 +181,13 @@ void PlanMasterControllerTest::_testDirtyFlagsMatrix()
 
     switch (scenario) {
     case UploadPreservesSaveDirtyFalse: {
+        _masterController->_sendToVehicleInProgress = true;
         const bool invoked = QMetaObject::invokeMethod(_masterController, "_sendRallyPointsComplete", Qt::DirectConnection);
         QVERIFY(invoked);
         break;
     }
     case UploadPreservesSaveDirtyTrue: {
+        _masterController->_sendToVehicleInProgress = true;
         const bool invoked = QMetaObject::invokeMethod(_masterController, "_sendRallyPointsComplete", Qt::DirectConnection);
         QVERIFY(invoked);
         break;
@@ -222,12 +224,16 @@ void PlanMasterControllerTest::_testDirtyFlagsMatrix()
         break;
     case DownloadWithItemsDirtyForSave: {
         QVERIFY(_masterController->containsItems());
+        _masterController->_loadFromVehicleInProgress = true;
+        _masterController->_loadFromVehicleGeneration = _masterController->_remotePlanStateGeneration;
         const bool invoked = QMetaObject::invokeMethod(_masterController, "_loadRallyPointsComplete", Qt::DirectConnection);
         QVERIFY(invoked);
         break;
     }
     case DownloadEmptyNotDirtyForSave: {
         QVERIFY(!_masterController->containsItems());
+        _masterController->_loadFromVehicleInProgress = true;
+        _masterController->_loadFromVehicleGeneration = _masterController->_remotePlanStateGeneration;
         const bool invoked = QMetaObject::invokeMethod(_masterController, "_loadRallyPointsComplete", Qt::DirectConnection);
         QVERIFY(invoked);
         break;
@@ -419,6 +425,70 @@ void PlanMasterControllerTest::_testFileNamesClearedOnRemoveAll()
     QVERIFY(originalNameSpy.count() >= 1);
 }
 
+void PlanMasterControllerTest::_testMissionClearFromVehiclePreservesPlanFile()
+{
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+
+    _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
+    const QString currentPlanFile = _masterController->currentPlanFile();
+    const QString currentPlanFileName = _masterController->currentPlanFileName();
+    const QString originalPlanFileName = _masterController->originalPlanFileName();
+    QVERIFY(_masterController->missionController()->containsItems());
+
+    _masterController->removeMissionFromVehicle();
+    QVERIFY_TRUE_WAIT(_masterController->removeMissionFromVehicleInProgress(), TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(!_masterController->removeMissionFromVehicleInProgress(), TestTimeout::longMs());
+
+    QVERIFY(!_masterController->missionController()->containsItems());
+    QCOMPARE(_masterController->currentPlanFile(), currentPlanFile);
+    QCOMPARE(_masterController->currentPlanFileName(), currentPlanFileName);
+    QCOMPARE(_masterController->originalPlanFileName(), originalPlanFileName);
+    QVERIFY(_masterController->remotePlanStateKnown());
+    QVERIFY(_masterController->dirtyForSave());
+    QVERIFY(!_masterController->dirtyForUpload());
+}
+
+void PlanMasterControllerTest::_testFlyControllerRefreshesAfterMissionClear()
+{
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+
+    _masterController->loadFromFile(":/unittest/MissionPlanner.waypoints");
+    _masterController->sendToVehicle();
+    QVERIFY_TRUE_WAIT(_masterController->syncInProgress(), TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(!_masterController->syncInProgress(), TestTimeout::longMs());
+
+    PlanMasterController flyController(this);
+    flyController.setFlyView(true);
+    flyController.start();
+    QVERIFY_TRUE_WAIT(flyController.missionController()->containsItems(), TestTimeout::mediumMs());
+
+    _masterController->removeMissionFromVehicle();
+    QVERIFY_TRUE_WAIT(_masterController->removeMissionFromVehicleInProgress(), TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(!_masterController->removeMissionFromVehicleInProgress(), TestTimeout::longMs());
+    QVERIFY_TRUE_WAIT(!flyController.missionController()->containsItems(), TestTimeout::mediumMs());
+}
+
+void PlanMasterControllerTest::_testPassiveControllerIgnoresUploadFailure()
+{
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+
+    PlanMasterController passiveController(this);
+    passiveController.setFlyView(false);
+    passiveController.start();
+    QVERIFY(passiveController.remotePlanStateKnown());
+
+    _masterController->_sendToVehicleInProgress = true;
+    _masterController->_sendGeoFence = true;
+    _masterController->_setRemotePlanStateKnown(true);
+    passiveController._setRemotePlanStateKnown(true);
+
+    emit vehicle()->missionManager()->sendComplete(true);
+
+    QVERIFY(!_masterController->remotePlanStateKnown());
+    QVERIFY(!_masterController->_sendToVehicleInProgress);
+    QVERIFY(passiveController.remotePlanStateKnown());
+}
+
 void PlanMasterControllerTest::_testFileNamesClearedOnRemoveAllFromVehicle()
 {
     _connectMockLink(MAV_AUTOPILOT_PX4);
@@ -433,6 +503,8 @@ void PlanMasterControllerTest::_testFileNamesClearedOnRemoveAllFromVehicle()
     QSignalSpy originalNameSpy(_masterController, &PlanMasterController::originalPlanFileNameChanged);
 
     _masterController->removeAllFromVehicle();
+    QVERIFY_TRUE_WAIT(_masterController->removeAllFromVehicleInProgress(), TestTimeout::mediumMs());
+    QVERIFY_TRUE_WAIT(!_masterController->removeAllFromVehicleInProgress(), TestTimeout::longMs());
 
     // Names should be cleared
     QVERIFY(_masterController->currentPlanFileName().isEmpty());

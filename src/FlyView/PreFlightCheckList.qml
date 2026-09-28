@@ -118,7 +118,7 @@ ColumnLayout {
         Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1
         spacing:            ScreenTools.defaultFontPixelWidth * 0.55
 
-        QGCLabel {
+        QGCPixelLabel {
             Layout.fillWidth:   true
             text:               allChecksPassed ? qsTr("检查已通过") : qsTr("检查进行中")
             color:              allChecksPassed ? "#9BCF89" : "#F0F3EA"

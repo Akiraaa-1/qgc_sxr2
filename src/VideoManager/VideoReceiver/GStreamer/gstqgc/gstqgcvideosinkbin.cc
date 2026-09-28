@@ -54,6 +54,7 @@ GST_ELEMENT_REGISTER_DEFINE_WITH_CODE(qgcvideosinkbin,"qgcvideosinkbin",
 
 static void gst_qgc_video_sink_bin_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec);
 static void gst_qgc_video_sink_bin_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec);
+static void gst_qgc_video_sink_bin_finalize(GObject *object);
 
 static void
 gst_qgc_video_sink_bin_class_init(GstQgcVideoSinkBinClass *klass)
@@ -63,6 +64,7 @@ gst_qgc_video_sink_bin_class_init(GstQgcVideoSinkBinClass *klass)
 
     object_class->set_property = gst_qgc_video_sink_bin_set_property;
     object_class->get_property = gst_qgc_video_sink_bin_get_property;
+    object_class->finalize = gst_qgc_video_sink_bin_finalize;
 
     properties[PROP_ENABLE_LAST_SAMPLE] = g_param_spec_boolean(
         "enable-last-sample", "Enable last sample",
@@ -193,16 +195,26 @@ gst_qgc_video_sink_bin_init(GstQgcVideoSinkBin *self)
                  "sink", self->qmlglsink,
                  PROP_ENABLE_LAST_SAMPLE_NAME, FALSE,
                  NULL);
+    gst_object_ref(self->qmlglsink);
 
     if (!gst_bin_add(GST_BIN(self), self->glsinkbin)) {
         GST_ERROR_OBJECT(self, "Failed to add glsinkbin to bin");
-        // glsinkbin owns qmlglsink — clearing it frees both
-        self->qmlglsink = NULL;
+        gst_clear_object(&self->qmlglsink);
         gst_clear_object(&self->glsinkbin);
         return;
     }
 
     gst_qgc_video_sink_bin_ghost_pad(self, self->glsinkbin);
+}
+
+static void
+gst_qgc_video_sink_bin_finalize(GObject *object)
+{
+    GstQgcVideoSinkBin *self = GST_QGC_VIDEO_SINK_BIN(object);
+
+    gst_clear_object(&self->qmlglsink);
+
+    G_OBJECT_CLASS(gst_qgc_video_sink_bin_parent_class)->finalize(object);
 }
 
 static void
@@ -354,4 +366,3 @@ gst_qgc_video_sink_bin_get_property(GObject *object, guint prop_id, GValue *valu
         break;
     }
 }
-

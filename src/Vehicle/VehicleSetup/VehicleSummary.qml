@@ -84,31 +84,31 @@ Rectangle {
         ? Number(_activeVehicle.rcRSSI)
         : NaN)
     readonly property real _telemetryQualityPercent: _calcTelemetryQualityPercent()
-    readonly property bool _healthReportSupported: !!(_activeVehicle && _activeVehicle.healthAndArmingCheckReport && _activeVehicle.healthAndArmingCheckReport.supported)
-    readonly property bool _canArm: _healthReportSupported
-        ? !!_activeVehicle.healthAndArmingCheckReport.canArm
-        : !!(_activeVehicle && _activeVehicle.readyToFlyAvailable && _activeVehicle.readyToFly)
-    readonly property bool _hasHealthWarnings: _healthReportSupported
-        ? !!_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors
-        : false
+    readonly property bool _healthReportSupported: _readiness.healthReportSupported
+    readonly property bool _hasHealthWarnings: _readiness.hasHealthWarnings
     readonly property bool _setupComplete: !!(_activeVehicle && _activeVehicle.autopilotPlugin && _activeVehicle.autopilotPlugin.setupComplete)
-    readonly property bool _vehicleConnected: !!_activeVehicle && !_activeVehicle.isOfflineEditingVehicle
+    readonly property bool _vehicleConnected: !!(_activeVehicle
+        && !_activeVehicle.isOfflineEditingVehicle
+        && _activeVehicle.vehicleLinkManager
+        && !_activeVehicle.vehicleLinkManager.communicationLost)
     readonly property int _batteryStatusLevel: _batteryLevel(_batteryPercent)
     readonly property int _gpsStatusLevel: _gpsLevel(_gpsSatellites, _gpsLock, _gpsHdop)
     readonly property int _rcStatusLevel: _rcLevel(_rcRssiPercent)
     readonly property int _telemetryStatusLevel: _telemetryLevel(_telemetryQualityPercent)
     readonly property int _configStatusLevel: _setupComplete ? 0 : 2
-    readonly property int _armingStatusLevel: _canArm ? (_hasHealthWarnings ? 1 : 0) : 2
-    readonly property int _overallStatusLevel: _maxLevel([
+    readonly property int _armingStatusLevel: _vehicleConnected ? _readiness.statusLevel : 2
+    readonly property int _operationalStatusLevel: _maxLevel([
         _batteryStatusLevel,
         _gpsStatusLevel,
         _rcStatusLevel,
         _telemetryStatusLevel,
-        _configStatusLevel,
-        _armingStatusLevel
+        _configStatusLevel
     ])
-    readonly property string _overallStatusText: _statusText(_overallStatusLevel)
-    readonly property color _overallStatusColor: _statusColor(_overallStatusLevel)
+    readonly property string _operationalStatusText: _operationalStatusLevel >= 2
+        ? qsTr("需处理")
+        : (_operationalStatusLevel === 1 ? qsTr("有提示") : qsTr("正常"))
+    readonly property color _operationalStatusColor: _statusColor(_operationalStatusLevel)
+    readonly property string _operationalAttentionText: _operationalAttentionSummary()
 
     function _componentKey(component) {
         if (!component) {
@@ -279,6 +279,31 @@ Rectangle {
         return maxLevel
     }
 
+    function _operationalAttentionSummary() {
+        const items = []
+        if (_batteryStatusLevel > 0) {
+            items.push(qsTr("电池"))
+        }
+        if (_gpsStatusLevel > 0) {
+            items.push(qsTr("定位"))
+        }
+        if (_rcStatusLevel > 0) {
+            items.push(qsTr("遥控"))
+        }
+        if (_telemetryStatusLevel > 0) {
+            items.push(qsTr("遥测"))
+        }
+        if (_configStatusLevel > 0) {
+            items.push(qsTr("配置"))
+        }
+
+        if (items.length === 0) {
+            return ""
+        }
+
+        return (_operationalStatusLevel >= 2 ? qsTr("处理：") : qsTr("关注：")) + items.join(qsTr("、"))
+    }
+
     function _formatPercent(value) {
         return isNaN(value) ? "--" : (Math.round(value) + "%")
     }
@@ -298,6 +323,41 @@ Rectangle {
         return readyText
     }
 
+    function _firmwareVersionText() {
+        if (!_vehicleConnected || !_activeVehicle) {
+            return qsTr("未连接")
+        }
+        if (_activeVehicle.firmwareMajorVersion < 0) {
+            return qsTr("版本未报告")
+        }
+
+        return _activeVehicle.firmwareMajorVersion + "."
+                + _activeVehicle.firmwareMinorVersion + "."
+                + _activeVehicle.firmwarePatchVersion
+                + _activeVehicle.firmwareVersionTypeString
+    }
+
+    function _firmwareDetailText() {
+        if (!_vehicleConnected || !_activeVehicle) {
+            return qsTr("等待飞控连接后读取固件信息")
+        }
+        if (_activeVehicle.firmwareMajorVersion < 0) {
+            return qsTr("飞控未上报版本，请确认固件是否受支持 / SYSID %1").arg(_activeVehicle.id)
+        }
+
+        return qsTr("%1 / %2 / SYSID %3")
+            .arg(_activeVehicle.firmwareTypeString)
+            .arg(_activeVehicle.vehicleTypeString)
+            .arg(_activeVehicle.id)
+    }
+
+    function _firmwareStatusLevel() {
+        if (!_vehicleConnected || !_activeVehicle) {
+            return 2
+        }
+        return _activeVehicle.firmwareMajorVersion < 0 ? 1 : 0
+    }
+
     function _healthReport() {
         return _activeVehicle && _activeVehicle.healthAndArmingCheckReport
             ? _activeVehicle.healthAndArmingCheckReport
@@ -314,15 +374,167 @@ Rectangle {
         return problems ? problems.count : 0
     }
 
-    function _healthStateSummary() {
-        const report = _healthReport()
-        if (!report || !report.supported) {
-            return qsTr("当前飞控未提供健康与解锁报告，地面站只能使用备用就绪状态。")
+    function _healthVerdictText(verdict) {
+        if (verdict === _readiness.verdictAllowed) {
+            return qsTr("允许")
         }
-        return qsTr("解锁：%1\n起飞：%2\n开始任务：%3")
-            .arg(report.canArm ? qsTr("允许") : qsTr("阻止"))
-            .arg(report.canTakeoff ? qsTr("允许") : qsTr("阻止"))
-            .arg(report.canStartMission ? qsTr("允许") : qsTr("阻止"))
+        if (verdict === _readiness.verdictDenied) {
+            return qsTr("阻止")
+        }
+        return qsTr("未确认")
+    }
+
+    function _healthStateSummary() {
+        if (!_vehicleConnected) {
+            return qsTr("通信链路未建立或已中断，无法获取当前解锁状态。")
+        }
+
+        if (_readiness.source === _readiness.sourceHealthReport) {
+            return qsTr("解锁：%1\n起飞：%2\n开始任务：%3")
+                .arg(_healthVerdictText(_readiness.armingVerdict))
+                .arg(_healthVerdictText(_readiness.takeoffVerdict))
+                .arg(_healthVerdictText(_readiness.missionStartVerdict))
+        }
+
+        if (_readiness.source === _readiness.sourceWaitingForHealthReport) {
+            return qsTr("飞控支持健康与解锁报告，但尚未返回当前会话的检查结果。\n解锁许可：检查中")
+        }
+
+        if (_readiness.source === _readiness.sourceLegacyPrearm) {
+            return qsTr("当前飞控未提供健康与解锁报告，使用 SYS_STATUS 旧版飞前检查。\n预检：%1\n解锁许可：%2")
+                .arg(_readiness.legacyPrearmReady ? qsTr("通过") : qsTr("未通过"))
+                .arg(_readiness.legacyPrearmReady ? qsTr("未确认") : qsTr("阻止"))
+        }
+
+        if (_readiness.source === _readiness.sourceBasicFallback) {
+            const sysStatusText = !_readiness.sysStatusReceived
+                ? qsTr("未接收")
+                : (_readiness.basicSensorStatusAvailable ? qsTr("已接收") : qsTr("未提供可评估传感器状态"))
+            const sensorText = !_readiness.basicSensorStatusAvailable
+                ? qsTr("未确认")
+                : (_readiness.allSensorsHealthy ? qsTr("健康") : qsTr("需检查"))
+            return qsTr("当前飞控未提供健康与解锁报告，基础状态仅供诊断，不能确认是否允许解锁。\nSYS_STATUS：%1\n传感器：%2\n配置：%3")
+                .arg(sysStatusText)
+                .arg(sensorText)
+                .arg(_readiness.setupComplete ? qsTr("完成") : qsTr("未完成"))
+        }
+
+        return qsTr("等待飞行器连接后检查解锁状态。")
+    }
+
+    function _armingValue() {
+        if (!_vehicleConnected) {
+            return qsTr("未连接")
+        }
+
+        if (_readiness.source === _readiness.sourceHealthReport) {
+            if (_readiness.armingVerdict === _readiness.verdictDenied) {
+                return qsTr("阻止")
+            }
+            if (_readiness.armingVerdict === _readiness.verdictUnknown) {
+                return qsTr("未确认")
+            }
+            return _hasHealthWarnings ? qsTr("允许（警告）") : qsTr("允许")
+        }
+
+        if (_readiness.source === _readiness.sourceWaitingForHealthReport) {
+            return qsTr("检查中")
+        }
+
+        if (_readiness.source === _readiness.sourceLegacyPrearm) {
+            return _readiness.legacyPrearmReady ? qsTr("未确认") : qsTr("阻止")
+        }
+
+        if (_readiness.source === _readiness.sourceBasicFallback) {
+            return qsTr("未确认")
+        }
+
+        return qsTr("未连接")
+    }
+
+    function _armingDetail() {
+        if (!_vehicleConnected) {
+            return qsTr("通信链路未建立或已中断")
+        }
+
+        if (_readiness.source === _readiness.sourceHealthReport) {
+            if (_readiness.armingVerdict === _readiness.verdictDenied) {
+                return qsTr("飞控健康报告禁止解锁")
+            }
+            if (_readiness.armingVerdict === _readiness.verdictUnknown) {
+                return qsTr("飞控健康报告未提供当前模式的明确解锁结论")
+            }
+            return _hasHealthWarnings ? qsTr("飞控允许解锁，但存在警告") : qsTr("飞控健康报告允许解锁")
+        }
+
+        if (_readiness.source === _readiness.sourceWaitingForHealthReport) {
+            return qsTr("飞控支持健康与解锁报告，正在等待当前会话的检查结果")
+        }
+
+        if (_readiness.source === _readiness.sourceLegacyPrearm) {
+            return _readiness.legacyPrearmReady
+                ? qsTr("SYS_STATUS 旧版飞前检查通过；飞控未提供明确解锁许可")
+                : qsTr("SYS_STATUS 旧版飞前检查未通过；解锁被阻止")
+        }
+
+        if (_readiness.source === _readiness.sourceBasicFallback) {
+            if (!_readiness.sysStatusReceived) {
+                return qsTr("飞控未提供解锁报告，且尚未收到 SYS_STATUS")
+            }
+            if (!_readiness.basicSensorStatusAvailable) {
+                return qsTr("已收到 SYS_STATUS，但未提供可评估的传感器健康状态")
+            }
+            return _readiness.basicReady
+                ? qsTr("飞控未提供解锁报告；基础状态正常，解锁许可未确认")
+                : qsTr("飞控未提供解锁报告；基础检查不完整，解锁许可未确认")
+        }
+
+        return qsTr("等待飞行器连接")
+    }
+
+    function _healthEmptyText() {
+        if (!_vehicleConnected) {
+            return qsTr("等待通信链路恢复后获取健康状态。")
+        }
+
+        if (_healthReportSupported) {
+            return qsTr("当前报告没有返回具体阻止项。")
+        }
+
+        if (_readiness.source === _readiness.sourceWaitingForHealthReport) {
+            return qsTr("飞控支持健康与解锁报告，正在等待当前会话的检查结果。")
+        }
+
+        if (_readiness.source === _readiness.sourceLegacyPrearm) {
+            return _readiness.legacyPrearmReady
+                ? qsTr("旧版飞前检查已通过，但飞控未提供明确解锁许可。")
+                : qsTr("旧版飞前检查未通过；请先处理飞控报告的未就绪状态。")
+        }
+
+        if (_readiness.source === _readiness.sourceBasicFallback) {
+            if (!_readiness.sysStatusReceived) {
+                return qsTr("飞控未提供健康与解锁报告，且尚未收到 SYS_STATUS。")
+            }
+            if (!_readiness.basicSensorStatusAvailable) {
+                return qsTr("已收到 SYS_STATUS，但未提供可评估的传感器健康状态。")
+            }
+            return _readiness.basicReady
+                ? qsTr("飞控未提供健康与解锁报告；以下传感器状态仅用于基础诊断。")
+                : qsTr("飞控未提供健康与解锁报告；请检查基础传感器状态和配置，解锁许可仍未确认。")
+        }
+
+        return qsTr("等待飞行器连接后获取健康状态。")
+    }
+
+    function _sensorNames() {
+        const sensorInfo = _activeVehicle ? _activeVehicle.sysStatusSensorInfo : null
+        return sensorInfo && sensorInfo.sensorNames ? sensorInfo.sensorNames : []
+    }
+
+    function _sensorStatus(index) {
+        const sensorInfo = _activeVehicle ? _activeVehicle.sysStatusSensorInfo : null
+        const statuses = sensorInfo && sensorInfo.sensorStatus ? sensorInfo.sensorStatus : []
+        return index >= 0 && index < statuses.length ? statuses[index] : "--"
     }
 
     function _translatedHealthText(text) {
@@ -572,6 +784,12 @@ Rectangle {
         colorGroupEnabled: enabled
     }
 
+    VehicleReadinessAssessment {
+        id: _readiness
+
+        vehicle: _summaryRoot._activeVehicle
+    }
+
     QGCFlickable {
         anchors.fill: parent
         clip: true
@@ -623,19 +841,68 @@ Rectangle {
                             color: _summaryRoot._cardPrimaryTextColor
                         }
 
-                        Rectangle {
-                            Layout.alignment: Qt.AlignVCenter
-                            radius: ScreenTools.defaultFontPixelHeight * 0.45
-                            color: _summaryRoot._overallStatusColor
-                            implicitHeight: ScreenTools.defaultFontPixelHeight * 1.3
-                            implicitWidth: overallStatusText.implicitWidth + (ScreenTools.defaultFontPixelWidth * 1.6)
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                            spacing: ScreenTools.defaultFontPixelHeight * 0.15
 
-                            QGCLabel {
-                                id: overallStatusText
-                                anchors.centerIn: parent
-                                text: _summaryRoot._overallStatusText
-                                font.bold: true
-                                color: "#111111"
+                            RowLayout {
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.4
+
+                                QGCLabel {
+                                    text: qsTr("解锁")
+                                    color: _summaryRoot._cardSecondaryTextColor
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 0.78
+                                }
+
+                                Rectangle {
+                                    radius: ScreenTools.defaultFontPixelHeight * 0.4
+                                    color: _summaryRoot._statusColor(_summaryRoot._armingStatusLevel)
+                                    implicitHeight: ScreenTools.defaultFontPixelHeight * 1.15
+                                    implicitWidth: armingStatusText.implicitWidth + (ScreenTools.defaultFontPixelWidth * 1.2)
+
+                                    QGCLabel {
+                                        id: armingStatusText
+                                        anchors.centerIn: parent
+                                        text: _summaryRoot._armingValue()
+                                        font.bold: true
+                                        color: "#111111"
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                spacing: ScreenTools.defaultFontPixelWidth * 0.4
+
+                                QGCLabel {
+                                    text: qsTr("运行监测")
+                                    color: _summaryRoot._cardSecondaryTextColor
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 0.78
+                                }
+
+                                Rectangle {
+                                    radius: ScreenTools.defaultFontPixelHeight * 0.4
+                                    color: _summaryRoot._operationalStatusColor
+                                    implicitHeight: ScreenTools.defaultFontPixelHeight * 1.15
+                                    implicitWidth: operationalStatusText.implicitWidth + (ScreenTools.defaultFontPixelWidth * 1.2)
+
+                                    QGCLabel {
+                                        id: operationalStatusText
+                                        anchors.centerIn: parent
+                                        text: _summaryRoot._operationalStatusText
+                                        font.bold: true
+                                        color: "#111111"
+                                    }
+                                }
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: ScreenTools.defaultFontPixelWidth * 18
+                                    visible: _summaryRoot._operationalAttentionText !== ""
+                                    text: _summaryRoot._operationalAttentionText
+                                    color: _summaryRoot._operationalStatusColor
+                                    font.pointSize: ScreenTools.defaultFontPointSize * 0.72
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                     }
@@ -653,6 +920,12 @@ Rectangle {
                                     "value": _summaryRoot._vehicleConnected ? qsTr("已连接") : qsTr("未连接"),
                                     "detail": _summaryRoot._vehicleConnected ? qsTr("通信链路已建立") : qsTr("等待飞行器连接"),
                                     "level": _summaryRoot._vehicleConnected ? 0 : 2
+                                },
+                                {
+                                    "title": qsTr("固件"),
+                                    "value": _summaryRoot._firmwareVersionText(),
+                                    "detail": _summaryRoot._firmwareDetailText(),
+                                    "level": _summaryRoot._firmwareStatusLevel()
                                 },
                                 {
                                     "title": qsTr("电池"),
@@ -691,8 +964,8 @@ Rectangle {
                                 },
                                 {
                                     "title": qsTr("解锁检查"),
-                                    "value": _summaryRoot._canArm ? (_summaryRoot._hasHealthWarnings ? qsTr("警告") : qsTr("通过")) : qsTr("阻止"),
-                                    "detail": _summaryRoot._canArm ? (_summaryRoot._hasHealthWarnings ? qsTr("解锁检查存在警告") : qsTr("解锁检查通过")) : qsTr("解锁检查未通过"),
+                                    "value": _summaryRoot._armingValue(),
+                                    "detail": _summaryRoot._armingDetail(),
                                     "level": _summaryRoot._armingStatusLevel,
                                     "action": "health"
                                 }
@@ -960,9 +1233,46 @@ Rectangle {
                         QGCLabel {
                             Layout.fillWidth: true
                             visible: _summaryRoot._healthProblemCount() === 0
-                            text: qsTr("当前报告没有返回具体阻止项。")
+                            text: _summaryRoot._healthEmptyText()
                             color: _summaryRoot._cardSecondaryTextColor
                             wrapMode: Text.WordWrap
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth: true
+                            visible: !_summaryRoot._healthReportSupported
+                                && _summaryRoot._activeVehicle
+                                && _summaryRoot._activeVehicle.prearmError
+                            text: qsTr("最近飞前提示：%1").arg(_summaryRoot._activeVehicle.prearmError)
+                            color: _summaryRoot._cardWarningColor
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Repeater {
+                            model: _summaryRoot._healthReportSupported ? [] : _summaryRoot._sensorNames()
+
+                            RowLayout {
+                                id: sensorStatusRow
+
+                                required property var modelData
+                                required property int index
+
+                                Layout.fillWidth: true
+                                spacing: ScreenTools.defaultFontPixelWidth
+
+                                QGCLabel {
+                                    Layout.fillWidth: true
+                                    text: sensorStatusRow.modelData
+                                    color: _summaryRoot._cardPrimaryTextColor
+                                }
+
+                                QGCLabel {
+                                    text: _summaryRoot._sensorStatus(sensorStatusRow.index)
+                                    color: text === qsTr("Error")
+                                        ? _summaryRoot._cardDangerColor
+                                        : (text === qsTr("Normal") ? _summaryRoot._cardSuccessColor : _summaryRoot._cardSecondaryTextColor)
+                                }
+                            }
                         }
 
                         Repeater {

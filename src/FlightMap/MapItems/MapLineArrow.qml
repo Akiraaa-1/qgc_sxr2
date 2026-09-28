@@ -38,6 +38,8 @@ MapQuickItem {
     onToCoordChanged:   _updateArrowDetails()
     onSourceFromCoordChanged: _updateArrowDetails()
     onSourceToCoordChanged:   _updateArrowDetails()
+    property bool _chinaOffsetMapActive: QGroundControl.chinaOffsetMapActive
+    on_ChinaOffsetMapActiveChanged: _updateArrowDetails()
 
     sourceItem: Canvas {
         x:      -_arrowSize

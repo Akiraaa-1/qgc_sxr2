@@ -4,6 +4,7 @@
 #include <QtCore/QLatin1String>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QString>
+#include <QtCore/QtGlobal>
 
 namespace GStreamer
 {
@@ -85,7 +86,7 @@ bool isHardwareDecoderFactory(GstElementFactory *factory)
     };
 
     for (const auto &tag : kHardwareTags) {
-        if (nameLower.contains(tag)) {
+        if (nameLower.startsWith(tag)) {
             return true;
         }
     }
@@ -211,6 +212,13 @@ void setCodecPriorities(VideoDecoderOptions option)
 
     switch (option) {
     case ForceVideoDecoderDefault:
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+        // On Linux desktops the Qt6 GL video item can render black with some
+        // hardware decoders such as nvh264dec while the stream still reports
+        // successful decoding. Prefer software in the default path for BTFW
+        // reliability; users can still explicitly force hardware decoders.
+        prioritizeByHardwareClass(registry, PrioritizedRank, false);
+#else
         // Android/iOS hardware decoders (amcviddec, vtdec) already have higher
         // default ranks than software decoders, so decodebin tries them first.
         // However, AMC decoders require GL output (GLMemory caps) which the
@@ -218,6 +226,7 @@ void setCodecPriorities(VideoDecoderOptions option)
         // back to software. Setting software to RANK_NONE here would eliminate
         // that fallback entirely.  Leave ranks untouched until the pipeline
         // supports GL context sharing with Qt.
+#endif
         break;
     case ForceVideoDecoderSoftware:
         prioritizeByHardwareClass(registry, PrioritizedRank, false);

@@ -1,6 +1,7 @@
 #include "MissionController.h"
 #include "Vehicle.h"
 #include "VehicleSupports.h"
+#include "MissionItem.h"
 #include "MissionManager.h"
 #include "FlightPathSegment.h"
 #include "FirmwarePlugin.h"
@@ -22,6 +23,9 @@
 #include "TakeoffMissionItem.h"
 #include "PlanViewSettings.h"
 #include "MissionCommandTree.h"
+#include "MissionCommandUIInfo.h"
+#include "ParameterManager.h"
+#include "Fact.h"
 #include "QGC.h"
 #include "QGCLoggingCategory.h"
 
@@ -35,6 +39,24 @@
 #define UPDATE_TIMEOUT 5000 ///< How often we check for bounding box changes
 
 QGC_LOGGING_CATEGORY(MissionControllerLog, "PlanManager.MissionController")
+
+namespace {
+constexpr double kDefaultWaypointAcceptanceRadiusMeters = 2.0;
+constexpr double kMinimumUploadMissionSegmentMeters = 5.0;
+constexpr double kWaypointAcceptanceRadiusSafetyFactor = 2.0;
+constexpr double kMissionSegmentDistanceEpsilonMeters = 0.1;
+constexpr const char* kWaypointAcceptanceRadiusParam = "NAV_ACC_RAD";
+
+bool missionItemFliesThroughCoordinate(Vehicle* vehicle, MissionItem* item)
+{
+    if (!vehicle || !item) {
+        return false;
+    }
+
+    const MissionCommandUIInfo* const uiInfo = MissionCommandTree::instance()->getUIInfo(vehicle, vehicle->vehicleClass(), item->command());
+    return uiInfo && uiInfo->specifiesCoordinate() && !uiInfo->isStandaloneCoordinate();
+}
+} // namespace
 
 MissionController::MissionController(PlanMasterController* masterController, QObject *parent)
     : PlanElementController (masterController, parent)
@@ -196,7 +218,6 @@ void MissionController::sendToVehicle(void)
         } else {
             sendItemsToVehicle(_managerVehicle, _visualItems);
         }
-        setDirty(false);
     }
 }
 
@@ -1266,6 +1287,7 @@ void MissionController::_recalcMissionFlightStatus()
     emit batteriesRequiredChanged       (_missionFlightStatus.batteriesRequired);
     emit minAMSLAltitudeChanged         (_minAMSLAltitude);
     emit maxAMSLAltitudeChanged         (_maxAMSLAltitude);
+    emit missionLoopChanged             ();
 
     _updateTimer.start(UPDATE_TIMEOUT);
 
@@ -1280,6 +1302,8 @@ void MissionController::_recalcSequence(void)
         return;
     }
 
+    const bool syncMissionLoopTarget = missionLoopEnabled();
+
     // Setup ascending sequence numbers for all visual items
 
     _inRecalcSequence = true;
@@ -1290,6 +1314,10 @@ void MissionController::_recalcSequence(void)
         sequenceNumber = item->lastSequenceNumber() + 1;
     }
     _inRecalcSequence = false;
+
+    if (syncMissionLoopTarget) {
+        _syncMissionLoopTargetSequence();
+    }
 }
 
 // This will update the child item hierarchy
@@ -1975,6 +2003,10 @@ bool MissionController::showPlanFromManagerVehicle (void)
 
 void MissionController::_managerSendComplete(bool error)
 {
+    if (!error) {
+        setDirty(false);
+    }
+
     // Fly view should reflect a successful mission upload immediately. The
     // vehicle mission manager has already been updated with the written items,
     // and waiting for the full initial plan load can hide the route behind
@@ -1986,6 +2018,11 @@ void MissionController::_managerSendComplete(bool error)
 
 void MissionController::_managerRemoveAllComplete(bool error)
 {
+    if (_masterController->removeMissionFromVehicleInProgress() ||
+            _masterController->removeAllFromVehicleInProgress()) {
+        return;
+    }
+
     if (!error) {
         // Remove all from vehicle so we always update
         showPlanFromManagerVehicle();
@@ -2438,6 +2475,302 @@ bool MissionController::isEmpty(void) const
     return _visualItems->count() <= 1;
 }
 
+int MissionController::_missionLoopTargetVIIndex(void) const
+{
+    if (!_visualItems) {
+        return -1;
+    }
+
+    for (int i = 1; i < _visualItems->count(); i++) {
+        const SimpleMissionItem* const simpleItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(i));
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_NAV_WAYPOINT && simpleItem->coordinate().isValid()) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int MissionController::_missionLoopItemVIIndex(void) const
+{
+    if (!_visualItems || _visualItems->count() <= 1) {
+        return -1;
+    }
+
+    const int terminalItemIndex = _missionLoopTerminalItemVIIndex();
+    const int expectedLoopIndex = terminalItemIndex > 0 ? terminalItemIndex - 1 : _visualItems->count() - 1;
+    const int targetIndex = _missionLoopTargetVIIndex();
+    if (targetIndex < 0) {
+        return -1;
+    }
+
+    const VisualMissionItem* const targetItem = _visualItems->value<VisualMissionItem*>(targetIndex);
+    const int targetSeq = targetItem ? targetItem->sequenceNumber() : -1;
+    const QList<int> candidateIndices = terminalItemIndex > 0 && expectedLoopIndex != _visualItems->count() - 1
+        ? QList<int>{ expectedLoopIndex, _visualItems->count() - 1 }
+        : QList<int>{ expectedLoopIndex };
+
+    for (const int candidateIndex: candidateIndices) {
+        if (candidateIndex <= 0 || candidateIndex >= _visualItems->count()) {
+            continue;
+        }
+
+        SimpleMissionItem* const loopItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(candidateIndex));
+        if (!loopItem || loopItem->mavCommand() != MAV_CMD_DO_JUMP) {
+            continue;
+        }
+
+        const int jumpTargetSeq = qRound(loopItem->missionItem().param1());
+        const int repeatCount = qRound(loopItem->missionItem().param2());
+        if (jumpTargetSeq == targetSeq && repeatCount >= 1 && repeatCount <= 10) {
+            return candidateIndex;
+        }
+    }
+
+    return -1;
+}
+
+int MissionController::_missionLoopTerminalItemVIIndex(void) const
+{
+    if (!_visualItems || _visualItems->count() <= 1) {
+        return -1;
+    }
+
+    for (int i = _visualItems->count() - 1; i > 0; i--) {
+        const SimpleMissionItem* const simpleItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(i));
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_DO_JUMP) {
+            continue;
+        }
+
+        const VisualMissionItem* const item = qobject_cast<VisualMissionItem*>(_visualItems->get(i));
+        if (!item) {
+            return -1;
+        }
+
+        if (item->isLandCommand()) {
+            return i;
+        }
+
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_NAV_RETURN_TO_LAUNCH) {
+            return i;
+        }
+
+        return -1;
+    }
+
+    return -1;
+}
+
+bool MissionController::_missionLoopHasConflict(void) const
+{
+    if (!_visualItems) {
+        return false;
+    }
+
+    const int loopItemIndex = _missionLoopItemVIIndex();
+    for (int i = 1; i < _visualItems->count(); i++) {
+        const SimpleMissionItem* const simpleItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(i));
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_DO_JUMP && i != loopItemIndex) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void MissionController::_syncMissionLoopTargetSequence(void)
+{
+    if (!_visualItems || _visualItems->count() <= 1) {
+        return;
+    }
+
+    const int loopItemIndex = _missionLoopItemVIIndex();
+    if (loopItemIndex < 0) {
+        return;
+    }
+
+    SimpleMissionItem* const loopItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(loopItemIndex));
+    if (!loopItem) {
+        return;
+    }
+
+    for (int i = 1; i < _visualItems->count(); i++) {
+        const SimpleMissionItem* const simpleItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(i));
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_DO_JUMP && i != loopItemIndex) {
+            return;
+        }
+    }
+
+    const int repeatCount = qRound(loopItem->missionItem().param2());
+    if (repeatCount < 1 || repeatCount > 10) {
+        return;
+    }
+
+    const int targetIndex = _missionLoopTargetVIIndex();
+    const VisualMissionItem* const targetItem = targetIndex >= 0 ? _visualItems->value<VisualMissionItem*>(targetIndex) : nullptr;
+    if (!targetItem) {
+        return;
+    }
+
+    const int targetSeq = targetItem->sequenceNumber();
+    if (qRound(loopItem->missionItem().param1()) != targetSeq) {
+        loopItem->missionItem().setParam1(targetSeq);
+        emit missionLoopChanged();
+    }
+}
+
+bool MissionController::missionLoopAvailable(void) const
+{
+    if (!_visualItems || _missionLoopHasConflict()) {
+        return false;
+    }
+
+    int waypointCount = 0;
+    for (int i = 1; i < _visualItems->count(); i++) {
+        const SimpleMissionItem* const simpleItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(i));
+        if (simpleItem && simpleItem->mavCommand() == MAV_CMD_NAV_WAYPOINT && simpleItem->coordinate().isValid()) {
+            waypointCount++;
+        }
+    }
+
+    return waypointCount >= 2;
+}
+
+bool MissionController::missionLoopEnabled(void) const
+{
+    return !_missionLoopHasConflict() && _missionLoopItemVIIndex() >= 0;
+}
+
+bool MissionController::missionLoopConflict(void) const
+{
+    return _missionLoopHasConflict();
+}
+
+int MissionController::missionLoopRepeatCount(void) const
+{
+    const int loopItemIndex = _missionLoopItemVIIndex();
+    if (loopItemIndex < 0) {
+        return 1;
+    }
+
+    const SimpleMissionItem* const loopItem = qobject_cast<SimpleMissionItem*>(_visualItems->get(loopItemIndex));
+    return loopItem ? qBound(1, qRound(loopItem->missionItem().param2()), 10) : 1;
+}
+
+void MissionController::setMissionLoopEnabled(bool enabled)
+{
+    _updateMissionLoopItem(enabled, missionLoopRepeatCount());
+}
+
+void MissionController::setMissionLoopRepeatCount(int repeatCount)
+{
+    _updateMissionLoopItem(missionLoopEnabled(), qBound(1, repeatCount, 10));
+}
+
+double MissionController::missionLoopTotalDistance(void) const
+{
+    return missionLoopEnabled() ? _missionFlightStatus.plannedDistance * (missionLoopRepeatCount() + 1) : _missionFlightStatus.plannedDistance;
+}
+
+double MissionController::missionLoopTotalTime(void) const
+{
+    return missionLoopEnabled() ? _missionFlightStatus.totalTime * (missionLoopRepeatCount() + 1) : _missionFlightStatus.totalTime;
+}
+
+QString MissionController::missionLoopStatusText(void) const
+{
+    if (missionLoopConflict()) {
+        return tr("航线中存在手动 DO_JUMP。请先手动处理跳转命令，BTFW 不会自动覆盖。");
+    }
+    if (!missionLoopAvailable()) {
+        return tr("至少需要两个有效普通航点才能开启循环航线。");
+    }
+    if (missionLoopEnabled()) {
+        if (_missionLoopTerminalItemVIIndex() >= 0) {
+            return tr("循环航线会在末尾降落/返航命令前执行，最后一圈结束后继续降落/返航。当前总执行 %1 圈。").arg(missionLoopRepeatCount() + 1);
+        }
+        return tr("循环航线使用 DO_JUMP，可能影响断点续飞/恢复任务。当前总执行 %1 圈。").arg(missionLoopRepeatCount() + 1);
+    }
+    return tr("循环航线会在任务末尾加入 DO_JUMP，并跳回第一个普通航点；若末尾是降落/返航，则会插在其前面。");
+}
+
+void MissionController::_updateMissionLoopItem(bool enabled, int repeatCount)
+{
+    if (!_visualItems || _missionLoopHasConflict()) {
+        emit missionLoopChanged();
+        return;
+    }
+
+    repeatCount = qBound(1, repeatCount, 10);
+    int loopItemIndex = _missionLoopItemVIIndex();
+    if (!enabled) {
+        if (loopItemIndex >= 0) {
+            removeVisualItem(loopItemIndex);
+        } else {
+            emit missionLoopChanged();
+        }
+        return;
+    }
+
+    const int terminalItemIndex = _missionLoopTerminalItemVIIndex();
+    const int desiredLoopItemIndex = terminalItemIndex >= 0 ? terminalItemIndex - 1 : _visualItems->count() - 1;
+    if (loopItemIndex >= 0 && loopItemIndex != desiredLoopItemIndex) {
+        removeVisualItem(loopItemIndex);
+        loopItemIndex = -1;
+    }
+
+    if (!missionLoopAvailable() && loopItemIndex < 0) {
+        emit missionLoopChanged();
+        return;
+    }
+
+    const int targetIndex = _missionLoopTargetVIIndex();
+    const VisualMissionItem* const targetItem = targetIndex >= 0 ? _visualItems->value<VisualMissionItem*>(targetIndex) : nullptr;
+    if (!targetItem) {
+        emit missionLoopChanged();
+        return;
+    }
+
+    SimpleMissionItem* loopItem = loopItemIndex >= 0 ? qobject_cast<SimpleMissionItem*>(_visualItems->get(loopItemIndex)) : nullptr;
+    if (!loopItem) {
+        loopItem = qobject_cast<SimpleMissionItem*>(_insertSimpleMissionItemWorker(QGeoCoordinate(), MAV_CMD_DO_JUMP, terminalItemIndex >= 0 ? terminalItemIndex : -1, false));
+    }
+    if (!loopItem) {
+        emit missionLoopChanged();
+        return;
+    }
+
+    loopItem->missionItem().setFrame(MAV_FRAME_MISSION);
+    loopItem->missionItem().setParam1(targetItem->sequenceNumber());
+    loopItem->missionItem().setParam2(repeatCount);
+    loopItem->missionItem().setParam3(0);
+    loopItem->missionItem().setParam4(0);
+    loopItem->missionItem().setParam5(0);
+    loopItem->missionItem().setParam6(0);
+    loopItem->missionItem().setParam7(0);
+
+    _recalcAll();
+    setDirty(true);
+    emit missionLoopChanged();
+}
+
+bool MissionController::_checkMissionLoopForUpload(QString& failureMessage) const
+{
+    failureMessage.clear();
+    if (!missionLoopConflict()) {
+        const int loopItemIndex = _missionLoopItemVIIndex();
+        const int terminalItemIndex = _missionLoopTerminalItemVIIndex();
+        if (loopItemIndex >= 0 && terminalItemIndex >= 0 && loopItemIndex > terminalItemIndex) {
+            failureMessage = tr("循环航线跳转命令位于降落/返航命令之后，飞控会先执行降落/返航而不会循环。请重新启用循环航线或调整循环次数后再上传。");
+            return true;
+        }
+        return false;
+    }
+
+    failureMessage = missionLoopStatusText();
+    return true;
+}
+
 void MissionController::_forceRecalcOfAllowedBits(void)
 {
     // Force a recalc of allowed bits
@@ -2473,15 +2806,128 @@ void MissionController::_firstItemAdded(void)
     _controllerVehicle->stopTrackingFirmwareVehicleTypeChanges();
 }
 
-MissionController::SendToVehiclePreCheckState MissionController::sendToVehiclePreCheck(void)
+void MissionController::_setSendToVehiclePreCheckFailureMessage(const QString& message)
 {
-    if (_managerVehicle->isOfflineEditingVehicle()) {
+    if (_sendToVehiclePreCheckFailureMessage != message) {
+        _sendToVehiclePreCheckFailureMessage = message;
+        emit sendToVehiclePreCheckFailureMessageChanged();
+    }
+}
+
+double MissionController::_missionWaypointAcceptanceRadiusMeters(QString& radiusSource) const
+{
+    radiusSource = tr("默认接受半径 %1 米").arg(kDefaultWaypointAcceptanceRadiusMeters, 0, 'f', 1);
+
+    if (!_managerVehicle || _managerVehicle->isOfflineEditingVehicle() || !_managerVehicle->parameterManager()) {
+        return kDefaultWaypointAcceptanceRadiusMeters;
+    }
+
+    ParameterManager* const parameterManager = _managerVehicle->parameterManager();
+    if (!parameterManager->parameterExists(ParameterManager::defaultComponentId, kWaypointAcceptanceRadiusParam)) {
+        return kDefaultWaypointAcceptanceRadiusMeters;
+    }
+
+    const double radiusMeters = parameterManager->getParameter(ParameterManager::defaultComponentId, kWaypointAcceptanceRadiusParam)->rawValue().toDouble();
+    if (radiusMeters <= 0.0 || !qIsFinite(radiusMeters)) {
+        return kDefaultWaypointAcceptanceRadiusMeters;
+    }
+
+    radiusSource = tr("当前飞控 %1=%2 米").arg(QString::fromLatin1(kWaypointAcceptanceRadiusParam)).arg(radiusMeters, 0, 'f', 1);
+    return radiusMeters;
+}
+
+bool MissionController::_checkMissionSpacingForUpload(QString& failureMessage)
+{
+    failureMessage.clear();
+
+    if (!_managerVehicle || !_visualItems || _visualItems->count() <= 2) {
+        return false;
+    }
+
+    QObject missionItemsParent;
+    QList<MissionItem*> rgMissionItems;
+    _convertToMissionItems(_visualItems, rgMissionItems, &missionItemsParent);
+
+    QString radiusSource;
+    const double acceptanceRadiusMeters = _missionWaypointAcceptanceRadiusMeters(radiusSource);
+    const double minimumSegmentMeters = qMax(acceptanceRadiusMeters * kWaypointAcceptanceRadiusSafetyFactor, kMinimumUploadMissionSegmentMeters);
+
+    MissionItem* previousFlyThroughItem = nullptr;
+    QStringList tightSegments;
+
+    for (MissionItem* const item: rgMissionItems) {
+        if (!missionItemFliesThroughCoordinate(_managerVehicle, item)) {
+            continue;
+        }
+
+        if (item->sequenceNumber() == 0) {
+            continue;
+        }
+
+        const QGeoCoordinate currentCoordinate = item->coordinate();
+        if (!currentCoordinate.isValid()) {
+            continue;
+        }
+
+        const bool currentIsLand = MissionCommandTree::instance()->isLandCommand(item->command());
+        if (previousFlyThroughItem && !currentIsLand) {
+            const QGeoCoordinate previousCoordinate = previousFlyThroughItem->coordinate();
+            const double distanceMeters = previousCoordinate.distanceTo(currentCoordinate);
+            if (distanceMeters <= minimumSegmentMeters + kMissionSegmentDistanceEpsilonMeters) {
+                tightSegments.append(tr("序号 %1 -> %2：%3 米")
+                    .arg(previousFlyThroughItem->sequenceNumber())
+                    .arg(item->sequenceNumber())
+                    .arg(distanceMeters, 0, 'f', 1));
+                if (tightSegments.count() >= 3) {
+                    break;
+                }
+            }
+        }
+
+        previousFlyThroughItem = currentIsLand ? nullptr : item;
+    }
+
+    if (tightSegments.isEmpty()) {
+        return false;
+    }
+
+    failureMessage = tr("计划中存在过近的连续航点，飞控可能在进入 AUTO 任务后立即判定多个航点已到达，导致飞机看起来只在原地小范围抖动或走出很短的折线。\n\n"
+                        "%1；BTFW 上传前要求连续水平导航段大于 %2 米。\n\n"
+                        "请拉开航点间距、删除重复/误点的航点，或确认飞控接受半径参数后再上传。\n%3")
+        .arg(radiusSource)
+        .arg(minimumSegmentMeters, 0, 'f', 1)
+        .arg(tightSegments.join(QStringLiteral("\n")));
+
+    return true;
+}
+
+MissionController::SendToVehiclePreCheckState MissionController::sendToVehiclePreCheck(bool allowFirmwareVehicleMismatch)
+{
+    _setSendToVehiclePreCheckFailureMessage(QString());
+
+    if (!_managerVehicle || _managerVehicle->isOfflineEditingVehicle()) {
+        _setSendToVehiclePreCheckFailureMessage(tr("必须连接并选择飞行器后才能上传计划。"));
         return SendToVehiclePreCheckStateNoActiveVehicle;
     }
     if (_managerVehicle->armed() && _managerVehicle->flightMode() == _managerVehicle->missionFlightMode()) {
+        _setSendToVehiclePreCheckFailureMessage(tr("上传新计划前必须先暂停当前任务。"));
         return SendToVehiclePreCheckStateActiveMission;
     }
-    if (_controllerVehicle->firmwareType() != _managerVehicle->firmwareType() || QGCMAVLink::vehicleClass(_controllerVehicle->vehicleType()) != QGCMAVLink::vehicleClass(_managerVehicle->vehicleType())) {
+
+    QString missionSpacingFailure;
+    if (_checkMissionSpacingForUpload(missionSpacingFailure)) {
+        _setSendToVehiclePreCheckFailureMessage(missionSpacingFailure);
+        return SendToVehiclePreCheckStateMissionTooTight;
+    }
+
+    QString missionLoopFailure;
+    if (_checkMissionLoopForUpload(missionLoopFailure)) {
+        _setSendToVehiclePreCheckFailureMessage(missionLoopFailure);
+        return SendToVehiclePreCheckStateMissionLoopConflict;
+    }
+
+    if (!allowFirmwareVehicleMismatch && (_controllerVehicle->firmwareType() != _managerVehicle->firmwareType() || QGCMAVLink::vehicleClass(_controllerVehicle->vehicleType()) != QGCMAVLink::vehicleClass(_managerVehicle->vehicleType()))) {
+        _setSendToVehiclePreCheckFailureMessage(tr("此计划创建时使用的固件或机型与当前上传目标不一致，可能导致错误或异常行为。"));
         return SendToVehiclePreCheckStateFirwmareVehicleMismatch;
     }
     return SendToVehiclePreCheckStateOk;

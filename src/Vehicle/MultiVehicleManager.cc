@@ -10,6 +10,7 @@
 #include "LinkManager.h"
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
+#include "VehiclePlanSessionManager.h"
 #include "LinkInterface.h"
 #include "QmlObjectListModel.h"
 #ifdef Q_OS_IOS
@@ -63,6 +64,7 @@ void MultiVehicleManager::init()
     }
 
     _offlineEditingVehicle = new Vehicle(Vehicle::MAV_AUTOPILOT_TRACK, Vehicle::MAV_TYPE_TRACK, this);
+    _planSessionManager = new VehiclePlanSessionManager(this, this);
 
     (void) connect(MAVLinkProtocol::instance(), &MAVLinkProtocol::vehicleHeartbeatInfo, this, &MultiVehicleManager::_vehicleHeartbeatInfo);
 
@@ -233,7 +235,14 @@ void MultiVehicleManager::_deleteVehiclePhase2(Vehicle *vehicle)
     /// This means we can now clear the active vehicle property and delete the Vehicle for real.
 
     Vehicle *newActiveVehicle = nullptr;
-    if (_vehicles->count() > 0) {
+    for (int i = 0; i < _vehicles->count(); i++) {
+        Vehicle *const candidate = qobject_cast<Vehicle*>(_vehicles->get(i));
+        if (candidate && !candidate->vehicleLinkManager()->communicationLost()) {
+            newActiveVehicle = candidate;
+            break;
+        }
+    }
+    if (!newActiveVehicle && _vehicles->count() > 0) {
         newActiveVehicle = qobject_cast<Vehicle*>(_vehicles->get(0));
     }
 

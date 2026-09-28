@@ -89,10 +89,14 @@ void ParameterManagerTest::_requestListNoResponse()
     QVERIFY(vehicle);
     QSignalSpy spyParamsReady(vehicleMgr, &MultiVehicleManager::parameterReadyVehicleAvailableChanged);
     QSignalSpy spyProgress(vehicle->parameterManager(), &ParameterManager::loadProgressChanged);
-    // We should not get any progress bar updates, nor a parameter ready signal.
-    // ParameterManager exhausts initial request retries in bounded test intervals.
+    // No parameters are received, so there is no progress. Once retries are
+    // exhausted, the manager becomes ready in a degraded state so the UI can
+    // continue while clearly reporting that parameters are missing.
     QVERIFY_NO_SIGNAL_WAIT(spyProgress, TestTimeout::shortMs());
-    QVERIFY_NO_SIGNAL_WAIT(spyParamsReady, ParameterManager::kTestMaxInitialRequestTimeMs);
+    QVERIFY_SIGNAL_WAIT(spyParamsReady, ParameterManager::kTestMaxInitialRequestTimeMs);
+    QCOMPARE(spyParamsReady.takeFirst().at(0).toBool(), true);
+    QVERIFY(vehicle->parameterManager()->parametersReady());
+    QVERIFY(vehicle->parameterManager()->missingParameters());
 }
 
 // MockLink will fail to send a param on initial request, it will also fail to send it on subsequent

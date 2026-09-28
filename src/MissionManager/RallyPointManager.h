@@ -23,6 +23,7 @@ public:
     bool                    supported       (void) const;
     void                    sendToVehicle   (const QList<QGeoCoordinate>& rgPoints);
     void                    removeAll       (void);
+    void                    cancelTransaction(void);
     QString                 editorQml       (void) const                            { return QStringLiteral("qrc:/FirmwarePlugin/RallyPointEditor.qml"); }
     QList<QGeoCoordinate>   points          (void) const                            { return _rgPoints; }
 
@@ -43,6 +44,7 @@ signals:
 
 private slots:
     void _sendComplete              (bool error);
+    void _removeAllComplete         (bool error);
     void _planManagerLoadComplete   (bool removeAllRequested);
 
 protected:

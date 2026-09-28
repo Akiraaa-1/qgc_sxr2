@@ -104,7 +104,7 @@ QGCButton {
             }
         }
 
-        QGCLabel {
+        QGCPixelLabel {
             id: checkText
             Layout.fillWidth: true
             Layout.minimumWidth: 0

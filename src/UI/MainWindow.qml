@@ -96,6 +96,8 @@ ApplicationWindow {
 
         // Set to a non-empty string to block navigation with a custom reason (e.g. during calibration)
         property string             navigationBlockedReason:        ""
+        property var                sensorCalibrationSessionResults: ({})
+        property var                sensorCalibrationFactoryResetVehicles: ({})
 
         // Property to manage RemoteID quick access to settings page
         property bool               commingFromRIDIndicator:        false
@@ -445,7 +447,7 @@ ApplicationWindow {
     }
 
     function _syncStartPageVisibility() {
-        const hasConnectedVehicle = _hasAnyTrackedVehicle()
+        const hasConnectedVehicle = _hasAnyConnectedVehicle()
 
         if (!hasConnectedVehicle) {
             if (_offlineWorkspaceMode) {
@@ -881,7 +883,7 @@ ApplicationWindow {
                             radius:                 ScreenTools.defaultFontPixelHeight * 0.3
                             color:                  "transparent"
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.centerIn:   parent
                                 width:              parent.width - (ScreenTools.defaultFontPixelWidth * 0.5)
                                 text:               qsTr("设置")
@@ -978,7 +980,7 @@ ApplicationWindow {
                                         }
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.alignment:       Qt.AlignVCenter
                                         Layout.preferredWidth:  Math.min(
                                                                     implicitWidth,
@@ -1053,7 +1055,7 @@ ApplicationWindow {
                                     }
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.alignment: Qt.AlignVCenter
                                     text: qsTr("开始")
                                     color: integratedMainView._navTextColor
@@ -1613,6 +1615,7 @@ ApplicationWindow {
                             width:          parent ? parent.width : 0
                             height:         parent ? parent.height : 0
                             _useExternalStartMissionUi: true
+                            _useExternalGuidedActionConfirm: true
                             visible:        mainViewTabBar.currentIndex === _flyTabIndex
                         }
 
@@ -1719,17 +1722,25 @@ ApplicationWindow {
                     }
 
                     function _isMapStripActionEnabled(key, requiresVehicle) {
+                        const guidedController = globals.guidedControllerFlyView
+
+                        if (key === "play") {
+                            return !!(flyPageContent && flyPageContent._startMissionEntryVisible)
+                        }
+                        if (key === "pause") {
+                            return !!(guidedController && guidedController.showPause)
+                        }
                         if (key === "oneKeyRTL") {
-                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showRTL)
+                            return !!(guidedController && guidedController.showRTL)
                         }
                         if (key === "flightMode") {
                             return !!(_activeVehicle && _activeVehicle.flightModeSetAvailable)
                         }
                         if (key === "land") {
-                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showLand)
+                            return !!(guidedController && guidedController.showLand)
                         }
                         if (key === "emergencyStop") {
-                            return !!(globals.guidedControllerFlyView && globals.guidedControllerFlyView.showEmergenyStop)
+                            return !!(guidedController && guidedController.showEmergenyStop)
                         }
                         if (key === "locate") {
                             return _vehicleHasPosition(_activeVehicle)
@@ -1932,7 +1943,11 @@ ApplicationWindow {
                                     Dialog.Yes | Dialog.Cancel,
                                     function() {
                                         if (fallbackFlyMapHost._activeVehicle) {
-                                            fallbackFlyMapHost._activeVehicle.armed = arm
+                                            if (arm) {
+                                                fallbackFlyMapHost._activeVehicle.requestArm(true)
+                                            } else {
+                                                fallbackFlyMapHost._activeVehicle.armed = false
+                                            }
                                         }
                                     })
                             }
@@ -2074,10 +2089,75 @@ ApplicationWindow {
                         anchors.fill: parent
                         mapName: "FlyFallbackMap"
                         pipMode: false
+                        fullWindowItemDark: fallbackFlyMap.isSatelliteMap
                         showMissionPaths: flyPageContent ? flyPageContent._showFlightPath : true
                         planMasterController: flyPageContent ? flyPageContent.planController : fallbackPlanController
                         rightPanelWidth: 0
                         toolInsets: fallbackToolInsets
+                    }
+
+                    GuidedActionConfirm {
+                        id: fallbackGuidedConfirm
+
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: fallbackFlyMapHost._margin
+                        guidedController: globals.guidedControllerFlyView
+                        guidedValueSlider: flyPageContent ? flyPageContent.guidedValueSliderItem : null
+                        height: ScreenTools.toolbarHeight
+                        messageDisplay: fallbackGuidedMessageDisplay
+                        z: QGroundControl.zOrderTopMost + 10
+                    }
+
+                    Rectangle {
+                        id: fallbackGuidedMessageDisplay
+
+                        anchors.horizontalCenter: fallbackGuidedConfirm.horizontalCenter
+                        anchors.top: fallbackGuidedConfirm.bottom
+                        anchors.topMargin: fallbackFlyMapHost._margin
+                        color: qgcPal.window
+                        height: fallbackGuidedMessageLabel.contentHeight + (fallbackFlyMapHost._margin * 1.2)
+                        opacity: 0.9
+                        radius: ScreenTools.defaultFontPixelHeight * 0.28
+                        visible: fallbackGuidedConfirm.visible
+                        width: fallbackGuidedMessageLabel.contentWidth + (fallbackFlyMapHost._margin * 2)
+                        z: fallbackGuidedConfirm.z
+
+                        QGCLabel {
+                            id: fallbackGuidedMessageLabel
+
+                            anchors.centerIn: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            text: fallbackGuidedConfirm.message
+                            width: ScreenTools.defaultFontPixelWidth * 30
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Item {
+                        id: fallbackVirtualJoystick
+
+                        readonly property real _bottomMargin: fallbackFlyMapHost._margin * 1.2
+                        readonly property real _leftMargin: fallbackFloatingMapStrip.width + (fallbackFlyMapHost._margin * 2)
+                        readonly property real _maximumWidth: ScreenTools.defaultFontPixelWidth * 34
+                        readonly property real _minimumWidth: ScreenTools.defaultFontPixelWidth * 24
+
+                        clip: true
+                        height: Math.min(parent.height * 0.30, ScreenTools.defaultFontPixelWidth * 16)
+                        visible: QGroundControl.settingsManager.appSettings.virtualJoystick.rawValue && height > 0
+                        width: Math.min(_maximumWidth, Math.max(_minimumWidth, parent.width * 0.48), Math.max(0, parent.width - _leftMargin - fallbackFlyMapHost._margin))
+                        x: _leftMargin
+                        y: parent.height - height - _bottomMargin
+                        z: QGroundControl.zOrderTopMost + 12
+
+                        VirtualJoystick {
+                            anchors.fill: parent
+                            autoCenterThrottle: QGroundControl.settingsManager.appSettings.virtualJoystickAutoCenterThrottle.rawValue
+                            calibration: true
+                            leftHandedMode: QGroundControl.settingsManager.appSettings.virtualJoystickLeftHandedMode.rawValue
+                            uiRealX: fallbackVirtualJoystick.mapToItem(mainWindow.contentItem, 0, 0).x
+                            uiTotalWidth: mainWindow.width
+                        }
                     }
 
                     Rectangle {
@@ -2190,7 +2270,7 @@ ApplicationWindow {
                                             opacity: 0.95
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             Layout.fillWidth: true
                                             color: Number(modelData.level) >= 2 ? "#FF5A5F" : Qt.rgba(1, 1, 1, 0.9)
                                             text: fallbackFlyMapHost._formatVehicleAlertMessage(modelData)
@@ -2223,7 +2303,6 @@ ApplicationWindow {
 
                     QGCMenu {
                         id: fallbackMapFlightModeMenu
-                        width: Math.max(implicitWidth, fallbackFlyMapHost._flightModeMenuMinimumWidth())
 
                         Instantiator {
                             model: fallbackFlyMapHost._activeVehicle && fallbackFlyMapHost._activeVehicle.flightModeSetAvailable
@@ -2323,8 +2402,8 @@ ApplicationWindow {
                                         : (_selected
                                             ? "#2F6FC7"
                                             : (_isFlightMode
-                                                ? (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")
-                                                : (fallbackStripMouseArea.pressed ? "#1A1C1F" : "#121315")))
+                                                ? (fallbackStripActionMouseArea.pressed ? "#1A1C1F" : "#121315")
+                                                : (fallbackStripActionMouseArea.pressed ? "#1A1C1F" : "#121315")))
                                     opacity: fallbackFlyMapHost._mapStripExpanded ? (_isSeparator ? 1 : (_enabled ? 1 : 0.42)) : 0
                                     radius: ScreenTools.defaultFontPixelHeight * 0.18
                                     border.width: 0
@@ -2364,7 +2443,7 @@ ApplicationWindow {
                                             source: modelData.icon || ""
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             visible: !parent.parent._isFlightMode && !!modelData.label
                                             anchors.centerIn: parent
                                             width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.4)
@@ -2380,7 +2459,7 @@ ApplicationWindow {
                                             font.bold: true
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             visible: parent.parent._isFlightMode
                                             anchors.centerIn: parent
                                             width: parent.width - (ScreenTools.defaultFontPixelWidth * 0.7)
@@ -2411,9 +2490,12 @@ ApplicationWindow {
                                     }
 
                                     QGCMouseArea {
-                                        id: fallbackStripMouseArea
+                                        id: fallbackStripActionMouseArea
+
                                         anchors.fill: parent
                                         enabled: fallbackFlyMapHost._mapStripExpanded && !parent._isSeparator
+                                        preventStealing: true
+
                                         onClicked: {
                                             if (parent._enabled) {
                                                 fallbackFlyMapHost._triggerMapStripAction(modelData.key, parent)
@@ -2574,7 +2656,7 @@ ApplicationWindow {
                             height: fallbackTrafficViewPanel._headerHeight
                             color: Qt.rgba(0.10, 0.10, 0.11, 0.98)
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.left: parent.left
                                 anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 0.72
                                 anchors.verticalCenter: parent.verticalCenter
@@ -2584,7 +2666,7 @@ ApplicationWindow {
                                 text: qsTr("交通视图")
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.right: parent.right
                                 anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.68
                                 anchors.verticalCenter: parent.verticalCenter
@@ -2665,7 +2747,7 @@ ApplicationWindow {
                             }
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             anchors.left: parent.left
                             anchors.leftMargin: fallbackTrafficViewPanel._plotLeft
                             anchors.bottom: parent.bottom
@@ -2675,7 +2757,7 @@ ApplicationWindow {
                             text: qsTr("范围 %1 km").arg((fallbackTrafficViewPanel.displayRangeMeters / 1000).toFixed(1))
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             anchors.centerIn: parent
                             anchors.verticalCenterOffset: ScreenTools.defaultFontPixelHeight * 0.18
                             visible: fallbackTrafficViewPanel.trafficCount === 0 || !fallbackTrafficViewPanel._referenceCoordinate
@@ -2751,7 +2833,7 @@ ApplicationWindow {
                                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.2
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.5
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     text: qsTr("仪表")
                                     color: "#E8E8E8"
@@ -2760,7 +2842,7 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     text: fallbackInstrumentPanel._vehicle ? mainWindow._flightModeDisplayName(fallbackInstrumentPanel._vehicle.flightMode) : qsTr("未连接")
                                     color: "#7FD0FF"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.58
@@ -2799,7 +2881,7 @@ ApplicationWindow {
                                             anchors.margins: ScreenTools.defaultFontPixelHeight * 0.24
                                             spacing: 0
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 text: modelData.label
                                                 color: "#8F9BA8"
@@ -2807,7 +2889,7 @@ ApplicationWindow {
                                                 elide: Text.ElideRight
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 text: modelData.value
                                                 color: "#F6F8FB"
@@ -2872,14 +2954,20 @@ ApplicationWindow {
                             Rectangle {
                                 color: qgcPal.window
 
-                                QGCColoredImage {
+                                QGCLabel {
                                     anchors.centerIn: parent
-                                    width: ScreenTools.defaultFontPixelHeight * 2.4
-                                    height: width
-                                    color: "#FFFFFF"
-                                    fillMode: Image.PreserveAspectFit
-                                    source: "/InstrumentValueIcons/drone.svg"
+                                    color: qgcPal.text
+                                    font.bold: true
+                                    font.pointSize: ScreenTools.smallFontPointSize
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: !QGroundControl.settingsManager.videoSettings.streamEnabled.rawValue ||
+                                          QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
+                                          ? qsTr("视频已关闭")
+                                          : qsTr("视频源未配置")
+                                    wrapMode: Text.WordWrap
+                                    width: parent.width - ScreenTools.defaultFontPixelWidth * 2
                                 }
+
                             }
                         }
 
@@ -2957,7 +3045,7 @@ ApplicationWindow {
                             anchors.margins: ScreenTools.defaultFontPixelHeight * 0.42
                             spacing: ScreenTools.defaultFontPixelHeight * 0.3
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 text: flyPageContent ? flyPageContent._mapPrimaryActionDialogTitle() : qsTr("开始任务")
                                 color: "#F8FAFC"
@@ -2966,7 +3054,7 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignHCenter
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 text: flyPageContent ? flyPageContent._mapPrimaryActionMessage() : qsTr("开始任务")
                                 color: "#E5E7EB"
@@ -3020,7 +3108,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.4
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     text: qsTr("开始任务")
                                     color: "#F8FAFC"
@@ -3050,7 +3138,7 @@ ApplicationWindow {
                                 }
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 text: flyPageContent ? flyPageContent._startMissionFeedbackText : ""
                                 color: "#E5E7EB"
@@ -3105,7 +3193,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: 0
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         text: qsTr("开始任务")
                                         color: "#F5FBFC"
@@ -3114,7 +3202,7 @@ ApplicationWindow {
                                         elide: Text.ElideRight
                                     }
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         Layout.fillWidth: true
                                         text: qsTr("确认航线状态后长按执行")
                                         color: "#8FB0B8"
@@ -3170,7 +3258,7 @@ ApplicationWindow {
                                             anchors.margins: ScreenTools.defaultFontPixelHeight * 0.14
                                             spacing: 0
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 text: modelData.label
                                                 color: "#7E9AA4"
@@ -3179,7 +3267,7 @@ ApplicationWindow {
                                                 elide: Text.ElideRight
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 text: modelData.value
                                                 color: "#E7F7F9"
@@ -3197,7 +3285,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.32
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     text: qsTr("距离 %1").arg(flyPageContent ? flyPageContent._startMissionDistanceText() : "--")
                                     color: "#8FB0B8"
@@ -3205,7 +3293,7 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     text: flyPageContent && flyPageContent.guidedController ? flyPageContent.guidedController.startMissionMessage : qsTr("开始任务")
                                     color: "#CBE5EA"
                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.50
@@ -3233,7 +3321,7 @@ ApplicationWindow {
                                     color: Qt.rgba(1, 1, 1, 0.14)
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     anchors.centerIn: parent
                                     text: fallbackStartMissionHoldButton.holding
                                           ? qsTr("保持按住 %1%").arg(Math.round(fallbackStartMissionHoldButton.holdProgress * 100))
@@ -3326,7 +3414,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: ScreenTools.defaultFontPixelWidth * 0.38
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     Layout.fillWidth: true
                                     text: qsTr("开始任务")
                                     color: "#F8FAFC"
@@ -3356,7 +3444,7 @@ ApplicationWindow {
                                 }
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 text: flyPageContent ? flyPageContent._startMissionUnavailableDialogText : ""
                                 color: "#E5E7EB"
@@ -3602,7 +3690,7 @@ ApplicationWindow {
                                                 source: modelData.icon
                                             }
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 color: "#E6E6E6"
                                                 font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.54
                                                 text: modelData.text
@@ -3621,7 +3709,7 @@ ApplicationWindow {
                                     border.width: 1
                                     border.color: Qt.rgba(1, 1, 1, 0.08)
 
-                                    QGCLabel {
+                                    QGCPixelLabel {
                                         anchors.centerIn: parent
                                         color: "#D9D9D9"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.6
@@ -3694,7 +3782,7 @@ ApplicationWindow {
                                                     Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.82
                                                     Layout.fillHeight: true
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.centerIn: parent
                                                         text: flyPageContent && flyPageContent._profileVehicleTreeExpanded ? "\u25BE" : "\u25B8"
                                                         color: "#D7E6FF"
@@ -3719,7 +3807,7 @@ ApplicationWindow {
                                                     source: "/InstrumentValueIcons/drone.svg"
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: "#F4F9FF"
                                                     font.weight: Font.DemiBold
@@ -3747,7 +3835,7 @@ ApplicationWindow {
                                                     Layout.preferredWidth: ScreenTools.defaultFontPixelHeight * 0.74
                                                     Layout.fillHeight: true
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         anchors.centerIn: parent
                                                         text: flyPageContent && flyPageContent._profileMissionTreeExpanded ? "\u25BE" : "\u25B8"
                                                         color: "#D4D4D4"
@@ -3772,7 +3860,7 @@ ApplicationWindow {
                                                     source: "/InstrumentValueIcons/map.svg"
                                                 }
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     color: "#E1E1E1"
                                                     font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.68
@@ -3829,7 +3917,7 @@ ApplicationWindow {
                                                     anchors.rightMargin: ScreenTools.defaultFontPixelWidth * 0.3
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.22
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         text: "\u25B8"
                                                         color: "#B7B7B7"
                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.42
@@ -3843,7 +3931,7 @@ ApplicationWindow {
                                                         source: "/InstrumentValueIcons/drone.svg"
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         Layout.fillWidth: true
                                                         color: current ? "#F6F8FB" : "#D1D5DB"
                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.64
@@ -3851,7 +3939,7 @@ ApplicationWindow {
                                                         text: modelData.label
                                                     }
 
-                                                    QGCLabel {
+                                                    QGCPixelLabel {
                                                         color: "#8F98A3"
                                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.56
                                                         text: flyPageContent ? flyPageContent._formatProfileAltitude(modelData.altitude) : "--"
@@ -4015,7 +4103,7 @@ ApplicationWindow {
                                     color: "#56A7FF"
                                 }
 
-                                QGCLabel {
+                                QGCPixelLabel {
                                     x: Math.max(
                                         fallbackProfileChart.plotLeft,
                                         Math.min(
@@ -4031,7 +4119,7 @@ ApplicationWindow {
 
                                 Repeater {
                                     model: 4
-                                    delegate: QGCLabel {
+                                    delegate: QGCPixelLabel {
                                         required property int index
                                         color: "#696E74"
                                         font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.48
@@ -4043,7 +4131,7 @@ ApplicationWindow {
 
                                 Repeater {
                                     model: 4
-                                    delegate: QGCLabel {
+                                    delegate: QGCPixelLabel {
                                         required property int index
                                         readonly property real altitudeValue: Number(fallbackProfileChart.stats.maxAlt)
                                             - ((Number(fallbackProfileChart.stats.maxAlt) - Number(fallbackProfileChart.stats.minAlt)) * index / 3)
@@ -4085,7 +4173,7 @@ ApplicationWindow {
                                             border.color: Qt.rgba(1, 1, 1, 0.7)
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             anchors.centerIn: parent
                                             color: "#FFFFFF"
                                             font.pixelSize: ScreenTools.defaultFontPixelHeight * 0.52
@@ -4210,6 +4298,7 @@ ApplicationWindow {
                     property var _serialPortNames: []
                     property var _serialPortDisplayNames: []
                     property var _vehicleConnectionStateMap: ({})
+                    property var _connectionVehicleIdsAtStart: ({})
                     property string _lastDetectedFlightControllerPortName: ""
                     property var _temporaryStartSerialConfig: null
                     property var _temporaryStartUdpConfig: null
@@ -4217,7 +4306,11 @@ ApplicationWindow {
                     property var _cleanupStartSerialConfig: null
                     property var _cleanupStartUdpConfig: null
                     property var _cleanupActiveConfig: null
+                    readonly property int _connectionModeAuto: 0
+                    readonly property int _connectionModeSavedLink: 1
+                    property int _connectionMode: _connectionModeAuto
                     property int _selectedLinkIndex: -1
+                    property var _selectedSavedLinkConfigRef: null
                     property int _selectedSerialPortIndex: -1
                     property int _selectedBaudRate: 57600
                     property bool _selectedFlowControlEnabled: false
@@ -4225,7 +4318,6 @@ ApplicationWindow {
                     property int _selectedStopBits: 1
                     property int _selectedParity: 0
                     property bool _autoConnectOnBoot: false
-                    property bool _linkSelectionLocked: false
                     property bool _serialPortSelectionLocked: false
                     property bool _pendingReconnectAfterCleanup: false
                     property bool _lastConnectionWasUdp: false
@@ -4234,6 +4326,15 @@ ApplicationWindow {
                     property int _cleanupElapsedMs: 0
                     property int _connectedVehicleCount: 0
                     property bool _isConnected: false
+                    readonly property bool _savedLinkSelected: _connectionMode === _connectionModeSavedLink
+                                                        && !!_selectedSavedLinkConfigRef
+                    readonly property bool _selectedSavedLinkInUse: _savedLinkSelected
+                                                                  && !!_selectedSavedLinkConfigRef.link
+                    readonly property bool _connectionSettingsEditable: !_connectionInProgress
+                                                                       && !_manualConnectionArmed
+                                                                       && !_pendingReconnectAfterCleanup
+                    readonly property bool _automaticSerialSettingsEditable: _connectionSettingsEditable
+                                                                              && _connectionMode === _connectionModeAuto
                     readonly property string _connectionStateIdle: "idle"
                     readonly property string _connectionStateConnecting: "connecting"
                     readonly property string _connectionStateFinishing: "finishing"
@@ -4271,8 +4372,42 @@ ApplicationWindow {
 
                     function _setStartPageAutoConnectPaused(paused) {
                         if (_linkManager && _linkManager.autoConnectPaused !== undefined) {
-                            _linkManager.autoConnectPaused = false
+                            _linkManager.autoConnectPaused = paused
                         }
+                    }
+
+                    function _linkConfigSummary(config) {
+                        if (!config) {
+                            return qsTr("自动连接")
+                        }
+
+                        if (config.linkType === LinkConfiguration.TypeUdp) {
+                            const hosts = _stringListSummary(config.hostList, qsTr("未设置目标地址"))
+                            return qsTr("UDP 监听 %1，目标：%2").arg(config.localPort).arg(hosts)
+                        }
+
+                        if (config.linkType === LinkConfiguration.TypeTcp) {
+                            return qsTr("TCP %1:%2").arg(config.host && config.host !== "" ? config.host : qsTr("未设置服务器")).arg(config.port)
+                        }
+
+                        if (config.linkType === LinkConfiguration.TypeSerial) {
+                            const portText = config.portDisplayName && config.portDisplayName !== "" ? config.portDisplayName : config.portName
+                            return qsTr("串口 %1，波特率 %2").arg(portText && portText !== "" ? portText : qsTr("未选择端口")).arg(config.baud)
+                        }
+
+                        return config.name
+                    }
+
+                    function _stringListSummary(values, emptyText) {
+                        if (!values || values.length <= 0) {
+                            return emptyText
+                        }
+
+                        const parts = []
+                        for (let i = 0; i < values.length; i++) {
+                            parts.push(values[i])
+                        }
+                        return parts.join(", ")
                     }
 
                     function _beginConnectionProgress(config) {
@@ -4285,14 +4420,13 @@ ApplicationWindow {
                         _manualConnectionState = _connectionStateConnecting
                         _pendingWorkspaceEntry = false
                         _manualConnectionArmed = true
+                        _connectionVehicleIdsAtStart = _connectedVehicleIds()
                         _connectingConfig = config
                         _lastConnectionWasUdp = !!(config && config.linkType === LinkConfiguration.TypeUdp)
                         startConnectionCompleteTimer.stop()
                         _statusText = !config
                             ? qsTr("正在等待地面站自动识别飞控并接收 MAVLink 心跳...")
-                            : _lastConnectionWasUdp
-                            ? qsTr("正在打开 UDP 并等待 MAVLink 心跳...")
-                            : qsTr("正在打开串口并等待 MAVLink 心跳...")
+                            : qsTr("正在连接 %1，并等待 MAVLink 心跳...").arg(_linkConfigSummary(config))
                         _recentConnectionText = _statusText
                     }
 
@@ -4306,17 +4440,20 @@ ApplicationWindow {
                         return !!(parameterManager && parameterManager.parametersReady && parameterManager.missingParameters)
                     }
 
-                    function _showConnectionFailure(reasonText, titleText = qsTr("连接失败")) {
-                        const portText = _selectedSerialPortDisplayName() !== "" ? _selectedSerialPortDisplayName() : qsTr("未选择")
+                    function _showConnectionFailure(reasonText, titleText = qsTr("连接失败"), selectionText = "") {
+                        const currentSelectionText = selectionText !== "" ? selectionText : _linkConfigSummary(_connectingConfig)
                         const message = reasonText + "\n\n"
-                            + qsTr("当前选择：协议自动识别，端口：%1，波特率：%2。\n请检查串口、波特率和飞控供电后重新连接。")
-                                .arg(portText)
-                                .arg(_selectedBaudRate)
+                            + qsTr("当前选择：%1。\n请检查链路参数、飞控供电和 MAVLink 输出后重新连接。")
+                                .arg(currentSelectionText)
                         QGroundControl.showMessageDialog(mainWindow, titleText, message)
                     }
 
                     function _tryFinishAfterParametersReady() {
                         if (!_isConnected || !(_connectionInProgress || _manualConnectionArmed)) {
+                            return false
+                        }
+
+                        if (!_hasNewConnectedVehicleSinceConnectionStarted()) {
                             return false
                         }
 
@@ -4351,6 +4488,7 @@ ApplicationWindow {
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
+                        _connectionVehicleIdsAtStart = ({})
                         if (_linkManager) {
                             _linkManager.communicationErrorDisplayPaused = false
                             _linkManager.showDeferredCommunicationError()
@@ -4458,8 +4596,7 @@ ApplicationWindow {
                     }
 
                     function _connectionSettingChanged(message = "") {
-                        const connectedButNotReady = _isConnected && !_activeVehicleParametersReady()
-                        if (_connectionInProgress || _manualConnectionArmed || connectedButNotReady) {
+                        if (_connectionInProgress || _manualConnectionArmed) {
                             _requestReconnectAfterCleanup(qsTr("连接设置已更新，将按当前设置重新连接..."))
                         }
                     }
@@ -4492,6 +4629,7 @@ ApplicationWindow {
                         _connectionProgress = 0
                         _connectionElapsedMs = 0
                         _connectingConfig = null
+                        _connectionVehicleIdsAtStart = ({})
                         startConnectionCompleteTimer.stop()
                     }
 
@@ -4508,6 +4646,7 @@ ApplicationWindow {
                         _connectingConfig = null
                         _temporaryStartSerialConfig = null
                         _temporaryStartUdpConfig = null
+                        _connectionVehicleIdsAtStart = ({})
                         _clearCleanupLinkRefs()
                         if (_linkManager) {
                             _linkManager.communicationErrorDisplayPaused = false
@@ -4588,6 +4727,7 @@ ApplicationWindow {
 
                     function _refreshLinks() {
                         _linkRefreshQueued = false
+                        const previouslySelectedConfig = _selectedSavedLinkConfigRef
                         const configs = []
                         const names = []
                         const nameCounts = ({})
@@ -4606,7 +4746,19 @@ ApplicationWindow {
                         }
                         _availableLinkConfigs = configs
                         _availableLinkNames = names
-                        _selectedLinkIndex = configs.length > 0 ? Math.max(0, Math.min(_selectedLinkIndex, configs.length - 1)) : -1
+                        _selectedLinkIndex = -1
+                        if (_connectionMode === _connectionModeSavedLink && previouslySelectedConfig) {
+                            for (let i = 0; i < configs.length; i++) {
+                                if (configs[i] === previouslySelectedConfig) {
+                                    _selectedLinkIndex = i
+                                    break
+                                }
+                            }
+                        }
+                        if (_selectedLinkIndex < 0) {
+                            _connectionMode = _connectionModeAuto
+                            _selectedSavedLinkConfigRef = null
+                        }
                         _refreshSerialSelection()
                         _syncSelectedLinkSettings()
                     }
@@ -4621,7 +4773,7 @@ ApplicationWindow {
                     }
 
                     function _syncSelectedLinkSettings() {
-                        if (_selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
+                        if (!_savedLinkSelected || _selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
                             _selectedBaudRate = 57600
                             _selectedFlowControlEnabled = false
                             _selectedDataBits = 8
@@ -4702,14 +4854,38 @@ ApplicationWindow {
                         for (let i = 0; i < _availableLinkConfigs.length; i++) {
                             const cfg = _availableLinkConfigs[i]
                             if (cfg && cfg.name === name) {
-                                _selectedLinkIndex = i
-                                _syncSelectedLinkSettings()
+                                _selectSavedLinkConfig(i)
                                 return
                             }
                         }
                     }
 
+                    function _selectSavedLinkConfig(index) {
+                        if (index < 0 || index >= _availableLinkConfigs.length) {
+                            return false
+                        }
+
+                        _connectionMode = _connectionModeSavedLink
+                        _selectedLinkIndex = index
+                        _selectedSavedLinkConfigRef = _availableLinkConfigs[index]
+                        _syncSelectedLinkSettings()
+                        return true
+                    }
+
+                    function _selectAutomaticConnection() {
+                        _connectionMode = _connectionModeAuto
+                        _selectedLinkIndex = -1
+                        _selectedSavedLinkConfigRef = null
+                        _serialPortSelectionLocked = false
+                        _refreshSerialSelection(false, "", "", true)
+                        _syncSelectedLinkSettings()
+                    }
+
                     function _openAddLinkDialog() {
+                        if (!_connectionSettingsEditable) {
+                            _appendEvent(qsTr("当前已连接或正在连接，不能修改链路设置"))
+                            return
+                        }
                         if (!_linkManager) {
                             _appendEvent(qsTr("链路管理器不可用"))
                             return
@@ -4726,7 +4902,11 @@ ApplicationWindow {
                     }
 
                     function _openEditLinkDialog() {
-                        if (!_linkManager || _selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
+                        if (!_connectionSettingsEditable || _selectedSavedLinkInUse) {
+                            _appendEvent(qsTr("当前已连接或正在连接，不能修改链路设置"))
+                            return
+                        }
+                        if (!_linkManager || !_savedLinkSelected || _selectedLinkIndex < 0 || _selectedLinkIndex >= _availableLinkConfigs.length) {
                             _appendEvent(qsTr("请选择要编辑的链路配置"))
                             return
                         }
@@ -4902,7 +5082,7 @@ ApplicationWindow {
                     }
 
                     function _refreshSerialSelectionFromDetection(logChanges = false, forceRefresh = true) {
-                        if (_connectionInProgress || _isConnected) {
+                        if (!_automaticSerialSettingsEditable) {
                             return false
                         }
 
@@ -4945,8 +5125,7 @@ ApplicationWindow {
 
                         const changed = currentPortName !== previousPortName || currentDisplayName !== previousDisplayName
                         if (changed && logChanges) {
-                            if (_selectedSerialPortScore() >= 80) {
-                                _linkSelectionLocked = false
+                            if (_selectedSerialPortScore() >= 80 && _connectionMode === _connectionModeAuto) {
                                 _lastConnectionWasUdp = false
                             }
                             if (!_serialPortSelectionLocked) {
@@ -5174,20 +5353,56 @@ ApplicationWindow {
                     }
 
                     function _selectedSavedLinkConfig() {
-                        if (_selectedLinkIndex >= 0 && _selectedLinkIndex < _availableLinkConfigs.length) {
-                            return _availableLinkConfigs[_selectedLinkIndex]
+                        if (_savedLinkSelected
+                                && _selectedLinkIndex >= 0
+                                && _selectedLinkIndex < _availableLinkConfigs.length
+                                && _availableLinkConfigs[_selectedLinkIndex] === _selectedSavedLinkConfigRef) {
+                            return _selectedSavedLinkConfigRef
                         }
 
                         return null
                     }
 
+                    function _connectedVehicleIds() {
+                        const ids = {}
+                        const vehicles = QGroundControl.multiVehicleManager.vehicles
+                        if (!vehicles) {
+                            return ids
+                        }
+
+                        for (let i = 0; i < vehicles.count; i++) {
+                            const vehicle = vehicles.get(i)
+                            const vehicleId = _vehicleKey(vehicle)
+                            const vehicleLinkManager = vehicle ? vehicle.vehicleLinkManager : null
+                            if (vehicleId !== "" && vehicleLinkManager && !vehicleLinkManager.communicationLost) {
+                                ids[vehicleId] = true
+                            }
+                        }
+
+                        return ids
+                    }
+
+                    function _hasNewConnectedVehicleSinceConnectionStarted() {
+                        const connectedVehicleIds = _connectedVehicleIds()
+                        for (const vehicleId in connectedVehicleIds) {
+                            if (!_connectionVehicleIdsAtStart[vehicleId]) {
+                                return true
+                            }
+                        }
+
+                        return false
+                    }
+
                     function _shouldWaitForSerialAutoConnect() {
+                        if (_linkManager && _linkManager.autoConnectPaused) {
+                            return false
+                        }
                         const pixhawkAutoConnectEnabled = !!(_autoConnectSettings
                                                              && _autoConnectSettings.autoConnectPixhawk
                                                              && _autoConnectSettings.autoConnectPixhawk.rawValue)
                         return _serialPortAvailable
                             && pixhawkAutoConnectEnabled
-                            && !_linkSelectionLocked
+                            && _connectionMode === _connectionModeAuto
                             && !_serialPortSelectionLocked
                             && _selectedSerialPortIndex >= 0
                             && _selectedSerialPortIndex < _serialPortNames.length
@@ -5196,21 +5411,17 @@ ApplicationWindow {
 
                     function _chooseConnectionConfig() {
                         const selectedLinkConfig = _selectedSavedLinkConfig()
+                        if (_connectionMode === _connectionModeSavedLink) {
+                            return selectedLinkConfig
+                        }
+
                         const highConfidenceSerialSelected = _serialPortAvailable
                             && _selectedSerialPortIndex >= 0
                             && _selectedSerialPortIndex < _serialPortNames.length
                             && _selectedSerialPortScore() >= 80
 
-                        if (highConfidenceSerialSelected && !_linkSelectionLocked) {
+                        if (highConfidenceSerialSelected) {
                             return _temporarySerialConfig()
-                        }
-
-                        if (selectedLinkConfig && selectedLinkConfig.linkType === LinkConfiguration.TypeUdp && (_linkSelectionLocked || !highConfidenceSerialSelected)) {
-                            return _temporaryUdpConfig()
-                        }
-
-                        if (selectedLinkConfig && selectedLinkConfig.linkType !== LinkConfiguration.TypeSerial) {
-                            return selectedLinkConfig
                         }
 
                         const preferUdp = _udpConnectAvailable && _selectedSerialPortScore() < 80
@@ -5226,10 +5437,6 @@ ApplicationWindow {
                             if (udpConfig) {
                                 return udpConfig
                             }
-                        }
-
-                        if (!_serialPortAvailable) {
-                            return selectedLinkConfig
                         }
 
                         return null
@@ -5352,24 +5559,7 @@ ApplicationWindow {
                             return
                         }
 
-                        if (_isConnected && !_activeVehicleParametersReady()) {
-                            _appendEvent(qsTr("参数仍在读取，保持当前连接并进入工作区"))
-                            _enterWorkspaceFromActiveLink(enterWorkspace)
-                            return
-                        }
-
                         _syncConnectionState(false)
-
-                        if (_isConnected) {
-                            mainWindow._hadConnectedVehicleSession = true
-                            if (enterWorkspace) {
-                                _appendEvent(qsTr("进入工作区"))
-                                mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
-                            } else {
-                                _appendEvent(qsTr("飞行器链路已连接"))
-                            }
-                            return
-                        }
 
                         if (_manualConnectionArmed && _connectingConfig && _connectingConfig.link) {
                             _beginConnectionProgress(_connectingConfig)
@@ -5377,7 +5567,7 @@ ApplicationWindow {
                             return
                         }
 
-                        if (_hasActiveTemporaryLink()) {
+                        if (_hasActiveTemporaryLink() && (_connectionInProgress || _manualConnectionArmed)) {
                             _requestReconnectAfterCleanup(qsTr("正在关闭上一次临时链路，随后将按当前设置重新连接..."))
                             return
                         }
@@ -5396,12 +5586,24 @@ ApplicationWindow {
                             return
                         }
 
+                        if (cfg.link) {
+                            const statusText = qsTr("%1 已打开，正在等待 MAVLink 心跳").arg(_linkConfigSummary(cfg))
+                            _statusText = statusText
+                            _recentConnectionText = statusText
+                            _appendEvent(statusText)
+                            if (enterWorkspace && _isConnected) {
+                                mainWindow._hadConnectedVehicleSession = true
+                                mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
+                            }
+                            return
+                        }
+
                         if (cfg.mavlinkVersion !== undefined && cfg.mavlinkVersion !== null) {
                             cfg.mavlinkVersion = _startPageInitialMavlinkVersion
                         }
                         _applyStartPagePersistentSettings(cfg)
                         _beginConnectionProgress(cfg)
-                        _appendEvent((enterWorkspace ? qsTr("正在使用 %1 连接...") : qsTr("正在测试 %1 ...")).arg(cfg.name))
+                        _appendEvent((enterWorkspace ? qsTr("正在使用 %1 连接...") : qsTr("正在测试 %1 ...")).arg(_linkConfigSummary(cfg)))
                         _linkManager.createConnectedLink(cfg)
                     }
 
@@ -5419,8 +5621,7 @@ ApplicationWindow {
                         interval: 1200
                         repeat: true
                         running: startPageOverlay.visible
-                                 && !startPageOverlay._connectionInProgress
-                                 && !startPageOverlay._isConnected
+                                 && startPageOverlay._automaticSerialSettingsEditable
 
                         onTriggered: startPageOverlay._refreshSerialSelectionFromDetection(true)
                     }
@@ -5440,7 +5641,10 @@ ApplicationWindow {
                             if (startPageOverlay._connectionElapsedMs >= startPageOverlay._connectionTimeoutMs) {
                                 const wasUdpConnection = startPageOverlay._connectingConfig
                                     && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeUdp
+                                const wasTcpConnection = startPageOverlay._connectingConfig
+                                    && startPageOverlay._connectingConfig.linkType === LinkConfiguration.TypeTcp
                                 const waitingForAutoConnect = !startPageOverlay._connectingConfig
+                                const attemptedLinkText = startPageOverlay._linkConfigSummary(startPageOverlay._connectingConfig)
                                 startPageOverlay._timeoutConnectionProgress()
                                 if (waitingForAutoConnect) {
                                     startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
@@ -5453,8 +5657,10 @@ ApplicationWindow {
                                     return
                                 }
                                 const failureText = wasUdpConnection
-                                    ? qsTr("连接失败：UDP 未收到 MAVLink 心跳，请确认仿真或飞控正在发送数据。")
-                                    : qsTr("连接失败：未收到 MAVLink 心跳，可能是飞控仍在重启、波特率不匹配或飞控暂未发送数据。")
+                                    ? qsTr("连接失败：%1 未收到 MAVLink 心跳，请确认仿真或飞控正在向该端口发送数据。").arg(attemptedLinkText)
+                                    : (wasTcpConnection
+                                        ? qsTr("连接失败：%1 未收到 MAVLink 心跳，或 TCP 服务器不可达。").arg(attemptedLinkText)
+                                        : qsTr("连接失败：%1 未收到 MAVLink 心跳，可能是飞控仍在重启、波特率不匹配或飞控暂未发送数据。").arg(attemptedLinkText))
                                 startPageOverlay._appendEvent(failureText)
                                 const portChanged = wasUdpConnection ? false : startPageOverlay._refreshSerialSelectionAfterConnectionFailure()
                                 const serialPortMissing = !wasUdpConnection && startPageOverlay._selectedSerialPortName() === ""
@@ -5468,7 +5674,7 @@ ApplicationWindow {
                                     }
                                 }
                                 if (!serialPortMissing) {
-                                    startPageOverlay._showConnectionFailure(failureText)
+                                    startPageOverlay._showConnectionFailure(failureText, qsTr("连接失败"), attemptedLinkText)
                                 } else {
                                     startPageOverlay._appendEvent(qsTr("飞控串口暂未重新枚举，保持开始页等待检测"))
                                     startPageOverlay._statusText = qsTr("飞控重启中或 USB 暂未枚举，检测到串口后请重新连接")
@@ -5542,6 +5748,7 @@ ApplicationWindow {
                             startPageOverlay._manualConnectionState = startPageOverlay._connectionStateIdle
                             startPageOverlay._manualConnectionArmed = false
                             startPageOverlay._connectingConfig = null
+                            startPageOverlay._connectionVehicleIdsAtStart = ({})
                             if (mainWindow._showStartPage) {
                                 startPageOverlay._appendEvent(qsTr("进入工作区"))
                                 mainWindow._ensureMainInterfaceAccess(mainWindow._flyTabIndex, true)
@@ -5788,7 +5995,7 @@ ApplicationWindow {
                                         anchors.margins: startPageLinkDialog._cardPadding
                                         spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             Layout.fillWidth: true
                                             text: originalConfig ? qsTr("编辑链路") : qsTr("新增链路")
                                             color: startPageOverlay._primaryText
@@ -5796,7 +6003,7 @@ ApplicationWindow {
                                             font.weight: Font.DemiBold
                                         }
 
-                                        QGCLabel {
+                                        QGCPixelLabel {
                                             Layout.fillWidth: true
                                             text: qsTr("创建并配置通信链路配置。")
                                             color: startPageOverlay._secondaryText
@@ -5824,7 +6031,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: ScreenTools.defaultFontPixelWidth
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth
                                                 text: qsTr("名称")
                                                 color: startPageOverlay._primaryText
@@ -5889,7 +6096,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: ScreenTools.defaultFontPixelWidth
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth
                                                 text: qsTr("类型")
                                                 color: startPageOverlay._primaryText
@@ -5933,7 +6140,7 @@ ApplicationWindow {
                                                 anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     text: qsTr("串口参数")
                                                     color: startPageOverlay._secondaryText
@@ -5945,7 +6152,7 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCComboBox {
                                                         id: dialogSerialPortCombo
                                                         Layout.fillWidth: true
@@ -5972,7 +6179,7 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("波特率"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("波特率"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCComboBox {
                                                         id: dialogBaudCombo
                                                         Layout.fillWidth: true
@@ -5992,7 +6199,7 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth * 0.55
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("高级"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("高级"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCComboBox { id: dialogDataBitsCombo; Layout.fillWidth: true; model: ["5", "6", "7", "8"]; currentIndex: Math.max(Math.min(editingConfig.dataBits - 5, 3), 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogDataBitsCombo); onActivated: (index) => editingConfig.dataBits = index + 5 }
                                                     QGCComboBox { id: dialogStopBitsCombo; Layout.fillWidth: true; model: ["1", "2"]; currentIndex: Math.max(Math.min(editingConfig.stopBits - 1, 1), 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogStopBitsCombo); onActivated: (index) => editingConfig.stopBits = index + 1 }
                                                     QGCComboBox { id: dialogParityCombo; Layout.fillWidth: true; model: [qsTr("无奇偶"), qsTr("偶"), qsTr("奇")]; currentIndex: editingConfig.parity === 2 ? 1 : (editingConfig.parity === 3 ? 2 : 0); Component.onCompleted: startPageLinkDialog._styleCombo(dialogParityCombo); onActivated: (index) => editingConfig.parity = index === 1 ? 2 : (index === 2 ? 3 : 0) }
@@ -6015,17 +6222,17 @@ ApplicationWindow {
                                                 anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
-                                                QGCLabel { Layout.fillWidth: true; text: qsTr("UDP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
+                                                QGCPixelLabel { Layout.fillWidth: true; text: qsTr("UDP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
 
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("监听端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("监听端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCTextField { id: udpPortField; Layout.fillWidth: true; text: editingConfig.localPort.toString(); numericValuesOnly: true; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.localPort = parseInt(text) }
                                                 }
 
-                                                QGCLabel { Layout.fillWidth: true; text: qsTr("目标地址（可选）"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
+                                                QGCPixelLabel { Layout.fillWidth: true; text: qsTr("目标地址（可选）"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
 
                                                 Repeater {
                                                     model: editingConfig ? editingConfig.hostList : []
@@ -6035,7 +6242,7 @@ ApplicationWindow {
                                                         Layout.fillWidth: true
                                                         spacing: ScreenTools.defaultFontPixelWidth * 0.55
 
-                                                        QGCLabel { Layout.fillWidth: true; text: modelData; color: startPageOverlay._primaryText; elide: Text.ElideRight; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
+                                                        QGCPixelLabel { Layout.fillWidth: true; text: modelData; color: startPageOverlay._primaryText; elide: Text.ElideRight; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta }
                                                         QGCButton {
                                                             id: udpRemoveHostButton
                                                             text: qsTr("移除")
@@ -6093,13 +6300,13 @@ ApplicationWindow {
                                                 anchors.margins: ScreenTools.defaultFontPixelHeight * 0.72
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
-                                                QGCLabel { Layout.fillWidth: true; text: qsTr("TCP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
+                                                QGCPixelLabel { Layout.fillWidth: true; text: qsTr("TCP 参数"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontMeta; font.weight: Font.DemiBold }
 
                                                 RowLayout {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("服务器"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("服务器"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCTextField { id: tcpHostField; Layout.fillWidth: true; text: editingConfig.host; placeholderText: qsTr("localhost 或 192.168.1.1"); backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.host = text.trim() }
                                                 }
 
@@ -6107,7 +6314,7 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     spacing: ScreenTools.defaultFontPixelWidth
 
-                                                    QGCLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                                    QGCPixelLabel { Layout.preferredWidth: startPageLinkDialog._fieldLabelWidth; text: qsTr("端口"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                                     QGCTextField { id: tcpPortField; Layout.fillWidth: true; text: editingConfig.port.toString(); numericValuesOnly: true; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: startPageOverlay._primaryText; borderRadius: startPageOverlay._uiRadius; onTextChanged: editingConfig.port = parseInt(text) }
                                                 }
                                             }
@@ -6128,7 +6335,7 @@ ApplicationWindow {
                                                 anchors.margins: ScreenTools.defaultFontPixelHeight * 0.7
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.55
 
-                                                QGCLabel {
+                                                QGCPixelLabel {
                                                     Layout.fillWidth: true
                                                     text: qsTr("链路参数")
                                                     color: startPageOverlay._secondaryText
@@ -6252,8 +6459,8 @@ ApplicationWindow {
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: ScreenTools.defaultFontPixelHeight * 0.2
-                                        QGCLabel { text: "BTFW-GCS"; color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontTitle; font.weight: Font.DemiBold }
-                                        QGCLabel { text: qsTr("开始 - 专业连接与遥测工作区"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSubtitle }
+                                        QGCPixelLabel { text: "BTFW-GCS"; color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontTitle; font.weight: Font.DemiBold }
+                                        QGCPixelLabel { text: qsTr("开始 - 专业连接与遥测工作区"); color: startPageOverlay._secondaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSubtitle }
                                     }
 
                                 }
@@ -6267,7 +6474,7 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    Layout.preferredWidth: parent.width * 0.66
+                                    Layout.preferredWidth: 66
                                     radius: startPageOverlay._uiRadius
                                     color: startPageOverlay._cardBg
                                     border.color: startPageOverlay._borderColor
@@ -6277,19 +6484,20 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: ScreenTools.defaultFontPixelHeight * 0.9
                                         spacing: ScreenTools.defaultFontPixelHeight * 0.62
-                                        QGCLabel { text: qsTr("连接设置"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSectionTitle; font.weight: Font.DemiBold }
+                                        QGCPixelLabel { text: qsTr("连接设置"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontSectionTitle; font.weight: Font.DemiBold }
                                         Item { Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.1 }
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
                                             spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCLabel { text: qsTr("链路"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCPixelLabel { text: qsTr("链路"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                             QGCComboBox {
                                                 Layout.fillWidth: true
                                                 sizeToContents: true
-                                                model: startPageOverlay._availableLinkNames.length > 0 ? startPageOverlay._availableLinkNames : [qsTr("无可用链路")]
-                                                currentIndex: startPageOverlay._selectedLinkIndex >= 0 ? startPageOverlay._selectedLinkIndex : 0
-                                                enabled: startPageOverlay._availableLinkNames.length > 0
+                                                model: [qsTr("自动连接")].concat(startPageOverlay._availableLinkNames)
+                                                currentIndex: startPageOverlay._connectionMode === startPageOverlay._connectionModeSavedLink
+                                                    ? startPageOverlay._selectedLinkIndex + 1 : 0
+                                                enabled: startPageOverlay._connectionSettingsEditable
                                                 font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 backgroundColor: startPageOverlay._inputBg
                                                 borderColor: startPageOverlay._borderColor
@@ -6298,10 +6506,12 @@ ApplicationWindow {
                                                 showFocusBorder: true
                                                 borderRadius: startPageOverlay._uiRadius
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onActivated: {
-                                                    startPageOverlay._selectedLinkIndex = index
-                                                    startPageOverlay._linkSelectionLocked = true
-                                                    startPageOverlay._syncSelectedLinkSettings()
+                                                onActivated: (index) => {
+                                                    if (index === 0) {
+                                                        startPageOverlay._selectAutomaticConnection()
+                                                    } else {
+                                                        startPageOverlay._selectSavedLinkConfig(index - 1)
+                                                    }
                                                     startPageOverlay._connectionSettingChanged(qsTr("链路设置已更新，请重新连接"))
                                                 }
                                             }
@@ -6313,6 +6523,7 @@ ApplicationWindow {
                                                 showBorder: true
                                                 backRadius: startPageOverlay._uiRadius
                                                 borderColor: startPageOverlay._borderColor
+                                                enabled: startPageOverlay._connectionSettingsEditable
                                                 backgroundColor: pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn)
                                                 textColor: startPageOverlay._primaryText
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
@@ -6321,7 +6532,9 @@ ApplicationWindow {
                                             QGCButton {
                                                 Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 6.0
                                                 text: qsTr("编辑")
-                                                enabled: startPageOverlay._selectedLinkIndex >= 0 && startPageOverlay._selectedLinkIndex < startPageOverlay._availableLinkConfigs.length
+                                                enabled: startPageOverlay._connectionSettingsEditable
+                                                         && startPageOverlay._savedLinkSelected
+                                                         && !startPageOverlay._selectedSavedLinkInUse
                                                 horizontalAlignment: Text.AlignHCenter
                                                 pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 showBorder: true
@@ -6340,6 +6553,7 @@ ApplicationWindow {
                                                 showBorder: true
                                                 backRadius: startPageOverlay._uiRadius
                                                 borderColor: startPageOverlay._borderColor
+                                                enabled: startPageOverlay._connectionSettingsEditable
                                                 backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
                                                 textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
@@ -6350,14 +6564,14 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
                                             spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCLabel { text: qsTr("端口"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCPixelLabel { text: qsTr("端口"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                             QGCComboBox {
                                                 id: serialPortCombo
                                                 Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16
                                                 sizeToContents: true
                                                 model: startPageOverlay._serialPortDisplayNames.length > 0 ? startPageOverlay._serialPortDisplayNames : ["COM4"]
                                                 currentIndex: startPageOverlay._selectedSerialPortIndex >= 0 ? startPageOverlay._selectedSerialPortIndex : 0
-                                                enabled: startPageOverlay._serialPortAvailable
+                                                enabled: startPageOverlay._automaticSerialSettingsEditable && startPageOverlay._serialPortAvailable
                                                 font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 backgroundColor: startPageOverlay._inputBg
                                                 borderColor: startPageOverlay._borderColor
@@ -6366,9 +6580,8 @@ ApplicationWindow {
                                                 showFocusBorder: true
                                                 borderRadius: startPageOverlay._uiRadius
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
-                                                onActivated: {
+                                                onActivated: (index) => {
                                                     startPageOverlay._selectedSerialPortIndex = index
-                                                    startPageOverlay._linkSelectionLocked = false
                                                     startPageOverlay._serialPortSelectionLocked = true
                                                     startPageOverlay._connectionSettingChanged(qsTr("串口已更新，请重新连接"))
                                                 }
@@ -6381,6 +6594,7 @@ ApplicationWindow {
                                                 showBorder: true
                                                 backRadius: startPageOverlay._uiRadius
                                                 borderColor: startPageOverlay._borderColor
+                                                enabled: startPageOverlay._automaticSerialSettingsEditable
                                                 backgroundColor: !enabled ? startPageOverlay._secondaryBtn : (pressed ? startPageOverlay._secondaryBtnPressed : (hovered ? startPageOverlay._secondaryBtnHover : startPageOverlay._secondaryBtn))
                                                 textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText
                                                 stateAnimationDuration: startPageOverlay._uiAnimMs
@@ -6420,7 +6634,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
                                             spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCLabel { text: qsTr("波特率"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCPixelLabel { text: qsTr("波特率"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
                                             QGCComboBox {
                                                 id: baudRateCombo
                                                 Layout.fillWidth: true
@@ -6445,6 +6659,7 @@ ApplicationWindow {
                                                     const idx = model.indexOf(baudText)
                                                     return idx >= 0 ? idx : 0
                                                 }
+                                                enabled: startPageOverlay._automaticSerialSettingsEditable
                                                 font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                 backgroundColor: startPageOverlay._inputBg
                                                 borderColor: startPageOverlay._borderColor
@@ -6469,10 +6684,10 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2.2
                                             spacing: ScreenTools.defaultFontPixelWidth * 0.6
-                                            QGCLabel { text: qsTr("数据 / 停止位"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
-                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10; sizeToContents: true; model: [qsTr("数据 5"), qsTr("数据 6"), qsTr("数据 7"), qsTr("数据 8")]; currentIndex: Math.max(0, Math.min(3, startPageOverlay._selectedDataBits - 5)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedDataBits = index + 5; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
-                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; sizeToContents: true; model: [qsTr("停止 1"), qsTr("停止 2")]; currentIndex: Math.max(0, Math.min(1, startPageOverlay._selectedStopBits - 1)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedStopBits = index + 1; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
-                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 11; sizeToContents: true; model: [qsTr("无奇偶"), qsTr("奇"), qsTr("偶")]; currentIndex: startPageOverlay._selectedParity === 3 ? 1 : (startPageOverlay._selectedParity === 2 ? 2 : 0); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedParity = index === 1 ? 3 : (index === 2 ? 2 : 0); startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
+                                            QGCPixelLabel { text: qsTr("数据 / 停止位"); color: startPageOverlay._primaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * startPageOverlay._leftFieldLabelWidth; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontFieldLabel }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10; sizeToContents: true; enabled: startPageOverlay._automaticSerialSettingsEditable; model: [qsTr("数据 5"), qsTr("数据 6"), qsTr("数据 7"), qsTr("数据 8")]; currentIndex: Math.max(0, Math.min(3, startPageOverlay._selectedDataBits - 5)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedDataBits = index + 5; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 9; sizeToContents: true; enabled: startPageOverlay._automaticSerialSettingsEditable; model: [qsTr("停止 1"), qsTr("停止 2")]; currentIndex: Math.max(0, Math.min(1, startPageOverlay._selectedStopBits - 1)); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedStopBits = index + 1; startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
+                                            QGCComboBox { Layout.fillWidth: true; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 11; sizeToContents: true; enabled: startPageOverlay._automaticSerialSettingsEditable; model: [qsTr("无奇偶"), qsTr("奇"), qsTr("偶")]; currentIndex: startPageOverlay._selectedParity === 3 ? 1 : (startPageOverlay._selectedParity === 2 ? 2 : 0); font.pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale; backgroundColor: startPageOverlay._inputBg; borderColor: startPageOverlay._borderColor; focusBorderColor: startPageOverlay._focusColor; textColor: enabled ? startPageOverlay._primaryText : startPageOverlay._disabledText; showFocusBorder: true; borderRadius: startPageOverlay._uiRadius; stateAnimationDuration: startPageOverlay._uiAnimMs; onActivated: (index) => { startPageOverlay._selectedParity = index === 1 ? 3 : (index === 2 ? 2 : 0); startPageOverlay._connectionSettingChanged(qsTr("串口参数已更新，请重新连接")) } }
                                         }
                                         Item {
                                             Layout.fillHeight: true
@@ -6485,7 +6700,7 @@ ApplicationWindow {
                                             Layout.minimumHeight: ScreenTools.defaultFontPixelHeight * 4.6
                                             spacing: ScreenTools.defaultFontPixelHeight * 0.35
 
-                                            QGCLabel {
+                                            QGCPixelLabel {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.0
                                                 text: startPageOverlay._recentConnectionText
@@ -6521,7 +6736,7 @@ ApplicationWindow {
 
                                                 QGCButton {
                                                     Layout.fillWidth: true
-                                                    text: startPageOverlay._isConnected ? qsTr("进入工作区") : (startPageOverlay._connectionInProgress ? qsTr("连接中...") : qsTr("连接飞行器"))
+                                                    text: startPageOverlay._connectionInProgress ? qsTr("连接中...") : qsTr("连接飞行器")
                                                     pointSize: ScreenTools.defaultFontPointSize * startPageOverlay._fontControlScale
                                                     enabled: startPageOverlay._canConnect
                                                     showBorder: true
@@ -6558,7 +6773,7 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    Layout.preferredWidth: parent.width * 0.34
+                                    Layout.preferredWidth: 34
                                     radius: startPageOverlay._uiRadius
                                     color: startPageOverlay._cardBg
                                     border.color: startPageOverlay._borderColor
@@ -6571,7 +6786,7 @@ ApplicationWindow {
 
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            QGCLabel { text: qsTr("事件日志"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightTitle; font.weight: Font.DemiBold }
+                                            QGCPixelLabel { text: qsTr("事件日志"); color: startPageOverlay._primaryText; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightTitle; font.weight: Font.DemiBold }
                                             Item { Layout.fillWidth: true }
                                             QGCButton {
                                                 text: qsTr("清空日志")
@@ -6603,8 +6818,8 @@ ApplicationWindow {
                                                 spacing: ScreenTools.defaultFontPixelHeight * 0.35
                                                 delegate: RowLayout {
                                                     width: ListView.view.width
-                                                    QGCLabel { text: "[" + model.timestamp + "]"; color: startPageOverlay._secondaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10.5; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogTime }
-                                                    QGCLabel { text: model.message; color: startPageOverlay._primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogMessage }
+                                                    QGCPixelLabel { text: "[" + model.timestamp + "]"; color: startPageOverlay._secondaryText; Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 10.5; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogTime }
+                                                    QGCPixelLabel { text: model.message; color: startPageOverlay._primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: ScreenTools.defaultFontPixelHeight * startPageOverlay._fontRightLogMessage }
                                                 }
                                             }
                                         }
@@ -6920,7 +7135,7 @@ ApplicationWindow {
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
-                QGCLabel {
+                QGCPixelLabel {
                     id:                 vehicleWarningLabel
                     text:               qsTr("飞行器告警")
                     color:              "#F8FAFC"
@@ -6929,7 +7144,7 @@ ApplicationWindow {
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
-                QGCLabel {
+                QGCPixelLabel {
                     text:               qsTr("点击关闭")
                     color:              Qt.rgba(1, 1, 1, 0.48)
                     font.pixelSize:     ScreenTools.defaultFontPixelHeight * 0.58
@@ -6940,7 +7155,7 @@ ApplicationWindow {
             Repeater {
                 model: criticalVehicleMessageModel
 
-                QGCLabel {
+                QGCPixelLabel {
                     width:              criticalVehicleMessageContent.width
                     wrapMode:           Text.WordWrap
                     color:              highPriority ? "#FF5A5F" : "#FDE68A"
@@ -6951,7 +7166,7 @@ ApplicationWindow {
                 }
             }
 
-            QGCLabel {
+            QGCPixelLabel {
                 width:              parent.width
                 visible:            criticalVehicleMessageModel.count >= criticalVehicleMessagePopup.maxVisibleCriticalMessages
                 text:               qsTr("已显示最近 %1 条告警，完整记录请打开消息列表。").arg(criticalVehicleMessagePopup.maxVisibleCriticalMessages)

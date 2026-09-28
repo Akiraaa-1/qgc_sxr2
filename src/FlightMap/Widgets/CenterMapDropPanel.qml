@@ -45,7 +45,7 @@ ColumnLayout {
 
         onClicked: {
             dropPanel.hide()
-            map.center = fitFunctions.fitHomePosition()
+            map.center = QGroundControl.mapDisplayCoordinate(fitFunctions.fitHomePosition())
         }
     }
 
@@ -56,7 +56,7 @@ ColumnLayout {
 
         onClicked: {
             dropPanel.hide()
-            map.center = globals.activeVehicle.coordinate
+            map.center = QGroundControl.mapDisplayCoordinate(globals.activeVehicle.coordinate)
         }
     }
 
@@ -67,7 +67,7 @@ ColumnLayout {
 
         onClicked: {
             dropPanel.hide()
-            map.center = map.gcsPosition
+            map.center = QGroundControl.mapDisplayCoordinate(map.gcsPosition)
         }
     }
 

@@ -87,6 +87,7 @@ public:
     Q_PROPERTY(QGeoCoordinate       flightMapPosition       READ    flightMapPosition       WRITE setFlightMapPosition  NOTIFY flightMapPositionChanged)
     Q_PROPERTY(double               flightMapZoom           READ    flightMapZoom           WRITE setFlightMapZoom      NOTIFY flightMapZoomChanged)
     Q_PROPERTY(double               flightMapInitialZoom    MEMBER  _flightMapInitialZoom   CONSTANT)   ///< Zoom level to use when either gcs or vehicle shows up for first time
+    Q_PROPERTY(bool                 chinaOffsetMapActive    READ    isChinaOffsetMapActive  NOTIFY chinaOffsetMapActiveChanged)
 
     Q_PROPERTY(QString  parameterFileExtension  READ parameterFileExtension CONSTANT)
     Q_PROPERTY(QString  telemetryFileExtension  READ telemetryFileExtension CONSTANT)
@@ -231,6 +232,7 @@ signals:
     void mavlinkSystemIDChanged         (int id);
     void flightMapPositionChanged       (QGeoCoordinate flightMapPosition);
     void flightMapZoomChanged           (double flightMapZoom);
+    void chinaOffsetMapActiveChanged    ();
     void showMessageDialogRequested     (QObject* owner, QString title, QString text, int buttons, QJSValue acceptFunction, QJSValue closeFunction);
 
 private:

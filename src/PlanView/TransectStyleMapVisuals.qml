@@ -79,7 +79,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       QGroundControl.mapDisplayCoordinates(_transectPoints)
+            path:       QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinates(_transectPoints)
             visible:    _currentItem && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -92,7 +92,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[0], _transectPoints[1] ]) : []
+            path:       QGroundControl.chinaOffsetMapActive, _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[0], _transectPoints[1] ]) : []
             visible:    _showPartialEntryExit && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -103,7 +103,7 @@ Item {
         MapPolyline {
             line.color: "white"
             line.width: 2
-            path:       _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[_lastPointIndex - 1], _transectPoints[_lastPointIndex] ]) : []
+            path:       QGroundControl.chinaOffsetMapActive, _showPartialEntryExit ? QGroundControl.mapDisplayCoordinates([ _transectPoints[_lastPointIndex - 1], _transectPoints[_lastPointIndex] ]) : []
             visible:    _showPartialEntryExit && !_vertexDrag
             opacity:    _root.opacity
         }
@@ -117,7 +117,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.coordinate)
+            coordinate:     QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_missionItem.coordinate)
             visible:        _missionItem.exitCoordinate.isValid && !_vertexDrag
             opacity:        _root.opacity
 
@@ -189,7 +189,7 @@ Item {
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
             z:              QGroundControl.zOrderMapItems
-            coordinate:     QGroundControl.mapDisplayCoordinate(_missionItem.exitCoordinate)
+            coordinate:     QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_missionItem.exitCoordinate)
             visible:        _missionItem.exitCoordinate.isValid && !_vertexDrag
             opacity:        _root.opacity
 

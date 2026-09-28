@@ -72,7 +72,7 @@ private:
     void _onNewSourcePad(GstPad *pad);
     void _onNewDecoderPad(GstPad *pad);
     bool _addDecoder(GstElement *src);
-    void _ensureVideoSinkInPipeline();
+    bool _ensureVideoSinkInPipeline();
     bool _addVideoSink(GstPad *pad);
     void _noteTeeFrame();
     void _noteVideoSinkFrame();

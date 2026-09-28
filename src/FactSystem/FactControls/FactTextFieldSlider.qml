@@ -77,12 +77,7 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: {
-        _loadComplete = true
-        if (!allowUsingMinMax && sliderMin === undefined && sliderMax === undefined && (fact.userMin === undefined || fact.userMax === undefined)) {
-            console.warn("FactTextFieldSlider: userMin/userMax not set for", fact.name)
-        }
-    }
+    Component.onCompleted: _loadComplete = true
 
     Connections {
         target: control.fact

@@ -3,14 +3,17 @@
 #include <QtQuick/QQuickItem>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QSharedPointer>
+#include <QtCore/QTimer>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "FactPanelController.h"
 
 Q_DECLARE_LOGGING_CATEGORY(SensorsComponentControllerLog)
 
-namespace events::parser {
+namespace events {
+namespace parser {
 class ParsedEvent;
+}
 }
 
 /// Sensors Component MVC Controller for SensorsComponent.qml.
@@ -21,6 +24,15 @@ class SensorsComponentController : public FactPanelController
 public:
     SensorsComponentController(void);
 
+    enum OrientationCalAction {
+        OrientationCalActionWaiting,
+        OrientationCalActionHoldStill,
+        OrientationCalActionRotate,
+        OrientationCalActionNextOrientation,
+        OrientationCalActionAlreadyCompleted,
+    };
+    Q_ENUM(OrientationCalAction)
+
     Q_PROPERTY(QQuickItem* statusLog MEMBER _statusLog)
     Q_PROPERTY(QQuickItem* progressBar MEMBER _progressBar)
 
@@ -28,6 +40,7 @@ public:
 
     Q_PROPERTY(bool calibrationActive READ calibrationActive NOTIFY calibrationActiveChanged)
     Q_PROPERTY(bool magCalInProgress READ magCalInProgress NOTIFY calibrationActiveChanged)
+    Q_PROPERTY(OrientationCalAction orientationCalAction READ orientationCalAction NOTIFY orientationCalActionChanged)
 
     Q_PROPERTY(bool showOrientationCalArea MEMBER _showOrientationCalArea NOTIFY showOrientationCalAreaChanged)
 
@@ -73,6 +86,7 @@ public:
 
     bool calibrationActive() const { return _magCalInProgress || _gyroCalInProgress || _accelCalInProgress || _airspeedCalInProgress || _levelCalInProgress; }
     bool magCalInProgress() const { return _magCalInProgress; }
+    OrientationCalAction orientationCalAction() const { return _orientationCalAction; }
 
 signals:
     void showGyroCalAreaChanged(void);
@@ -84,7 +98,12 @@ signals:
     void resetStatusTextArea(void);
     void waitingForCancelChanged(void);
     void magCalComplete(void);
+    void calibrationComplete(const QString& calibrationType);
+    void calibrationFailed(const QString& calibrationType);
+    void calibrationCancelled(const QString& calibrationType);
     void calibrationActiveChanged(void);
+    void orientationCalActionChanged(void);
+    void factoryResetCompleted(bool success);
 
 private slots:
     void _handleUASTextMessage(int uasId, int compId, int severity, QString text, const QString &description);
@@ -95,11 +114,21 @@ private:
     void _startLogCalibration(void);
     void _startVisualCalibration(void);
     void _appendStatusLog(const QString& text);
+    void _queueProgressUpdate(int progress);
+    void _applyPendingProgress(void);
     void _refreshParams(void);
-    void _clearSensorCalibrationIds(void);
     void _hideAllCalAreas(void);
     void _resetInternalState(void);
-    void _updateAccelSidesFromRemaining(uint64_t remainingSides);
+    void _completeVisibleOrientationSides(void);
+    void _updateOrientationSidesFromRemaining(uint64_t visibleSides, uint64_t remainingSides);
+    void _handleOrientationDetected(const QString& side, OrientationCalAction action);
+    void _handleOrientationDone(const QString& side, OrientationCalAction action);
+    void _setOrientationCalAction(OrientationCalAction action);
+    void _setOrientationSideState(const QString& side, bool done, bool inProgress, bool rotate);
+    void _setActiveOrientationRotate(bool rotate);
+    bool _orientationSideDone(const QString& side) const;
+    uint64_t _configuredMagCalibrationSides(void) const;
+    QString _currentCalibrationType(void) const;
 
     enum StopCalibrationCode {
         StopCalibrationSuccess,
@@ -150,9 +179,17 @@ private:
     bool _orientationCalRightSideRotate;
     bool _orientationCalNoseDownSideRotate;
     bool _orientationCalTailDownSideRotate;
+    OrientationCalAction _orientationCalAction;
 
     bool _unknownFirmwareVersion;
     bool _waitingForCancel;
+    bool _calibrationStopHandled = false;
+    bool _structuredCalibrationEventsSeen = false;
+    int _lastStructuredProgress = -1;
+    int _pendingProgress = -1;
+    QTimer _progressUpdateTimer;
+    QString _activeCalibrationType;
+    QString _lastCalibrationText;
 
     static const int _supportedFirmwareCalVersion = 2;
 };

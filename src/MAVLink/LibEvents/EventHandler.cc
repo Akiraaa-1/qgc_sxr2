@@ -13,7 +13,7 @@ EventHandler::EventHandler(QObject* parent, const QString& profile, handle_event
     _compid(componentId)
 {
     auto error_cb = [componentId, this](int num_events_lost) {
-        _healthAndArmingChecks.reset();
+        invalidateHealthAndArmingChecks();
         qCWarning(EventsLog) << "Events got lost:" << num_events_lost << "comp_id:" << componentId;
     };
 
@@ -96,6 +96,13 @@ void EventHandler::setMetadata(const QString &metadataJsonFileName)
     } else {
         qCWarning(EventsLog) << "Failed to load events JSON metadata file";
     }
+}
+
+void EventHandler::invalidateHealthAndArmingChecks()
+{
+    _healthAndArmingChecks.reset();
+    _healthAndArmingChecksValid = false;
+    emit healthAndArmingChecksInvalidated();
 }
 
 int EventHandler::getModeGroup(int32_t customMode)

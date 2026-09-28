@@ -31,7 +31,8 @@ Item {
     readonly property color _selectedMissionBandColor: Qt.rgba(0.56, 0.47, 0.92, 0.76)
     readonly property color _selectedMissionCoreColor: "#E8893D"
 
-    property var    _planMasterController: planMasterController
+    property var    _planSessionManager: QGroundControl.multiVehicleManager.planSessionManager
+    property var    _planMasterController: _planSessionManager && _planSessionManager.activeController ? _planSessionManager.activeController : planMasterController
     property var    _missionController: _planMasterController.missionController
     property var    _geoFenceController: _planMasterController.geoFenceController
     property var    _rallyPointController: _planMasterController.rallyPointController
@@ -98,8 +99,7 @@ Item {
 
     onVisibleChanged: {
         if(visible) {
-            editorMap.zoomLevel = QGroundControl.flightMapZoom
-            editorMap.center    = QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
+            editorMap.syncMapViewFromSettings()
         }
     }
 
@@ -114,6 +114,15 @@ Item {
     Connections {
         target: _planMasterController
 
+        function onPromptForPlanUsageOnVehicleChange() {
+            if (!_promptForPlanUsageShowing) {
+                _promptForPlanUsageVehicleOffline = _planMasterController.managerVehicle.isOfflineEditingVehicle
+                _promptForPlanUsageDirtyForSave = _planMasterController.dirtyForSave
+                _promptForPlanUsageShowing = true
+                promptForPlanUsageOnVehicleChangePopupFactory.open()
+            }
+        }
+
         function onSyncInProgressChanged() {
             if (!_toolStripUploadRequested) {
                 return
@@ -127,6 +136,19 @@ Item {
             if (_toolStripUploadInProgress) {
                 _toolStripUploadInProgress = false
                 Qt.callLater(_finishToolStripUpload)
+            }
+        }
+    }
+
+    Connections {
+        target: _planSessionManager
+
+        function onActiveSessionChanged() {
+            _toolStripUploadRequested = false
+            _toolStripUploadInProgress = false
+            _closeUploadStatusPanel()
+            if (_missionController) {
+                _missionController.setCurrentPlanViewSeqNum(0, true)
             }
         }
     }
@@ -303,8 +325,158 @@ Item {
         return true
     }
 
-    function _sendToolStripUpload(source, forceUpload) {
+    function _makeOperationToken() {
+        return _planSessionManager ? _planSessionManager.makeOperationToken() : ({})
+    }
+
+    function _operationTokenStillCurrent(token, source, message) {
+        if (!_planSessionManager || _planSessionManager.tokenStillCurrent(token)) {
+            return true
+        }
+
+        _openUploadStatusPanel(source || _uploadStatusSource,
+                               qsTr("操作已取消"),
+                               message || qsTr("当前规划目标已改变。请重新确认后再操作。"))
+        return false
+    }
+
+    function _planTargetMutationBlockMessage(removeFromVehicle) {
+        if (!_planSessionManager) {
+            return ""
+        }
+
+        switch (_planSessionManager.activeIdentityState) {
+        case "VerifiedIdentity":
+            return ""
+        case "UnboundDraft":
+            return qsTr("当前计划没有绑定可操作的飞行器。请先连接并选择目标飞行器。")
+        case "Disconnected":
+            return qsTr("当前飞行器通信已丢失，不能上传航线或清除飞控航线。请恢复通信后再操作。")
+        case "TemporaryIdentity":
+            return qsTr("当前飞行器尚未上报稳定的唯一身份，不能上传航线或清除飞控航线。请等待飞行器身份确认后再操作。")
+        case "Conflict":
+            return qsTr("检测到多架飞行器上报了相同的唯一身份。请先排除重复身份或断开冲突飞行器。")
+        case "IdentityMismatch":
+            return qsTr("当前计划属于另一架飞行器，不能上传或清空当前飞行器航线。请切换到正确飞行器或重新创建计划。")
+        case "RemoteStateUnknown":
+            return removeFromVehicle
+                ? ""
+                : qsTr("上一次同步或清空操作未确认完成，当前飞行器航线状态未知。请先从飞行器下载航线核对，或清除飞控航线恢复后再上传。")
+        default:
+            return qsTr("当前计划目标状态未确认，不能执行该操作。")
+        }
+    }
+
+    function _sendPlanToVehicleWithToken(token) {
+        if (_planSessionManager) {
+            return _planSessionManager.sendToVehicleWithToken(token)
+        }
+
+        _planMasterController.sendToVehicle()
+        return _planMasterController.syncInProgress
+    }
+
+    function _loadPlanFromVehicleWithToken(token) {
+        if (_planSessionManager) {
+            return _planSessionManager.loadFromVehicleWithToken(token)
+        }
+
+        _planMasterController.loadFromVehicle()
+        return _planMasterController.syncInProgress
+    }
+
+    function _removeAllWithToken(token) {
+        if (_planSessionManager) {
+            return _planSessionManager.removeAllWithToken(token)
+        }
+
+        _planMasterController.removeAll()
+        return true
+    }
+
+    function _removeMissionFromVehicleWithToken(token) {
+        if (_planSessionManager) {
+            return _planSessionManager.removeMissionFromVehicleWithToken(token)
+        }
+
+        _planMasterController.removeMissionFromVehicle()
+        return true
+    }
+
+    function _clearRemovesVehicleByDefault() {
+        if (!_planMasterController || _planMasterController.offline) {
+            return false
+        }
+
+        return !_planSessionManager || _planSessionManager.activeSessionConnected
+    }
+
+    function _defaultMissionClearText() {
+        return _clearRemovesVehicleByDefault() ? qsTr("清除飞控航线") : qsTr("清空编辑器")
+    }
+
+    function _triggerDefaultMissionClear() {
+        _triggerToolStripClear(_clearRemovesVehicleByDefault())
+    }
+
+    function _checkReadyForSaveUpload(save) {
+        var saveOrUpload = save ? qsTr("保存") : qsTr("上传")
+        if (_planMasterController.readyForSaveState() === VisualMissionItem.NotReadyForSaveData) {
+            QGroundControl.showMessageDialog(_root, qsTr("无法%1").arg(saveOrUpload), qsTr("计划中有未完成的项目。请补全所有项目后重新%1。").arg(saveOrUpload))
+            return false
+        } else if (_planMasterController.readyForSaveState() === VisualMissionItem.NotReadyForSaveTerrain) {
+            QGroundControl.showMessageDialog(_root, qsTr("无法%1").arg(saveOrUpload), qsTr("计划正在等待服务器地形数据以计算正确高度。"))
+            return false
+        }
+        return true
+    }
+
+    function _loadFromSelectedFile(token) {
+        if (!_operationTokenStillCurrent(token, null)) {
+            return
+        }
+
+        fileDialog.title =          qsTr("选择计划文件")
+        fileDialog.planFiles =      true
+        fileDialog.operationToken = token
+        fileDialog.nameFilters =    _planMasterController.loadNameFilters
+        fileDialog.openForLoad()
+    }
+
+    function _saveToSelectedFile(token) {
+        if (!_operationTokenStillCurrent(token, null) || !_checkReadyForSaveUpload(true /* save */)) {
+            return
+        }
+
+        fileDialog.title =          qsTr("保存计划")
+        fileDialog.planFiles =      true
+        fileDialog.operationToken = token
+        fileDialog.nameFilters =    _planMasterController.saveNameFilters
+        fileDialog.openForSave()
+    }
+
+    function _saveKmlToSelectedFile(token) {
+        if (!_operationTokenStillCurrent(token, null) || !_checkReadyForSaveUpload(true /* save */)) {
+            return
+        }
+
+        fileDialog.title =          qsTr("保存 KML")
+        fileDialog.planFiles =      false
+        fileDialog.operationToken = token
+        fileDialog.nameFilters =    ShapeFileHelper.fileDialogKMLFilters
+        fileDialog.openForSave()
+    }
+
+    function _fitViewportToItems() {
+        mapFitFunctions.fitMapViewportToMissionItems()
+    }
+
+    function _sendToolStripUpload(source, forceUpload, token) {
         _uploadStatusSource = source
+        if (!_operationTokenStillCurrent(token, source)) {
+            return
+        }
+
         if (_planMasterController.syncInProgress) {
             _openUploadStatusPanel(source,
                                    qsTr("无法%1").arg(qsTr("上传")),
@@ -313,6 +485,14 @@ Item {
         }
 
         if (_warnZeroDistanceComplexMissionItems(source)) {
+            return
+        }
+
+        const targetBlockMessage = _planTargetMutationBlockMessage(false)
+        if (targetBlockMessage !== "") {
+            _openUploadStatusPanel(source,
+                                   qsTr("无法上传航线"),
+                                   targetBlockMessage)
             return
         }
 
@@ -329,7 +509,7 @@ Item {
             return
         }
 
-        const preCheckState = forceUpload ? MissionController.SendToVehiclePreCheckStateOk : _missionController.sendToVehiclePreCheck()
+        const preCheckState = _missionController.sendToVehiclePreCheck(forceUpload)
         switch (preCheckState) {
         case MissionController.SendToVehiclePreCheckStateOk:
             _toolStripUploadRequested = true
@@ -341,8 +521,7 @@ Item {
                                    null,
                                    qsTr("Ok"),
                                    true)
-            _planMasterController.sendToVehicle()
-            if (!_planMasterController.syncInProgress) {
+            if (!_sendPlanToVehicleWithToken(token)) {
                 _toolStripUploadRequested = false
                 _openUploadStatusPanel(_uploadStatusSource,
                                        qsTr("Send To Vehicle"),
@@ -359,11 +538,21 @@ Item {
                                    qsTr("Send To Vehicle"),
                                    qsTr("上传新计划前必须先暂停当前任务。"))
             return
+        case MissionController.SendToVehiclePreCheckStateMissionTooTight:
+            _openUploadStatusPanel(source,
+                                   qsTr("无法上传航线"),
+                                   _missionController.sendToVehiclePreCheckFailureMessage || qsTr("计划中存在过近的连续航点。请拉开航点间距后再上传。"))
+            return
+        case MissionController.SendToVehiclePreCheckStateMissionLoopConflict:
+            _openUploadStatusPanel(source,
+                                   qsTr("无法上传航线"),
+                                   _missionController.sendToVehiclePreCheckFailureMessage || qsTr("循环航线设置无效。请检查 DO_JUMP 或航线末尾命令后再上传。"))
+            return
         case MissionController.SendToVehiclePreCheckStateFirwmareVehicleMismatch:
             _openUploadStatusPanel(source,
                                    qsTr("计划上传"),
                                    qsTr("此计划创建时使用的固件或机型与当前上传目标不一致，可能导致错误或异常行为。\n\n建议按当前固件和机型重新创建计划。\n\n点击“OK”仍然上传。"),
-                                   function() { _sendToolStripUpload(source, true) })
+                                   function() { _sendToolStripUpload(source, true, token) })
             return
         }
     }
@@ -372,11 +561,13 @@ Item {
         _clearMapToolState()
         _closeUploadStatusPanel()
         editorMap.forceActiveFocus()
-        Qt.callLater(function() { _sendToolStripUpload(source) })
+        const token = _makeOperationToken()
+        Qt.callLater(function() { _sendToolStripUpload(source, false, token) })
     }
 
     function _triggerToolStripOpen() {
         _clearMapToolState()
+        const token = _makeOperationToken()
 
         if (_planMasterController.dirtyForSave || _planMasterController.dirtyForUpload) {
             QGroundControl.showMessageDialog(
@@ -384,22 +575,25 @@ Item {
                 qsTr("打开计划"),
                 qsTr("当前有未保存或未发送的更改。加载新的计划会丢失这些更改，确定继续吗？"),
                 Dialog.Yes | Dialog.Cancel,
-                function() { _planMasterController.loadFromSelectedFile() }
+                function() { _loadFromSelectedFile(token) }
             )
             return
         }
 
-        _planMasterController.loadFromSelectedFile()
+        _loadFromSelectedFile(token)
     }
 
     function _triggerToolStripSave() {
         _clearMapToolState()
+        const token = _makeOperationToken()
 
         if (_planMasterController.currentPlanFileName === "") {
             if (_planMasterController.currentPlanFile === "") {
-                _planMasterController.saveToSelectedFile()
+                _saveToSelectedFile(token)
             } else {
-                _planMasterController.saveToCurrent()
+                if (_operationTokenStillCurrent(token, null)) {
+                    _planMasterController.saveToCurrent()
+                }
             }
             return
         }
@@ -414,27 +608,96 @@ Item {
                 qsTr("保存"),
                 msg,
                 Dialog.Yes | Dialog.No,
-                function() { _planMasterController.saveWithCurrentName() }
+                function() {
+                    if (_operationTokenStillCurrent(token, null)) {
+                        _planMasterController.saveWithCurrentName()
+                    }
+                }
             )
             return
         }
 
-        _planMasterController.saveToCurrent()
+        if (_operationTokenStillCurrent(token, null)) {
+            _planMasterController.saveToCurrent()
+        }
     }
 
-    function _triggerToolStripClear() {
+    function _triggerToolStripSaveKml() {
         _clearMapToolState()
 
-        if (!_planMasterController.containsItems) {
+        if (_visualItems.count > 1) {
+            _saveKmlToSelectedFile(_makeOperationToken())
+        }
+    }
+
+    function _triggerToolStripDownload() {
+        _clearMapToolState()
+        const token = _makeOperationToken()
+
+        if (_planMasterController.dirtyForSave) {
+            QGroundControl.showMessageDialog(_root,
+                                             qsTr("下载"),
+                                             qsTr("当前有未保存的更改。从飞行器下载会丢失这些更改，确定继续吗？"),
+                                             Dialog.Yes | Dialog.Cancel,
+                                             function() { _loadPlanFromVehicleWithToken(token) })
+        } else {
+            _loadPlanFromVehicleWithToken(token)
+        }
+    }
+
+    function _triggerToolStripClear(removeFromVehicle) {
+        _clearMapToolState()
+        const token = _makeOperationToken()
+
+        if (_planMasterController.syncInProgress) {
+            _openUploadStatusPanel(null,
+                                   removeFromVehicle ? qsTr("无法清除飞控航线") : qsTr("无法清空编辑器"),
+                                   removeFromVehicle ? qsTr("计划仍在与飞行器同步。请等待当前同步结束后再清除飞控航线。")
+                                                     : qsTr("计划仍在与飞行器同步。请等待当前同步结束后再清空编辑器。"))
+            return
+        }
+
+        if (!removeFromVehicle && !_planMasterController.containsItems) {
+            return
+        }
+
+        if (removeFromVehicle) {
+            const targetBlockMessage = _planTargetMutationBlockMessage(true)
+            if (targetBlockMessage !== "") {
+                _openUploadStatusPanel(null,
+                                       qsTr("无法清除飞控航线"),
+                                       targetBlockMessage)
+                return
+            }
+        }
+
+        if (removeFromVehicle && _planMasterController.offline) {
+            _openUploadStatusPanel(null,
+                                   qsTr("无法清除飞控航线"),
+                                   qsTr("必须连接并选择飞行器后才能清除飞控航线。"))
             return
         }
 
         QGroundControl.showMessageDialog(
             _root,
-            qsTr("清空航线"),
-            qsTr("确定要移除计划编辑器中的所有项目吗？"),
+            removeFromVehicle ? qsTr("清除飞控航线") : qsTr("清空编辑器"),
+            removeFromVehicle ? qsTr("将从当前飞行器和计划编辑器中清除航线任务。飞机将不再保留该任务。确定继续吗？")
+                              : qsTr("仅移除计划编辑器中的项目，不会清除飞行器中的航线任务。确定继续吗？"),
             Dialog.Yes | Dialog.Cancel,
-            function() { _planMasterController.removeAll() }
+            function() {
+                if (removeFromVehicle) {
+                    const targetBlockMessage = _planTargetMutationBlockMessage(true)
+                    if (targetBlockMessage !== "") {
+                        _openUploadStatusPanel(null,
+                                               qsTr("无法清除飞控航线"),
+                                               targetBlockMessage)
+                        return
+                    }
+                    _removeMissionFromVehicleWithToken(token)
+                } else {
+                    _removeAllWithToken(token)
+                }
+            }
         )
     }
 
@@ -450,8 +713,12 @@ Item {
         flyView: false
 
         Component.onCompleted: {
-            _planMasterController.start()
-            _missionController.setCurrentPlanViewSeqNum(0, true)
+            if (!_planSessionManager || !_planSessionManager.activeController) {
+                planMasterController.start()
+            }
+            if (_missionController) {
+                _missionController.setCurrentPlanViewSeqNum(0, true)
+            }
         }
 
         onPromptForPlanUsageOnVehicleChange: {
@@ -485,25 +752,7 @@ Item {
         }
 
         function upload() {
-            if (!checkReadyForSaveUpload(false /* save */)) {
-                return
-            }
-            if (_warnZeroDistanceComplexMissionItems(null)) {
-                return
-            }
-            switch (_missionController.sendToVehiclePreCheck()) {
-                case MissionController.SendToVehiclePreCheckStateOk: sendToVehicle()
-                    break
-                case MissionController.SendToVehiclePreCheckStateNoActiveVehicle: QGroundControl.showMessageDialog(_root, qsTr("发送到飞行器"), qsTr("必须连接飞行器后才能上传计划。"))
-                    break
-                case MissionController.SendToVehiclePreCheckStateActiveMission: QGroundControl.showMessageDialog(_root, qsTr("发送到飞行器"), qsTr("上传新计划前必须先暂停当前任务。"))
-                    break
-                case MissionController.SendToVehiclePreCheckStateFirwmareVehicleMismatch: QGroundControl.showMessageDialog(_root, qsTr("计划上传"),
-                                                 qsTr("此计划创建时使用的固件或机型与当前上传目标不一致，可能导致错误或异常行为。\n\n建议按当前固件和机型重新创建计划。\n\n点击“OK”仍然上传。"),
-                                                 Dialog.Ok | Dialog.Cancel,
-                                                 function() { _planMasterController.sendToVehicle() })
-                    break
-            }
+            _triggerToolStripUpload(null)
         }
 
         function loadFromSelectedFile() {
@@ -567,7 +816,7 @@ Item {
                 _homeTrackingMapCenter = true
                 if (_visualItems.count > 0) {
                     _updatingHomeFromMapCenter = true
-                    _visualItems.get(0).coordinate = editorMap.center
+                    _visualItems.get(0).coordinate = QGroundControl.mapSourceCoordinate(editorMap.center)
                     _updatingHomeFromMapCenter = false
                 }
             }
@@ -614,8 +863,13 @@ Item {
         folder: _appSettings ? _appSettings.missionSavePath : ""
 
         property bool planFiles: true    ///< true: working with plan files, false: working with kml file
+        property var operationToken: ({})
 
         onAcceptedForSave: (file) => {
+            if (!_operationTokenStillCurrent(operationToken, null)) {
+                close()
+                return
+            }
             if (planFiles) {
                 if (_planMasterController.saveToFile(file)) {
                     close()
@@ -627,8 +881,12 @@ Item {
         }
 
         onAcceptedForLoad: (file) => {
+            if (!_operationTokenStillCurrent(operationToken, null)) {
+                close()
+                return
+            }
             _planMasterController.loadFromFile(file)
-            _planMasterController.fitViewportToItems()
+            _fitViewportToItems()
             _missionController.setCurrentPlanViewSeqNum(0, true)
             close()
         }
@@ -640,6 +898,13 @@ Item {
         height:                 visible ? ScreenTools.toolbarHeight : 0
         planMasterController:   _planMasterController
         showRallyPointsHelp:    _editingLayer === _layerRally
+        onUploadRequested:      _triggerToolStripUpload(planToolBar)
+        onDownloadRequested:    _triggerToolStripDownload()
+        onOpenRequested:        _triggerToolStripOpen()
+        onSaveRequested:        _triggerToolStripSave()
+        onSaveKmlRequested:     _triggerToolStripSaveKml()
+        clearRemovesVehicleByDefault: _clearRemovesVehicleByDefault()
+        onClearRequested:       (removeFromVehicle) => _triggerToolStripClear(removeFromVehicle)
     }
 
     Item {
@@ -660,8 +925,11 @@ Item {
             allowVehicleLocationCenter: true
             planView: true
 
-            zoomLevel: QGroundControl.flightMapZoom
-            center: QGroundControl.flightMapPosition
+            zoomLevel: 2
+            // Do not bind center directly to flightMapPosition. onCenterChanged
+            // writes back to the same global property, and map/source coordinate
+            // conversion can otherwise create a tight QML feedback loop.
+            center: QtPositioning.coordinate()
 
             // This is the center rectangle of the map which is not obscured by tools
             property rect centerViewport: Qt.rect(_margin, _margin, Math.max(editorMap.width - _rightToolWidth - (_margin * 2), 0), (missionStatus.visible ? missionStatus.y : height - _margin) - _margin)
@@ -675,12 +943,28 @@ Item {
                 return Math.max(editorMap.width - toolStripLeft, 0)
             }
             property real _nonInteractiveOpacity: 0.5
+            property bool _saveZoomLevelSetting: true
+
+            function syncMapViewFromSettings() {
+                _saveZoomLevelSetting = false
+                zoomLevel = QGroundControl.flightMapZoom
+                center = QGroundControl.mapDisplayCoordinate(QGroundControl.flightMapPosition)
+                _saveZoomLevelSetting = true
+            }
+
+            onVisibleChanged: {
+                if (visible) {
+                    syncMapViewFromSettings()
+                }
+            }
 
             // Initial map position duplicates Fly view position
-            Component.onCompleted: editorMap.center = QGroundControl.flightMapPosition
+            Component.onCompleted: syncMapViewFromSettings()
 
             onZoomLevelChanged: {
-                QGroundControl.flightMapZoom = editorMap.zoomLevel
+                if (_saveZoomLevelSetting) {
+                    QGroundControl.flightMapZoom = editorMap.zoomLevel
+                }
             }
             onCenterChanged: {
                 QGroundControl.flightMapPosition = QGroundControl.mapSourceCoordinate(editorMap.center)
@@ -755,7 +1039,7 @@ Item {
                     line.color: _terrainCollision ? "red" : _selectedMissionGlowColor
                     opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
                     z: QGroundControl.zOrderWaypointLines
-                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                    path: QGroundControl.chinaOffsetMapActive, missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
                 }
             }
 
@@ -769,7 +1053,7 @@ Item {
                     line.color: _terrainCollision ? "red" : _selectedMissionBandColor
                     opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
                     z: QGroundControl.zOrderWaypointLines + 0.1
-                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                    path: QGroundControl.chinaOffsetMapActive, missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
                 }
             }
 
@@ -783,7 +1067,7 @@ Item {
                     line.color: _terrainCollision ? "red" : _selectedMissionCoreColor
                     opacity: _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
                     z: QGroundControl.zOrderWaypointLines + 0.2
-                    path: missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
+                    path: QGroundControl.chinaOffsetMapActive, missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined)
                 }
             }
 
@@ -968,11 +1252,11 @@ Item {
                         onTriggered: _triggerToolStripSave()
                     },
                     ToolStripAction {
-                        text: qsTr("清空航线")
+                        text: _defaultMissionClearText()
                         iconSource: "/res/TrashCan.svg"
-                        enabled: _planMasterController.containsItems
+                        enabled: _clearRemovesVehicleByDefault() || _planMasterController.containsItems
                         visible: toolStrip._isMissionLayer
-                        onTriggered: _triggerToolStripClear()
+                        onTriggered: _triggerDefaultMissionClear()
                     },
                     ToolStripAction {
                         text: qsTr("上传")
@@ -1307,7 +1591,7 @@ Item {
                 missionController: _missionController
                 uiScale: _planPanelUiScale
                 visible: terrainButton.checked
-                onSetCurrentSeqNum: _missionController.setCurrentPlanViewSeqNum(seqNum, true)
+                onSetCurrentSeqNum: function(seqNum) { _missionController.setCurrentPlanViewSeqNum(seqNum, true) }
             }
 
             MissionStats {

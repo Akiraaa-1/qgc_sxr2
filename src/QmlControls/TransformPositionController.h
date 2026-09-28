@@ -2,6 +2,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QPointer>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtQmlIntegration/QtQmlIntegration>
 
@@ -9,11 +10,15 @@
 
 Q_DECLARE_LOGGING_CATEGORY(TransformPositionControllerLog)
 
+class Vehicle;
+
 class TransformPositionController : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    Q_MOC_INCLUDE("Vehicle.h")
     Q_PROPERTY(QGeoCoordinate   coordinate          READ coordinate WRITE setCoordinate NOTIFY coordinateChanged)
+    Q_PROPERTY(Vehicle          *vehicle            READ vehicle WRITE setVehicle NOTIFY vehicleChanged)
     Q_PROPERTY(Fact             *latitude           READ latitude                       CONSTANT)
     Q_PROPERTY(Fact             *longitude          READ longitude                      CONSTANT)
     Q_PROPERTY(Fact             *zone               READ zone                           CONSTANT)
@@ -38,6 +43,8 @@ public:
 
     void setCoordinate(QGeoCoordinate coordinate);
     QGeoCoordinate coordinate() const { return _coordinate; }
+    void setVehicle(Vehicle* vehicle);
+    Vehicle* vehicle() const { return _vehicle.data(); }
 
     Fact *latitude() { return _latitudeFact; }
     Fact *longitude() { return _longitudeFact; }
@@ -53,9 +60,11 @@ public:
 
 signals:
     void coordinateChanged(QGeoCoordinate coordinate);
+    void vehicleChanged(Vehicle* vehicle);
 
 private:
     QGeoCoordinate _coordinate;
+    QPointer<Vehicle> _vehicle;
 
     Fact *_latitudeFact = nullptr;
     Fact *_longitudeFact = nullptr;

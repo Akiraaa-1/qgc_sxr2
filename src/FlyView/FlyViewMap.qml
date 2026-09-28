@@ -30,14 +30,17 @@ FlightMap {
     property var    planMasterController
     property bool   pipMode:                    false   // true: map is shown in a small pip mode
     property bool   showMissionPaths:           true
+    property bool   showInactiveVehicleMissionPaths: false
     property var    toolInsets                          // Insets for the center viewport area
+    property bool   fullWindowItemDark:         isSatelliteMap
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _planMasterController:      planMasterController
+    property var    _missionController:         planMasterController.missionController
     property var    _geoFenceController:        planMasterController.geoFenceController
     property var    _rallyPointController:      planMasterController.rallyPointController
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
-    property var    _activeVehicleDisplayCoordinate: QGroundControl.mapDisplayCoordinate(_activeVehicleCoordinate)
+    property var    _activeVehicleDisplayCoordinate: chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(_activeVehicleCoordinate)
     property real   _toolButtonTopMargin:       parent.height - mainWindow.height + (ScreenTools.defaultFontPixelHeight / 2)
     property real   _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     property var    _flyViewSettings:           QGroundControl.settingsManager.flyViewSettings
@@ -146,6 +149,10 @@ FlightMap {
 
         pathPoints.push(coord2)
         return pathPoints
+    }
+
+    onChinaOffsetMapActiveChanged: {
+        trajectoryPolyline.path = _activeVehicle ? QGroundControl.mapDisplayCoordinates(_activeVehicle.trajectoryPoints.list()) : []
     }
 
     function _missionItemIndex(missionItem) {
@@ -268,7 +275,7 @@ FlightMap {
     PipState {
         id:         _pipState
         pipView:    _root.pipView
-        isDark:     _isFullWindowItemDark
+        isDark:     fullWindowItemDark
     }
 
     Timer {
@@ -319,7 +326,8 @@ FlightMap {
         id:         trajectoryPolyline
         line.width: 3
         line.color: "red"
-        z:          QGroundControl.zOrderTrajectoryLines
+        // Keep the flown path visible above the selected mission path layers.
+        z:          QGroundControl.zOrderWaypointLines + 6
         visible:    showMissionPaths && !pipMode
 
         Connections {
@@ -346,7 +354,7 @@ FlightMap {
             map:            _root
             showStatusCard: !pipMode
             size:           pipMode ? ScreenTools.defaultFontPixelHeight : ScreenTools.defaultFontPixelHeight * 3
-            z:              QGroundControl.zOrderVehicles
+            z:              QGroundControl.zOrderWaypointLines + 7
         }
     }
     // Add distance sensor view
@@ -367,7 +375,7 @@ FlightMap {
 
             line.width:      2
             line.color:      Qt.rgba(0.0, 0.9, 1.0, 0.38)
-            path:            target && target.actualCoordinate && target.actualCoordinate.isValid && target.coordinate && target.coordinate.isValid
+            path:            _root.chinaOffsetMapActive, target && target.actualCoordinate && target.actualCoordinate.isValid && target.coordinate && target.coordinate.isValid
                                  ? QGroundControl.mapDisplayCoordinates([ target.actualCoordinate, target.coordinate ])
                                  : []
             z:               QGroundControl.zOrderVehicles - 2
@@ -379,7 +387,7 @@ FlightMap {
         delegate: MapQuickItem {
             property var target: typeof object === "undefined" ? modelData : object
 
-            coordinate:      target && target.coordinate ? QGroundControl.mapDisplayCoordinate(target.coordinate) : QtPositioning.coordinate()
+            coordinate:      _root.chinaOffsetMapActive, target && target.coordinate ? QGroundControl.mapDisplayCoordinate(target.coordinate) : QtPositioning.coordinate()
             anchorPoint.x:   targetItem.width / 2
             anchorPoint.y:   targetItem.height / 2
             visible:         coordinate.isValid
@@ -431,13 +439,13 @@ FlightMap {
             alert:          object.alert
             map:            _root
             size:           pipMode ? ScreenTools.defaultFontPixelHeight : ScreenTools.defaultFontPixelHeight * 2.5
-            z:              QGroundControl.zOrderVehicles
+            z:              QGroundControl.zOrderWaypointLines + 7
         }
     }
 
     // Add the items associated with each vehicles flight plan to the map
     Repeater {
-        model: showMissionPaths ? QGroundControl.multiVehicleManager.vehicles : 0
+        model: showMissionPaths && showInactiveVehicleMissionPaths ? QGroundControl.multiVehicleManager.vehicles : 0
 
         PlanMapItems {
             map:                    _root
@@ -469,7 +477,7 @@ FlightMap {
             line.width: Math.max(10, ScreenTools.defaultFontPixelHeight * 0.96)
             line.color: _root._selectedMissionGlowColor
             z:          QGroundControl.zOrderWaypointLines + 2
-            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
+            path:       _root.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -482,7 +490,7 @@ FlightMap {
             line.width: Math.max(6, ScreenTools.defaultFontPixelHeight * 0.58)
             line.color: _root._selectedMissionBandColor
             z:          QGroundControl.zOrderWaypointLines + 3
-            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
+            path:       _root.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -495,7 +503,7 @@ FlightMap {
             line.width: Math.max(2, ScreenTools.defaultFontPixelHeight * 0.18)
             line.color: _root._selectedMissionCoreColor
             z:          QGroundControl.zOrderWaypointLines + 4
-            path:       QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
+            path:       _root.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinates(_root._missionLinePath(object ? object.coordinate1 : undefined, object ? object.coordinate2 : undefined))
         }
     }
 
@@ -526,7 +534,7 @@ FlightMap {
 
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
-            coordinate:     object ? QGroundControl.mapDisplayCoordinate(object.coordinate) : QtPositioning.coordinate()
+            coordinate:     _root.chinaOffsetMapActive, object ? QGroundControl.mapDisplayCoordinate(object.coordinate) : QtPositioning.coordinate()
             visible:        !!(object && object.specifiesCoordinate && object.coordinate && object.coordinate.isValid)
             z:              QGroundControl.zOrderMapItems + 2
 
@@ -580,7 +588,7 @@ FlightMap {
             id:             itemIndicator
             anchorPoint.x:  sourceItem.anchorPointX
             anchorPoint.y:  sourceItem.anchorPointY
-            coordinate:     QGroundControl.mapDisplayCoordinate(object.coordinate)
+            coordinate:     _root.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(object.coordinate)
             z:              QGroundControl.zOrderMapItems
 
             sourceItem: MissionItemIndexLabel {
@@ -595,7 +603,7 @@ FlightMap {
         model: _activeVehicle ? _activeVehicle.cameraTriggerPoints : 0
 
         delegate: CameraTriggerIndicator {
-            coordinate:     QGroundControl.mapDisplayCoordinate(object.coordinate)
+            coordinate:     _root.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(object.coordinate)
             z:              QGroundControl.zOrderTopMost
         }
     }
@@ -843,7 +851,7 @@ FlightMap {
         id:             orbitCenterIndicator
         anchorPoint.x:  sourceItem.anchorPointX
         anchorPoint.y:  sourceItem.anchorPointY
-        coordinate:     _activeVehicle ? QGroundControl.mapDisplayCoordinate(_activeVehicle.orbitMapCircle.center) : QtPositioning.coordinate()
+        coordinate:     _root.chinaOffsetMapActive, _activeVehicle ? QGroundControl.mapDisplayCoordinate(_activeVehicle.orbitMapCircle.center) : QtPositioning.coordinate()
         visible:        orbitTelemetryCircle.visible && !gotoLocationItem.visible
 
         sourceItem: MissionItemIndexLabel {
@@ -911,6 +919,7 @@ FlightMap {
             id: mapClickDropPanel
 
             property var mapClickCoord
+            property var mapClickDisplayCoord: QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(mapClickCoord)
 
             sourceComponent: Component {
                 ColumnLayout {
@@ -922,7 +931,7 @@ FlightMap {
                         visible:            globals.guidedControllerFlyView.showGotoLocation
                         onClicked: {
                             mapClickDropPanel.close()
-                            gotoLocationItem.show(mapClickCoord)
+                            gotoLocationItem.show(mapClickDisplayCoord)
 
                             if ((_activeVehicle.flightMode == _activeVehicle.gotoFlightMode) && !_flyViewSettings.goToLocationRequiresConfirmInGuided.value) {
                                 if (globals.guidedControllerFlyView.executeAction(globals.guidedControllerFlyView.actionGoto, mapClickCoord)) {
@@ -942,7 +951,7 @@ FlightMap {
                         visible:            globals.guidedControllerFlyView.showOrbit
                         onClicked: {
                             mapClickDropPanel.close()
-                            orbitMapCircle.show(mapClickCoord)
+                            orbitMapCircle.show(mapClickDisplayCoord)
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionOrbit, mapClickCoord, orbitMapCircle)
                         }
                     }
@@ -1004,7 +1013,7 @@ FlightMap {
              globals.guidedControllerFlyView.showSetEstimatorOrigin)) {
 
             position = Qt.point(position.x, position.y)
-            var clickCoord = _root.toCoordinate(position, false /* clipToViewPort */)
+            var clickCoord = QGroundControl.mapSourceCoordinate(_root.toCoordinate(position, false /* clipToViewPort */))
             // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
             position = _root.mapToItem(globals.parent, position)
             var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, clickRect: Qt.rect(position.x, position.y, 0, 0) })

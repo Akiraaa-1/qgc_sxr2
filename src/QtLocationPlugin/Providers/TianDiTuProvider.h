@@ -16,6 +16,7 @@ protected:
 
 private:
     QString _getURL(int x, int y, int zoom) const final;
+    int maximumZoomLevel() const final { return 18; }
 
     const QString _mapType;
     const QString _layerName;

@@ -1,4 +1,8 @@
 #include "TrajectoryPoints.h"
+
+#include <QtCore/QtMath>
+
+#include "Fact.h"
 #include "Vehicle.h"
 
 TrajectoryPoints::TrajectoryPoints(Vehicle* vehicle, QObject* parent)
@@ -12,8 +16,24 @@ void TrajectoryPoints::_vehicleCoordinateChanged(QGeoCoordinate coordinate)
 {
     // The goal of this algorithm is to limit the number of trajectory points whic represent the vehicle path.
     // Fewer points means higher performance of map display.
+    if (!coordinate.isValid()) {
+        return;
+    }
 
     if (_lastPoint.isValid()) {
+        if (_shouldHoldGroundPointOnly()) {
+            const double distance = _lastPoint.distanceTo(coordinate);
+            if (!qIsNaN(distance) && distance <= _groundHoldJumpMeters) {
+                return;
+            }
+
+            _lastPoint = coordinate;
+            _lastAzimuth = qQNaN();
+            _points[_points.count() - 1] = QVariant::fromValue(coordinate);
+            emit updateLastPoint(coordinate);
+            return;
+        }
+
         double distance = _lastPoint.distanceTo(coordinate);
         if (distance > _distanceTolerance) {
             //-- Update flight distance
@@ -42,9 +62,28 @@ void TrajectoryPoints::_vehicleCoordinateChanged(QGeoCoordinate coordinate)
     }
 }
 
+bool TrajectoryPoints::_shouldHoldGroundPointOnly() const
+{
+    if (!_vehicle || !(_vehicle->airship() || _vehicle->fixedWing() || _vehicle->multiRotor() || _vehicle->vtol())) {
+        return false;
+    }
+    // Once armed, keep recording even if EXTENDED_SYS_STATE has not yet
+    // reported airborne. Some flight controllers briefly report an unknown
+    // or ground state during takeoff, which otherwise truncates the path.
+    if (_vehicle->armed()) {
+        return false;
+    }
+
+    const Fact* const groundSpeed = _vehicle->groundSpeed();
+    const double groundSpeedMetersSecond = groundSpeed ? groundSpeed->rawValue().toDouble() : 0.0;
+    return qIsNaN(groundSpeedMetersSecond) || groundSpeedMetersSecond < _minimumGroundTrackSpeed;
+}
+
 void TrajectoryPoints::start(void)
 {
-    clear();
+    // The vehicle can briefly report disarmed while airborne during a link
+    // interruption. Keep the existing path so a recovered armed state does
+    // not make the displayed trajectory start in the middle of the flight.
     connect(_vehicle, &Vehicle::coordinateChanged, this, &TrajectoryPoints::_vehicleCoordinateChanged);
 }
 

@@ -39,11 +39,11 @@ Item {
         rect.width *= 0.75
         rect.height *= 0.75
 
-        var centerCoord =       map.toCoordinate(Qt.point(rect.x + (rect.width / 2), rect.y + (rect.height / 2)),   false /* clipToViewPort */)
-        var topLeftCoord =      map.toCoordinate(Qt.point(rect.x, rect.y),                                          false /* clipToViewPort */)
-        var topRightCoord =     map.toCoordinate(Qt.point(rect.x + rect.width, rect.y),                             false /* clipToViewPort */)
-        var bottomLeftCoord =   map.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */)
-        var bottomRightCoord =  map.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */)
+        var centerCoord =       QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(rect.x + (rect.width / 2), rect.y + (rect.height / 2)),   false /* clipToViewPort */))
+        var topLeftCoord =      QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(rect.x, rect.y),                                          false /* clipToViewPort */))
+        var topRightCoord =     QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(rect.x + rect.width, rect.y),                             false /* clipToViewPort */))
+        var bottomLeftCoord =   QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */))
+        var bottomRightCoord =  QGroundControl.mapSourceCoordinate(map.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */))
 
         // Initial polygon has max width and height of 3000 meters
         var halfWidthMeters =   Math.min(topLeftCoord.distanceTo(topRightCoord), 3000) / 2

@@ -88,11 +88,11 @@ Item {
         rect.width *= 0.75
         rect.height *= 0.75
 
-        var centerCoord =       mapControl.toCoordinate(Qt.point(rect.x + (rect.width / 2), rect.y + (rect.height / 2)),   false /* clipToViewPort */)
-        var topLeftCoord =      mapControl.toCoordinate(Qt.point(rect.x, rect.y),                                          false /* clipToViewPort */)
-        var topRightCoord =     mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y),                             false /* clipToViewPort */)
-        var bottomLeftCoord =   mapControl.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */)
-        var bottomRightCoord =  mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */)
+        var centerCoord =       QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(rect.x + (rect.width / 2), rect.y + (rect.height / 2)),   false /* clipToViewPort */))
+        var topLeftCoord =      QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(rect.x, rect.y),                                          false /* clipToViewPort */))
+        var topRightCoord =     QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y),                             false /* clipToViewPort */))
+        var bottomLeftCoord =   QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */))
+        var bottomRightCoord =  QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */))
 
         // Initial polygon has max width and height of 3000 meters
         var halfWidthMeters =   Math.min(topLeftCoord.distanceTo(topRightCoord), 3000) / 2
@@ -698,7 +698,7 @@ Item {
 
             onClicked: (mouse) => {
                 if (mouse.button === Qt.LeftButton && _root.interactive) {
-                    mapPolygon.appendVertex(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */))
+                    mapPolygon.appendVertex(QGroundControl.mapSourceCoordinate(mapControl.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)))
                 }
             }
         }

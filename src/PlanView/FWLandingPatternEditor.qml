@@ -25,6 +25,11 @@ Rectangle {
     property var    _masterControler:           missionItem.masterController
     property var    _missionController:         _masterControler.missionController
     property var    _missionVehicle:            _masterControler.controllerVehicle
+    property var    _planVehicle:               _masterControler.boundVehicle
+                                                   ? _masterControler.boundVehicle
+                                                   : (_masterControler.managerVehicle && !_masterControler.managerVehicle.isOfflineEditingVehicle
+                                                      ? _masterControler.managerVehicle
+                                                      : null)
     property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
     property real   _spacer:                    ScreenTools.defaultFontPixelWidth / 2
     property string _setToVehicleHeadingStr:    qsTr("设为飞行器航向")
@@ -109,8 +114,8 @@ Rectangle {
 
             PlanButton {
                 text:       _setToVehicleHeadingStr
-                visible:    globals.activeVehicle
-                onClicked:  missionItem.landingHeading.rawValue = globals.activeVehicle.heading.rawValue
+                visible:    _planVehicle
+                onClicked:  missionItem.landingHeading.rawValue = _planVehicle.heading.rawValue
             }
         }
 
@@ -179,9 +184,9 @@ Rectangle {
 
                 PlanButton {
                     text:               _setToVehicleLocationStr
-                    visible:            globals.activeVehicle
+                    visible:            _planVehicle
                     Layout.columnSpan:  2
-                    onClicked:          missionItem.landingCoordinate = globals.activeVehicle.coordinate
+                    onClicked:          missionItem.landingCoordinate = _planVehicle.coordinate
                 }
             }
         }
@@ -289,17 +294,17 @@ Rectangle {
                 anchors.right:          parent.right
                 horizontalAlignment:    Text.AlignHCenter
                 text:                   qsTr("- or -")
-                visible:                globals.activeVehicle
+                visible:                _planVehicle
             }
 
             PlanButton {
                 anchors.horizontalCenter:   parent.horizontalCenter
                 text:                       _setToVehicleLocationStr
-                visible:                    globals.activeVehicle
+                visible:                    _planVehicle
 
                 onClicked: {
-                    missionItem.landingCoordinate = globals.activeVehicle.coordinate
-                    missionItem.landingHeading.rawValue = globals.activeVehicle.heading.rawValue
+                    missionItem.landingCoordinate = _planVehicle.coordinate
+                    missionItem.landingHeading.rawValue = _planVehicle.heading.rawValue
                     missionItem.setLandingHeadingToTakeoffHeading()
                 }
             }

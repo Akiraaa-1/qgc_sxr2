@@ -101,7 +101,7 @@ MockLink *HashCheckTest::_startPX4MockLinkHighLatency()
 // HashTimeout_CacheHit:   Vehicle never responds to _HASH_CHECK. Falls back to PARAM_REQUEST_LIST, cache still valid.
 // HashTimeout_NoCache:    Vehicle never responds to _HASH_CHECK and no cache exists. Falls back to full param list.
 // HashTimeout_CacheStale: Vehicle never responds to _HASH_CHECK and cache is stale. Falls back to full param list.
-// BothTimersExhaust:      Vehicle responds to neither _HASH_CHECK nor PARAM_REQUEST_LIST. Params never become ready.
+// BothTimersExhaust:      Vehicle responds to neither _HASH_CHECK nor PARAM_REQUEST_LIST. Params become ready with missingParameters set.
 // CacheDeleted_Between:   Cache populated then deleted before reconnect. Forces full param reload despite same vehicle.
 // ManualRefresh:          User-triggered refreshAllParameters() bypasses _HASH_CHECK and requests full param list.
 // ArduPilot:              ArduPilot uses FTP for parameters, so no _HASH_CHECK or PARAM_REQUEST_LIST traffic.
@@ -139,7 +139,7 @@ void HashCheckTest::_hashCheckMatrix_data()
     QTest::newRow("HashTimeout_CacheHit")    << true  << false << true  << false << false << true  << false << false  << true  << true  << true  << false;
     QTest::newRow("HashTimeout_NoCache")     << true  << false << false << false << false << true  << false << false  << true  << true  << true  << false;
     QTest::newRow("HashTimeout_CacheStale")  << true  << false << true  << true  << false << true  << false << false  << true  << true  << true  << false;
-    QTest::newRow("BothTimersExhaust")       << true  << false << false << false << false << true  << true  << false  << true  << true  << false << false;
+    QTest::newRow("BothTimersExhaust")       << true  << false << false << false << false << true  << true  << false  << true  << true  << true  << true;
     QTest::newRow("CacheDeleted_Between")    << true  << false << true  << false << true  << false << false << false  << true  << true  << true  << false;
     QTest::newRow("ManualRefresh")           << true  << false << false << false << false << false << false << true   << false << true  << true  << false;
     QTest::newRow("ArduPilot")              << false  << false << false << false << false << false << false << false  << false << false << true  << false;

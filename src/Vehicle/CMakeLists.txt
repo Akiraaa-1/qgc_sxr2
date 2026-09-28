@@ -29,6 +29,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         Vehicle.h
         VehicleLinkManager.cc
         VehicleLinkManager.h
+        VehiclePlanSessionManager.cc
+        VehiclePlanSessionManager.h
+        VehicleReadiness.cc
+        VehicleReadiness.h
         VehicleObjectAvoidance.cc
         VehicleObjectAvoidance.h
         VehicleSupports.cc

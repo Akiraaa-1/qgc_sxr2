@@ -25,6 +25,7 @@ Map {
     property bool   firstGCSPositionReceived:       false   ///< true: first gcs position update was responded to
     property bool   firstVehiclePositionReceived:   false   ///< true: first vehicle position update was responded to
     property bool   planView:                       false   ///< true: map being using for Plan view, items should be draggable
+    property bool   chinaOffsetMapActive:           QGroundControl.chinaOffsetMapActive
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
@@ -109,6 +110,12 @@ Map {
     Connections {
         target: QGroundControl.settingsManager.flightMapSettings.mapProvider
         function onRawValueChanged() { updateActiveMapType() }
+    }
+
+    onChinaOffsetMapActiveChanged: {
+        if (center.isValid) {
+            center = QGroundControl.mapDisplayCoordinate(QGroundControl.mapSourceCoordinate(center))
+        }
     }
 
     signal mapPanStart
@@ -231,7 +238,7 @@ Map {
         anchorPoint.x:  sourceItem.width / 2
         anchorPoint.y:  sourceItem.height / 2
         visible:        showGCSPositionMarker && gcsPosition.isValid && !planView
-        coordinate:     QGroundControl.mapDisplayCoordinate(gcsPosition)
+        coordinate:     chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(gcsPosition)
 
         sourceItem: Image {
             id:             mapItemImage

@@ -34,6 +34,9 @@ void PX4FirmwareUpgradeThreadWorker::_init(void)
 void PX4FirmwareUpgradeThreadWorker::_cancel(void)
 {
     qCDebug(FirmwareUpgradeVerboseLog) << "_cancel";
+    if (_findBoardTimer) {
+        _findBoardTimer->stop();
+    }
     if (_bootloader) {
         _bootloader->reboot();
         _bootloader->close();

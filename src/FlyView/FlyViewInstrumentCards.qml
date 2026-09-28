@@ -19,6 +19,7 @@ Item {
     property var altitudeFact: vehicle ? vehicle.altitudeRelative : null
     property var headingFact: vehicle ? vehicle.heading : null
     property var airSpeedFact: vehicle ? vehicle.airSpeed : null
+    property var groundSpeedFact: vehicle ? vehicle.groundSpeed : null
     property var climbRateFact: vehicle ? vehicle.climbRate : null
     property var gpsFactGroup: vehicle ? vehicle.gps : null
     property var gpsSatelliteFact: gpsFactGroup ? gpsFactGroup.count : null
@@ -52,9 +53,12 @@ Item {
     readonly property bool hasClimbRate: root._hasFactValue(climbRateFact)
     readonly property real climbRate: hasClimbRate ? Number(climbRateFact.rawValue) : 0
     readonly property real verticalNeedleRotation: Math.max(-120, Math.min(120, climbRate * 35))
+    readonly property bool isFixedWingSpeed: !!(vehicle && (vehicle.fixedWing || (vehicle.vtol && vehicle.vtolInFwdFlight)))
     readonly property bool hasAirspeed: root._hasFactValue(airSpeedFact)
-    readonly property real airSpeedValue: hasAirspeed ? Math.max(0, Number(airSpeedFact.rawValue)) : 0
-    readonly property real airSpeedNeedleRotation: Math.max(-125, Math.min(125, (airSpeedValue / 20) * 250 - 125))
+    readonly property var speedFact: isFixedWingSpeed && hasAirspeed ? airSpeedFact : groundSpeedFact
+    readonly property real speedValue: root._hasFactValue(speedFact) ? Math.max(0, Number(speedFact.rawValue)) : 0
+    readonly property real speedNeedleRotation: Math.max(-125, Math.min(125, (speedValue / 20) * 250 - 125))
+    readonly property string speedLabel: isFixedWingSpeed && hasAirspeed ? qsTr("Air Speed") : qsTr("Speed")
     readonly property color _cardColor: qgcPal.windowShadeDark
     readonly property color _cardBorderColor: qgcPal.windowShade
     readonly property color _textMutedColor: qgcPal.text
@@ -162,7 +166,7 @@ Item {
                 spacing: root.headerSpacing
                 visible: root.showHeader
 
-                QGCLabel {
+                QGCPixelLabel {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
                     text: root.headerTitle
@@ -225,7 +229,7 @@ Item {
                         anchors.margins: root._cardMargin
                         spacing: root._columnSpacing * 0.9
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             color: root._textMutedColor
@@ -234,7 +238,7 @@ Item {
                             text: qsTr("Flight Time")
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             color: qgcPal.text
                             font.pixelSize: root._valueFontSize
                             font.weight: Font.DemiBold
@@ -257,7 +261,7 @@ Item {
                         anchors.margins: root._cardMargin
                         spacing: root._columnSpacing * 0.75
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             color: root._textMutedColor
@@ -274,7 +278,7 @@ Item {
                             source: root._batteryIcon(root._batteryPercentForVehicle(root.vehicle))
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             color: root._batteryColor()
                             font.pixelSize: root._valueFontSize
                             font.weight: Font.DemiBold
@@ -306,7 +310,7 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
@@ -341,7 +345,7 @@ Item {
                             height: root._dialFooterHeight
                             spacing: root._columnSpacing * 0.7
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 color: qgcPal.text
@@ -353,7 +357,7 @@ Item {
                                 text: qsTr("滚转 %1").arg(root._hasFactValue(root.rollFact) ? (Number(root.rollFact.rawValue).toFixed(1) + "\u00B0") : "--")
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 color: qgcPal.text
@@ -384,7 +388,7 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
@@ -412,7 +416,7 @@ Item {
                             }
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             id: headingValueLabel
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom
@@ -445,7 +449,7 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
@@ -476,7 +480,7 @@ Item {
                                 anchors.centerIn: parent
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.centerIn: altitudeDial
                                 width: altitudeDial.width * 0.78
                                 height: altitudeDial.height * 0.32
@@ -516,11 +520,11 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
-                        text: qsTr("Air Speed")
+                        text: root.speedLabel
                         font.pixelSize: root._labelFontSize
                         elide: Text.ElideRight
                     }
@@ -583,7 +587,7 @@ Item {
                                 x: airSpeedDial.x + (airSpeedDial.width / 2)
                                 y: airSpeedDial.y + ((airSpeedDial.height - height) / 2)
                                 transformOrigin: Item.Left
-                                rotation: root.airSpeedNeedleRotation
+                                rotation: root.speedNeedleRotation
                                 color: qgcPal.text
                             }
 
@@ -595,7 +599,7 @@ Item {
                                 anchors.centerIn: airSpeedDial
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 anchors.centerIn: airSpeedDial
                                 width: airSpeedDial.width * 0.76
                                 height: airSpeedDial.height * 0.3
@@ -606,7 +610,7 @@ Item {
                                 font.weight: Font.DemiBold
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                text: root._formatFactValue(root.airSpeedFact, true, "--")
+                                text: root._formatFactValue(root.speedFact, true, "--")
                             }
                         }
 
@@ -635,7 +639,7 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
@@ -654,7 +658,7 @@ Item {
                             Layout.fillHeight: true
                             spacing: root._columnSpacing
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 color: qgcPal.text
@@ -667,7 +671,7 @@ Item {
                                 text: root._formatFactValue(root.gpsSatelliteFact, false, "--")
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 color: root._textMutedColor
@@ -683,13 +687,13 @@ Item {
                             columnSpacing: root._columnSpacing
                             rowSpacing: root._rowSpacing
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 color: root._textMutedColor
                                 text: qsTr("HDOP")
                                 font.pixelSize: root._labelFontSize
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.alignment: Qt.AlignRight
                                 color: qgcPal.text
                                 font.pixelSize: root._dialValueFontSize * 0.82
@@ -697,13 +701,13 @@ Item {
                                 text: root._formatFactValue(root.gpsHdopFact, false, "--")
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 color: root._textMutedColor
                                 text: qsTr("VDOP")
                                 font.pixelSize: root._labelFontSize
                             }
 
-                            QGCLabel {
+                            QGCPixelLabel {
                                 Layout.alignment: Qt.AlignRight
                                 color: qgcPal.text
                                 font.pixelSize: root._dialValueFontSize * 0.82
@@ -729,7 +733,7 @@ Item {
                     anchors.margins: root._cardMargin
                     spacing: root._rowSpacing * 0.8
 
-                    QGCLabel {
+                    QGCPixelLabel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         color: root._textMutedColor
@@ -780,7 +784,7 @@ Item {
                             }
                         }
 
-                        QGCLabel {
+                        QGCPixelLabel {
                             id: verticalSpeedValueLabel
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottom: parent.bottom

@@ -152,12 +152,12 @@ Rectangle {
                 function onPopout() { mainWindow.createWindowedAnalyzePage(panelLoader.title, panelLoader.source, _currentPage ? _currentPage.requiresVehicle : false) }
             }
         }
-    }
 
-    QGCLabel {
-        anchors.centerIn:   panelLoader
-        text:               qsTr("Requires a connected vehicle")
-        color:              analyzePalette.textSecondary
-        visible:            _currentPage && _currentPage.requiresVehicle && !_activeVehicle
+        QGCLabel {
+            anchors.centerIn:   parent
+            text:               qsTr("Requires a connected vehicle")
+            color:              analyzePalette.textSecondary
+            visible:            _currentPage && _currentPage.requiresVehicle && !_activeVehicle
+        }
     }
 }

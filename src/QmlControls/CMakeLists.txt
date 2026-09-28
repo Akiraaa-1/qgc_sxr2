@@ -150,6 +150,7 @@ qt_add_qml_module(QGroundControlControlsModule
         QGCListView.qml
         QGCMapLabel.qml
         QGCMarqueeLabel.qml
+        QGCPixelLabel.qml
         QGCMenu.qml
         QGCMenuItem.qml
         QGCMenuSeparator.qml
@@ -187,6 +188,7 @@ qt_add_qml_module(QGroundControlControlsModule
         ToolStripHoverButton.qml
         ValueSlider.qml
         VehicleRotationCal.qml
+        VehicleReadinessAssessment.qml
         VehicleSummaryRow.qml
 
 # NOTE: ScreenTools.qml is declared here because CMake's

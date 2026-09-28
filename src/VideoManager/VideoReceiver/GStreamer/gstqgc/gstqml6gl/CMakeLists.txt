@@ -11,7 +11,10 @@ endforeach()
 
 include(GStreamerHelpers)
 
-if(GStreamer_VERSION VERSION_GREATER_EQUAL "1.22")
+if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/qt6")
+    message(STATUS "gstqml6gl: using bundled QGC Qt6 GL sink sources on Linux")
+    set(QGC_GST_QT6_PLUGIN_PATH "${CMAKE_CURRENT_SOURCE_DIR}/qt6")
+elseif(GStreamer_VERSION VERSION_GREATER_EQUAL "1.22")
     gstreamer_get_recommended_version("${GStreamer_VERSION}" _gst_plugins_version)
 
     set(_gst_qt6_cache "${CMAKE_BINARY_DIR}/_deps/gstreamer-good-plugins")

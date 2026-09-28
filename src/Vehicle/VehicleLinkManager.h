@@ -21,6 +21,7 @@ class VehicleLinkManager : public QObject
     QML_UNCREATABLE("")
     Q_MOC_INCLUDE("Vehicle.h")
     Q_PROPERTY(QString      primaryLinkName             READ primaryLinkName            WRITE setPrimaryLinkByName          NOTIFY primaryLinkChanged)
+    Q_PROPERTY(int          primaryMavlinkVersion       READ primaryMavlinkVersion                                      NOTIFY primaryLinkChanged)
     Q_PROPERTY(QStringList  linkNames                   READ linkNames                                                      NOTIFY linkNamesChanged)
     Q_PROPERTY(QStringList  linkStatuses                READ linkStatuses                                                   NOTIFY linkStatusesChanged)
     Q_PROPERTY(bool         communicationLost           READ communicationLost                                              NOTIFY communicationLostChanged)
@@ -40,6 +41,7 @@ public:
     bool containsLink(LinkInterface *link);
     WeakLinkInterfacePtr primaryLink() const { return _primaryLink; }
     QString primaryLinkName() const;
+    int primaryMavlinkVersion() const;
     QStringList linkNames() const;
     QStringList linkStatuses() const;
     bool communicationLost() const { return _communicationLost; }
@@ -69,6 +71,7 @@ private:
     bool _updatePrimaryLink();
     SharedLinkInterfacePtr _bestActivePrimaryLink();
     void _commRegainedOnLink(LinkInterface *link);
+    bool _shouldRemoveLostVehicle() const;
 
     struct LinkInfo_t {
         SharedLinkInterfacePtr link;
@@ -84,13 +87,19 @@ private:
     bool _communicationLostEnabled = true;
     bool _autoDisconnect = false;                           ///< true: Automatically disconnect vehicle when last connection goes away or lost heartbeat
     bool _allLinksRemovedSignalledByCloseVehicle = false;
+    QElapsedTimer _communicationLostElapsedTimer;
+    QElapsedTimer _lastMavlinkDispatchTimer;
 
     static constexpr int _commLostCheckTimeoutMSecs = 1000; ///< Check for comm lost once a second
     static constexpr int _heartbeatMaxElpasedMSecs = 3500;  ///< No heartbeat for longer than this indicates comm loss
+    static constexpr int _lostUnarmedVehicleRemovalMSecs = 30000;
 
 public:
     /// Heartbeat timeout used in unit tests (much shorter for faster tests)
     static constexpr int kTestHeartbeatTimeoutMs = 500;
+
+    /// Unarmed network vehicles are removed after this duration of total loss in unit tests.
+    static constexpr int kTestLostUnarmedVehicleRemovalMSecs = 1000;
 
     /// Full comm loss detection timeout for tests: accounts for timer interval + heartbeat timeout + margin.
     /// Use this in tests waiting for communicationLostChanged or linkStatusesChanged signals.

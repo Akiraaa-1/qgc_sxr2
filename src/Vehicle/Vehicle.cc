@@ -60,6 +60,7 @@
 #include "TerrainQuery.h"
 #include "TrajectoryPoints.h"
 #include "VehicleLinkManager.h"
+#include "VehicleReadiness.h"
 #include "VehicleObjectAvoidance.h"
 #include "VideoManager.h"
 #include "VideoSettings.h"
@@ -127,6 +128,11 @@ Vehicle::Vehicle(LinkInterface*             link,
         if (flying) {
             setInitialGCSPressure(QGCDeviceInfo::QGCPressure::instance()->pressure());
             setInitialGCSTemperature(QGCDeviceInfo::QGCPressure::instance()->temperature());
+        } else if (!armed()) {
+            // Clear the previous flight path once the vehicle is confirmed
+            // back on the ground. This preserves the path across a transient
+            // disarmed report while airborne.
+            _trajectoryPoints->clear();
         }
     });
 
@@ -135,6 +141,8 @@ Vehicle::Vehicle(LinkInterface*             link,
     connect(this, &Vehicle::remoteControlRSSIChanged,   this, &Vehicle::_remoteControlRSSIChanged);
 
     _commonInit(link);
+    _readiness = new VehicleReadiness(this, this);
+    connect(_vehicleLinkManager, &VehicleLinkManager::communicationLostChanged, this, &Vehicle::_handleCommunicationLostChanged);
 
     // Set video stream to udp if running ArduSub and Video is disabled
     if (sub() && SettingsManager::instance()->videoSettings()->videoSource()->rawValue() == VideoSettings::videoDisabled) {
@@ -252,8 +260,19 @@ void Vehicle::_commonInit(LinkInterface* link)
     connect(_missionManager, &MissionManager::currentIndexChanged,      this, &Vehicle::_updateHeadingToNextWP);
     connect(_missionManager, &MissionManager::currentIndexChanged,      this, &Vehicle::_updateMissionItemIndex);
 
-    connect(_missionManager, &MissionManager::sendComplete,             _trajectoryPoints, &TrajectoryPoints::clear);
-    connect(_missionManager, &MissionManager::newMissionItemsAvailable, _trajectoryPoints, &TrajectoryPoints::clear);
+    // Mission synchronization must not erase the flown path while the vehicle
+    // is armed or still airborne. This is common when a mission is edited or
+    // refreshed during an active flight.
+    connect(_missionManager, &MissionManager::sendComplete, this, [this]() {
+        if (!armed() && !flying()) {
+            _trajectoryPoints->clear();
+        }
+    });
+    connect(_missionManager, &MissionManager::newMissionItemsAvailable, this, [this]() {
+        if (!armed() && !flying()) {
+            _trajectoryPoints->clear();
+        }
+    });
 
     _standardModes                  = new StandardModes                 (this, this);
     _componentInformationManager    = new ComponentInformationManager   (this, this);
@@ -1067,6 +1086,11 @@ void Vehicle::_handleSysStatus(mavlink_message_t& message)
     mavlink_sys_status_t sysStatus;
     mavlink_msg_sys_status_decode(&message, &sysStatus);
 
+    if (!_sysStatusReceived) {
+        _sysStatusReceived = true;
+        emit sysStatusReceivedChanged(true);
+    }
+
     _sysStatusSensorInfo.update(sysStatus);
 
     if (sysStatus.onboard_control_sensors_enabled & MAV_SYS_STATUS_PREARM_CHECK) {
@@ -1214,6 +1238,12 @@ void Vehicle::_updateArmed(bool armed)
             _lowestBatteryChargeStateAnnouncedMap.clear();
         } else {
             _trajectoryPoints->stop();
+            if (!flying()) {
+                // A normal disarm on the ground starts a new trajectory
+                // session. If the vehicle is still flying, retain the path
+                // until the airborne state is resolved.
+                _trajectoryPoints->clear();
+            }
             _flightTimerStop();
             // Also handle Video Streaming
             if(SettingsManager::instance()->videoSettings()->disableWhenDisarmed()->rawValue().toBool()) {
@@ -1356,6 +1386,11 @@ EventHandler& Vehicle::_eventHandler(uint8_t compid)
             const QSharedPointer<EventHandler>& evtHandler = _events[compid];
             _healthAndArmingCheckReport.update(compid, evtHandler->healthAndArmingCheckResults(),
                     evtHandler->getModeGroup(_has_custom_mode_user_intention ? _custom_mode_user_intention : _custom_mode));
+            _readiness->refresh();
+        });
+        connect(eventHandler.data(), &EventHandler::healthAndArmingChecksInvalidated, this, [this]() {
+            _healthAndArmingCheckReport.invalidate();
+            _readiness->invalidate();
         });
         connect(this, &Vehicle::flightModeChanged, this, [compid, this]() {
             const QSharedPointer<EventHandler>& evtHandler = _events[compid];
@@ -1363,6 +1398,7 @@ EventHandler& Vehicle::_eventHandler(uint8_t compid)
                 _healthAndArmingCheckReport.update(compid, evtHandler->healthAndArmingCheckResults(),
                                                    evtHandler->getModeGroup(_has_custom_mode_user_intention ? _custom_mode_user_intention : _custom_mode));
             }
+            _readiness->refresh();
         });
     }
     return *eventData->data();
@@ -1370,7 +1406,12 @@ EventHandler& Vehicle::_eventHandler(uint8_t compid)
 
 void Vehicle::setEventsMetadata(uint8_t compid, const QString& metadataJsonFileName)
 {
-    _eventHandler(compid).setMetadata(metadataJsonFileName);
+    EventHandler& eventHandler = _eventHandler(compid);
+    eventHandler.setMetadata(metadataJsonFileName);
+
+    if (compid == MAV_COMP_ID_AUTOPILOT1) {
+        _healthAndArmingCheckReport.setHealthAndArmingChecksCapability(eventHandler.healthAndArmingChecksSupported());
+    }
 
     // get the mode group for some well-known flight modes
     int modeGroups[2]{-1, -1};
@@ -1379,7 +1420,7 @@ void Vehicle::setEventsMetadata(uint8_t compid, const QString& metadataJsonFileN
         uint8_t     base_mode;
         uint32_t    custom_mode;
         if (setFlightModeCustom(modes[i], &base_mode, &custom_mode)) {
-            modeGroups[i] = _eventHandler(compid).getModeGroup(custom_mode);
+            modeGroups[i] = eventHandler.getModeGroup(custom_mode);
             if (modeGroups[i] == -1) {
                 qCDebug(VehicleLog) << "Failed to get mode group for mode" << modes[i] << "(Might not be in metadata)";
             }
@@ -1391,6 +1432,43 @@ void Vehicle::setEventsMetadata(uint8_t compid, const QString& metadataJsonFileN
     sendMavCommand(_defaultComponentId,
                    MAV_CMD_RUN_PREARM_CHECKS,
                    false);
+    _readiness->refresh();
+}
+
+void Vehicle::_handleCommunicationLostChanged(bool communicationLost)
+{
+    if (communicationLost) {
+        _invalidateReadinessState();
+        return;
+    }
+
+    // A recovered link starts a new readiness session. Do not reuse a report
+    // collected before the loss; ask the flight controller for a fresh result.
+    sendMavCommand(_defaultComponentId, MAV_CMD_RUN_PREARM_CHECKS, false);
+    _readiness->refresh();
+}
+
+void Vehicle::_invalidateReadinessState()
+{
+    for (const QSharedPointer<EventHandler>& eventHandler : _events) {
+        eventHandler->invalidateHealthAndArmingChecks();
+    }
+    _healthAndArmingCheckReport.invalidate();
+
+    if (_sysStatusReceived) {
+        _sysStatusReceived = false;
+        emit sysStatusReceivedChanged(false);
+    }
+    if (_readyToFlyAvailable) {
+        _readyToFlyAvailable = false;
+        emit readyToFlyAvailableChanged(false);
+    }
+    if (_readyToFly) {
+        _readyToFly = false;
+        emit readyToFlyChanged(false);
+    }
+
+    _readiness->invalidate();
 }
 
 void Vehicle::setActuatorsMetadata([[maybe_unused]] uint8_t compid,
@@ -1635,6 +1713,60 @@ void Vehicle::setArmed(bool armed, bool showError)
                    armed ? 1.0f : 0.0f);
 }
 
+bool Vehicle::requestArm(bool confirmUnknown)
+{
+    if (!_readiness || !_canDispatchReadinessAction(_readiness->canRequestArm(), _readiness->armConfirmationRequired(), confirmUnknown, _readiness->armReason())) {
+        return false;
+    }
+
+    _readiness->beginArmRequest();
+    setArmed(true, true);
+    return true;
+}
+
+bool Vehicle::requestTakeoff(double altitudeRelative, bool confirmUnknown)
+{
+    if (!_readiness || !_canDispatchReadinessAction(_readiness->canRequestTakeoff(), _readiness->takeoffConfirmationRequired(), confirmUnknown, _readiness->takeoffReason())) {
+        return false;
+    }
+
+    if (_vehicleSupports->guidedTakeoffWithAltitude()) {
+        guidedModeTakeoff(altitudeRelative);
+    } else {
+        startTakeoff();
+    }
+    return true;
+}
+
+bool Vehicle::requestStartMission(bool confirmUnknown)
+{
+    if (!_readiness || !_canDispatchReadinessAction(_readiness->canRequestMissionStart(), _readiness->missionStartConfirmationRequired(), confirmUnknown, _readiness->missionStartReason())) {
+        return false;
+    }
+
+    startMission();
+    return true;
+}
+
+bool Vehicle::requestAirborneMissionResume(bool confirmUnknown)
+{
+    if (!_readiness || !_canDispatchReadinessAction(_readiness->canRequestMissionResume(), _readiness->missionResumeConfirmationRequired(), confirmUnknown, _readiness->missionResumeReason())) {
+        return false;
+    }
+
+    startMission();
+    return true;
+}
+
+void Vehicle::requestArmedFromJoystick(bool armed)
+{
+    if (armed) {
+        requestArm(false);
+    } else {
+        setArmed(false, true);
+    }
+}
+
 void Vehicle::forceArm(void)
 {
     sendMavCommand(_defaultComponentId,
@@ -1642,6 +1774,19 @@ void Vehicle::forceArm(void)
                    true,    // show error if fails
                    1.0f,    // arm
                    2989);   // force arm
+}
+
+bool Vehicle::_canDispatchReadinessAction(bool canRequest, bool confirmationRequired, bool confirmUnknown, const QString& reason)
+{
+    if (!canRequest) {
+        qgcApp()->showAppMessage(reason);
+        return false;
+    }
+    if (confirmationRequired && !confirmUnknown) {
+        qgcApp()->showAppMessage(reason);
+        return false;
+    }
+    return true;
 }
 
 bool Vehicle::flightModeSetAvailable()

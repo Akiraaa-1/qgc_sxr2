@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QtCore/QFileInfo>
+#include <QtCore/QJsonObject>
 #include <QtCore/QObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QPointer>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #include "MissionController.h"
@@ -29,6 +31,7 @@ class PlanMasterController : public QObject
 
 #ifdef QGC_UNITTEST_BUILD
     friend class PlanMasterControllerTest;
+    friend class VehiclePlanSessionManagerTest;
 #endif
 
 public:
@@ -43,6 +46,7 @@ public:
     Q_PROPERTY(bool                     flyView                 MEMBER _flyView)
     Q_PROPERTY(Vehicle*                 controllerVehicle       READ controllerVehicle                      CONSTANT)                       ///< Offline controller vehicle
     Q_PROPERTY(Vehicle*                 managerVehicle          READ managerVehicle                         NOTIFY managerVehicleChanged)   ///< Either active vehicle or _controllerVehicle if no active vehicle
+    Q_PROPERTY(Vehicle*                 boundVehicle            READ boundVehicle                           NOTIFY boundVehicleChanged)     ///< Vehicle explicitly bound to this controller, if any
     Q_PROPERTY(MissionController*       missionController       READ missionController                      CONSTANT)
     Q_PROPERTY(GeoFenceController*      geoFenceController      READ geoFenceController                     CONSTANT)
     Q_PROPERTY(RallyPointController*    rallyPointController    READ rallyPointController                   CONSTANT)
@@ -61,6 +65,11 @@ public:
     Q_PROPERTY(QStringList              saveNameFilters         READ saveNameFilters                        CONSTANT)                       ///< File filter list saving plan files
     Q_PROPERTY(QmlObjectListModel*      planCreators            MEMBER _planCreators                        NOTIFY planCreatorsChanged)
     Q_PROPERTY(bool                     manualCreation          READ manualCreation WRITE setManualCreation NOTIFY manualCreationChanged)   ///< true: User is not using a template to create the plan
+    Q_PROPERTY(bool                     planVehicleIdentityAvailable READ planVehicleIdentityAvailable NOTIFY planVehicleIdentityChanged)
+    Q_PROPERTY(quint64                  planVehicleUid          READ planVehicleUid                         NOTIFY planVehicleIdentityChanged)
+    Q_PROPERTY(bool                     remotePlanStateKnown    READ remotePlanStateKnown                   NOTIFY remotePlanStateKnownChanged)
+    Q_PROPERTY(bool                     removeMissionFromVehicleInProgress READ removeMissionFromVehicleInProgress NOTIFY removeMissionFromVehicleInProgressChanged)
+    Q_PROPERTY(bool                     removeAllFromVehicleInProgress READ removeAllFromVehicleInProgress NOTIFY removeAllFromVehicleInProgressChanged)
 
     /// Should be called immediately upon Component.onCompleted.
     Q_INVOKABLE void start(void);
@@ -68,6 +77,15 @@ public:
     /// Starts the controller using a single static active vehicle. Will not track global active vehicle changes.
     ///     @param deleteWhenSendCmplete The PlanMasterController object should be deleted after the first send is completed.
     Q_INVOKABLE void startStaticActiveVehicle(Vehicle* vehicle, bool deleteWhenSendCompleted = false);
+
+    /// Starts the controller bound to a specific vehicle for a persistent Plan View session.
+    Q_INVOKABLE void startBoundVehicle(Vehicle* vehicle);
+
+    /// Detaches from the currently bound vehicle while keeping the local plan intact.
+    Q_INVOKABLE void detachVehicle(void);
+
+    /// Cancels any active mission/fence/rally transfer without issuing additional vehicle commands.
+    Q_INVOKABLE void cancelOperation(void);
 
     /// Determines if the plan has all information needed to be saved or sent to the vehicle.
     /// IMPORTANT NOTE: The return value is a VisualMissionItem::ReadForSaveState value. It is an int here to work around
@@ -98,6 +116,7 @@ public:
     Q_INVOKABLE bool saveWithCurrentName();                 ///< Save using the (possibly renamed) currentPlanFileName
     Q_INVOKABLE bool resolvedPlanFileExists() const;        ///< true if a file at the renamed path already exists on disk
     Q_INVOKABLE void removeAll(void);                       ///< Removes all from controller only, synce required to remove from vehicle
+    Q_INVOKABLE void removeMissionFromVehicle(void);        ///< Removes Mission items from vehicle and controller, preserving fences and rally points
     Q_INVOKABLE void removeAllFromVehicle(void);            ///< Removes all from vehicle and controller
 
     MissionController*      missionController(void)     { return &_missionController; }
@@ -120,6 +139,11 @@ public:
     QStringList saveNameFilters (void) const;
     bool        isEmpty         (void) const;
     bool        manualCreation  (void) const { return _manualCreation; }
+    bool        planVehicleIdentityAvailable(void) const { return _planVehicleIdentityAvailable; }
+    quint64     planVehicleUid(void) const { return _planVehicleUid; }
+    bool        remotePlanStateKnown(void) const { return _remotePlanStateKnown; }
+    bool        removeMissionFromVehicleInProgress(void) const { return _removeMissionFromVehicleInProgress; }
+    bool        removeAllFromVehicleInProgress(void) const { return _removeAllFromVehicleInProgress; }
 
     void        setFlyView(bool flyView) { _flyView = flyView; }
     void        setManualCreation(bool manualCreation);
@@ -128,6 +152,7 @@ public:
 
     Vehicle* controllerVehicle(void) { return _controllerVehicle; }
     Vehicle* managerVehicle(void) { return _managerVehicle; }
+    Vehicle* boundVehicle(void) const;
 
     static constexpr int   kPlanFileVersion =            1;
     static constexpr const char* kPlanFileType =               "Plan";
@@ -147,24 +172,47 @@ signals:
     void planFileRenamedChanged              (void);
     void planCreatorsChanged                (QmlObjectListModel* planCreators);
     void managerVehicleChanged              (Vehicle* managerVehicle);
+    void boundVehicleChanged                (Vehicle* boundVehicle);
     void promptForPlanUsageOnVehicleChange  (void);
     void manualCreationChanged              ();
+    void planVehicleIdentityChanged         ();
+    void remotePlanStateKnownChanged        ();
+    void removeMissionFromVehicleInProgressChanged();
+    void removeAllFromVehicleInProgressChanged();
 
 private slots:
     void _activeVehicleChanged      (Vehicle* activeVehicle);
     void _loadMissionComplete       (void);
     void _loadGeoFenceComplete      (void);
     void _loadRallyPointsComplete   (void);
+    void _managerPlanError          (int errorCode, const QString& errorMsg);
     void _sendMissionComplete       (void);
+    void _sendMissionComplete       (bool error);
     void _sendGeoFenceComplete      (void);
+    void _sendGeoFenceComplete      (bool error);
     void _sendRallyPointsComplete   (void);
+    void _sendRallyPointsComplete   (bool error);
+    void _removeMissionComplete     (bool error);
+    void _removeGeoFenceComplete    (bool error);
+    void _removeRallyPointsComplete (bool error);
     void _updateOverallDirty        (void);
     void _updatePlanCreatorsList    (void);
     void _handleExtractionFinished  (bool success);
 
 private:
     void _commonInit                (void);
+    void _startElementControllers   (void);
     void _showPlanFromManagerVehicle(void);
+    bool _setManagerVehicle         (Vehicle* managerVehicle);
+    void _finishSendSequence        (bool error, const QString& errorMessage = QString());
+    void _finishRemoveMissionFromVehicle(bool error, const QString& errorMessage = QString());
+    void _finishRemoveAllFromVehicle(bool error, const QString& errorMessage = QString());
+    bool _loadPlanJson              (const QJsonObject& json, QString& errorString);
+    bool _loadPlanIdentity          (const QJsonObject& json, bool& identityAvailable, quint64& vehicleUid, QString& errorString) const;
+    void _setPlanVehicleIdentity    (bool identityAvailable, quint64 vehicleUid);
+    void _setRemotePlanStateKnown   (bool remotePlanStateKnown);
+    void _clearLoadTracking         (void);
+    bool _pendingVehiclePlanLoadStillCurrent(void) const;
     void _setDirtyForSave(bool dirtyForSave);
     void _setDirtyForUpload(bool dirtyForUpload);
     void _setDirtyStates(bool dirtyForSave, bool dirtyForUpload);
@@ -180,13 +228,20 @@ private:
     MultiVehicleManager*    _multiVehicleMgr =          nullptr;
     Vehicle*                _controllerVehicle =        nullptr;    ///< Offline controller vehicle
     Vehicle*                _managerVehicle =           nullptr;    ///< Either active vehicle or _controllerVehicle if none
+    QPointer<Vehicle>       _boundVehicle;                          ///< Explicit Plan View session binding
     bool                    _flyView =                  true;
     bool                    _offline =                  true;
+    bool                    _started =                  false;
+    bool                    _trackingActiveVehicle =     false;
+    bool                    _boundVehicleMode =          false;
     MissionController       _missionController;
     GeoFenceController      _geoFenceController;
     RallyPointController    _rallyPointController;
     bool                    _loadGeoFence =             false;
     bool                    _loadRallyPoints =          false;
+    bool                    _loadFromVehicleInProgress = false;
+    bool                    _pendingVehiclePlanLoad =   false;
+    bool                    _sendToVehicleInProgress =  false;
     bool                    _sendGeoFence =             false;
     bool                    _sendRallyPoints =          false;
     QString                 _currentPlanFile;
@@ -203,4 +258,19 @@ private:
     bool                    _manualCreation =           false;
     QGCCompressionJob*      _extractionJob =            nullptr;
     QString                 _extractionOutputDir;
+    bool                    _planVehicleIdentityAvailable = false;
+    quint64                 _planVehicleUid = 0;
+    bool                    _remotePlanStateKnown = true;
+    quint64                 _remotePlanStateGeneration = 0;
+    quint64                 _loadFromVehicleGeneration = 0;
+    quint64                 _pendingVehiclePlanLoadGeneration = 0;
+    bool                    _removeMissionFromVehicleInProgress = false;
+    bool                    _removeAllFromVehicleInProgress = false;
+    bool                    _removeAllGeoFence = false;
+    bool                    _removeAllRallyPoints = false;
+
+    static constexpr const char* kJsonBtfwObjectKey = "btfw";
+    static constexpr const char* kJsonBtfwIdentityVersionKey = "identityVersion";
+    static constexpr const char* kJsonBtfwVehicleUidKey = "vehicleUid";
+    static constexpr int kBtfwIdentityVersion = 1;
 };

@@ -33,6 +33,8 @@ TreeView {
     property var _geoFenceController: planMasterController.geoFenceController
     property var _rallyPointController: planMasterController.rallyPointController
     property real _contentRightInset: ScreenTools.defaultFontPixelWidth * 0.8 * uiScale
+    property var _pendingScrollModelIndex
+    property var _pendingScrollDelegateItem
 
     // Helper: convert a persistent model index to the current visual row
     function _rowFor(modelIndex) { return root.rowAtIndex(modelIndex) }
@@ -96,12 +98,8 @@ TreeView {
             // Fine-tuned scroll happens later via editorExpandedAndLoaded.
             var item = _missionController.currentPlanViewItem
             if (item) {
-                var modelIndex = _missionController.visualItemsTree.indexForObject(item)
-                var row = root.rowAtIndex(modelIndex)
-                if (row >= 0) {
-                    root.forceLayout()
-                    root.positionViewAtRow(row, TableView.Visible)
-                }
+                root._pendingScrollModelIndex = _missionController.visualItemsTree.indexForObject(item)
+                scrollTimer.restart()
             }
         }
     }
@@ -165,23 +163,53 @@ TreeView {
         }
     }
 
-    // Coalesces multiple delegate height changes into a single forceLayout() call
+    function _requestLayout() {
+        if (!layoutTimer.running) {
+            layoutTimer.restart()
+        }
+    }
+
+    // Coalesces multiple delegate height changes into a single forceLayout() call.
+    // Keep this off the same event turn as TreeView relayout; selected mission
+    // item editors can change height while TreeView is positioning rows.
     Timer {
         id: layoutTimer
-        interval: 0
+        interval: 33
         running: false
         repeat: false
         onTriggered: root.forceLayout()
     }
 
+    Timer {
+        id: scrollTimer
+        interval: 33
+        running: false
+        repeat: false
+        onTriggered: {
+            root.forceLayout()
+            if (root._pendingScrollModelIndex) {
+                var row = root.rowAtIndex(root._pendingScrollModelIndex)
+                root._pendingScrollModelIndex = undefined
+                if (row >= 0) {
+                    root.positionViewAtRow(row, TableView.Visible)
+                }
+            }
+            if (root._pendingScrollDelegateItem) {
+                var delegateItem = root._pendingScrollDelegateItem
+                root._pendingScrollDelegateItem = undefined
+                var bottomY = delegateItem.mapToItem(root.contentItem, 0, delegateItem.height).y
+                var neededContentY = bottomY - root.height
+                if (neededContentY > root.contentY) {
+                    root.contentY = neededContentY
+                }
+            }
+        }
+    }
+
     // Called by MissionItemEditor delegates when their editor height has settled.
     function _scrollToMissionItem(delegateItem) {
-        root.forceLayout()
-        var bottomY = delegateItem.mapToItem(root.contentItem, 0, delegateItem.height).y
-        var neededContentY = bottomY - root.height
-        if (neededContentY > root.contentY) {
-            root.contentY = neededContentY
-        }
+        root._pendingScrollDelegateItem = delegateItem
+        scrollTimer.restart()
     }
 
     delegate: Item {
@@ -203,7 +231,7 @@ TreeView {
         readonly property string nodeType: model.nodeType
         readonly property bool separator: model.separator ?? false
 
-        onImplicitHeightChanged: layoutTimer.restart()
+        onImplicitHeightChanged: root._requestLayout()
 
         readonly property string _qrcBase: "qrc:/qml/QGroundControl/PlanView/"
 
@@ -282,6 +310,7 @@ TreeView {
                     setSource(delegateRoot._qrcBase + "TransformEditor.qml", {
                         width:              Qt.binding(() => delegateRoot.width),
                         missionController:  root._missionController,
+                        planMasterController: root.planMasterController,
                         uiScale:            root.uiScale
                     })
                     break

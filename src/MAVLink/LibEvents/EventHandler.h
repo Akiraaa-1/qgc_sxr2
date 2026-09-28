@@ -24,6 +24,7 @@ public:
     void handleEvents(const mavlink_message_t& message);
 
     void setMetadata(const QString& metadataJsonFileName);
+    void invalidateHealthAndArmingChecks();
 
     const events::HealthAndArmingChecks::Results& healthAndArmingCheckResults() const { return _healthAndArmingChecks.results(); }
     bool healthAndArmingCheckResultsValid() const { return _healthAndArmingChecksValid; }
@@ -37,6 +38,7 @@ public:
 
 signals:
     void healthAndArmingChecksUpdated();
+    void healthAndArmingChecksInvalidated();
 
 private:
     void gotEvent(const mavlink_event_t& event);

@@ -409,6 +409,42 @@ void MissionControllerTest::_testGlobalAltFrame()
     }
 }
 
+void MissionControllerTest::_testSendPreCheckRejectsTightWaypointSegments()
+{
+    _initForFirmwareType(MAV_AUTOPILOT_PX4);
+
+    MissionSettingsItem* const settingsItem = _missionController->visualItems()->value<MissionSettingsItem*>(0);
+    QVERIFY(settingsItem);
+
+    const QGeoCoordinate home = Coord::zurich();
+    settingsItem->setCoordinate(home);
+
+    _missionController->insertTakeoffItem(home, 1);
+    _missionController->insertSimpleMissionItem(home.atDistanceAndAzimuth(3.0, 90.0), 2);
+
+    QCOMPARE(_missionController->sendToVehiclePreCheck(),
+             MissionController::SendToVehiclePreCheckStateMissionTooTight);
+    QVERIFY(!_missionController->sendToVehiclePreCheckFailureMessage().isEmpty());
+}
+
+void MissionControllerTest::_testSendPreCheckAllowsVerticalTakeoffAndLand()
+{
+    _initForFirmwareType(MAV_AUTOPILOT_PX4);
+
+    MissionSettingsItem* const settingsItem = _missionController->visualItems()->value<MissionSettingsItem*>(0);
+    QVERIFY(settingsItem);
+
+    const QGeoCoordinate home = Coord::zurich();
+    settingsItem->setCoordinate(home);
+
+    _missionController->insertTakeoffItem(home, 1);
+    _missionController->insertLandHereItem(home, 2);
+
+    QCOMPARE(_missionController->sendToVehiclePreCheck(),
+             MissionController::SendToVehiclePreCheckStateOk);
+    QVERIFY(_missionController->sendToVehiclePreCheckFailureMessage().isEmpty());
+}
+
 #include "UnitTest.h"
 
 UT_REGISTER_TEST(MissionControllerTest, TestLabel::Integration, TestLabel::MissionManager)

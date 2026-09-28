@@ -48,6 +48,8 @@ public:
     int getMapId() const { return _mapId; }
     const QString& getReferrer() const { return _referrer; }
     virtual QByteArray getToken() const { return QByteArray(); }
+    virtual int minimumZoomLevel() const { return 2; }
+    virtual int maximumZoomLevel() const { return QGC_MAX_MAP_ZOOM; }
 
     virtual int long2tileX(double lon, int z) const;
     virtual int lat2tileY(double lat, int z) const;

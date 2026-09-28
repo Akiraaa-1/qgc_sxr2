@@ -11,7 +11,7 @@ Rectangle {
     required property var planMasterController
 
     id: missionStats
-    implicitWidth: Math.max(contentFlickable.contentWidth, mainLayout.implicitWidth + (_margins * 2))
+    implicitWidth: mainLayout.implicitWidth + (_margins * 2)
     implicitHeight: Math.max(mainLayout.implicitHeight + (_margins * 2), ScreenTools.defaultFontPixelHeight * 8)
     color: "#AA1F1F1F"
     border.width: 1
@@ -28,6 +28,9 @@ Rectangle {
     property real missionTime: _controllerValid ? _planMasterController.missionController.missionTime : 0
     property real missionMaxTelemetry: _controllerValid ? _planMasterController.missionController.missionMaxTelemetry : NaN
     property real missionBatteryPercentRemaining: _controllerValid ? _planMasterController.missionController.missionBatteryPercentRemaining : -1
+    property bool missionLoopEnabled: _controllerValid ? _planMasterController.missionController.missionLoopEnabled : false
+    property real missionLoopTotalDistance: _controllerValid ? _planMasterController.missionController.missionLoopTotalDistance : NaN
+    property real missionLoopTotalTime: _controllerValid ? _planMasterController.missionController.missionLoopTotalTime : 0
     property bool _controllerValid: _planMasterController !== undefined && _planMasterController !== null
 
     property bool _currentMissionItemValid: _currentMissionItem && _currentMissionItem !== undefined && _currentMissionItem !== null
@@ -48,6 +51,8 @@ Rectangle {
     property real _missionMaxTelemetry: _missionValid ? missionMaxTelemetry : NaN
     property real _missionBatteryPercentRemaining: _missionValid ? missionBatteryPercentRemaining : -1
     property real _missionTime: _missionValid ? missionTime : 0
+    property real _missionLoopTotalDistance: _missionValid ? missionLoopTotalDistance : NaN
+    property real _missionLoopTotalTime: _missionValid ? missionLoopTotalTime : 0
     property real _maxSegmentDistance: _missionValid ? _calculateMaxSegmentDistance(_missionPlannedDistance) : NaN
     property int _batteryChangePoint: _controllerValid ? _planMasterController.missionController.batteryChangePoint : -1
     property int _batteriesRequired: _controllerValid ? _planMasterController.missionController.batteriesRequired : -1
@@ -63,6 +68,7 @@ Rectangle {
     property string _azimuthText: isNaN(_azimuth) ? "-.-" : Math.round(_azimuth) % 360
     property string _headingText: isNaN(_azimuth) ? "-.-" : Math.round(_heading) % 360
     property string _missionPlannedDistanceText: isNaN(_missionPlannedDistance) ? "-.-" : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionPlannedDistance).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
+    property string _missionLoopTotalDistanceText: isNaN(_missionLoopTotalDistance) ? "-.-" : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionLoopTotalDistance).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
     property string _missionMaxTelemetryText: isNaN(_missionMaxTelemetry) ? "-.-" : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionMaxTelemetry).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
     property string _missionBatteryPercentRemainingText: _missionBatteryPercentRemaining < 0 ? qsTr("N/A") : _missionBatteryPercentRemaining.toFixed(0) + "%"
     property string _maxSegmentDistanceText: isNaN(_maxSegmentDistance) ? "-.-" : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_maxSegmentDistance).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
@@ -85,7 +91,15 @@ Rectangle {
     readonly property int _valuePixelSize: 14
 
     function getMissionTime() {
-        var totalSeconds = Number(_missionTime)
+        return _timeText(_missionTime)
+    }
+
+    function getMissionLoopTime() {
+        return _timeText(_missionLoopTotalTime)
+    }
+
+    function _timeText(seconds) {
+        var totalSeconds = Number(seconds)
         if (!totalSeconds) {
             return "00:00:00"
         }
@@ -328,6 +342,20 @@ Rectangle {
                             Layout.minimumWidth: _largeValueWidth
                         }
 
+                        QGCLabel {
+                            text: qsTr("Loop distance:")
+                            font.pixelSize: _labelPixelSize
+                            color: _secondaryTextColor
+                            visible: missionLoopEnabled
+                        }
+                        QGCLabel {
+                            text: _missionLoopTotalDistanceText
+                            color: _primaryTextColor
+                            font.pixelSize: _valuePixelSize
+                            Layout.minimumWidth: _largeValueWidth
+                            visible: missionLoopEnabled
+                        }
+
                         QGCLabel { text: qsTr("Max segment:"); font.pixelSize: _labelPixelSize; color: _secondaryTextColor }
                         QGCLabel {
                             text: _maxSegmentDistanceText
@@ -344,6 +372,20 @@ Rectangle {
                             color: _primaryTextColor
                             font.pixelSize: _valuePixelSize
                             Layout.minimumWidth: _largeValueWidth
+                        }
+
+                        QGCLabel {
+                            text: qsTr("Loop time:")
+                            font.pixelSize: _labelPixelSize
+                            color: _secondaryTextColor
+                            visible: missionLoopEnabled
+                        }
+                        QGCLabel {
+                            text: getMissionLoopTime()
+                            color: _primaryTextColor
+                            font.pixelSize: _valuePixelSize
+                            Layout.minimumWidth: _largeValueWidth
+                            visible: missionLoopEnabled
                         }
 
                         QGCLabel { text: qsTr("Battery left (est):"); font.pixelSize: _labelPixelSize; color: _secondaryTextColor }

@@ -31,7 +31,7 @@ Item {
                     columnSpacing:  ScreenTools.defaultFontPixelWidth * 2
 
                     QGCLabel { text: qsTr("Enabled:") }
-                    QGCLabel {
+                    QGCPixelLabel {
                         text: {
                             if (!globals.activeVehicle)
                                 return qsTr("No Vehicle")
@@ -45,7 +45,7 @@ Item {
                     }
 
                     QGCLabel { text: qsTr("Type:") }
-                    QGCLabel {
+                    QGCPixelLabel {
                         text: _activeJoystick ? (_activeJoystick.isGamepad ? _activeJoystick.gamepadType || qsTr("Gamepad") : qsTr("Joystick")) : ""
                     }
 
@@ -173,7 +173,7 @@ Item {
                         text:    qsTr("GUID:")
                         visible: _activeJoystick && _activeJoystick.guid
                     }
-                    QGCLabel {
+                    QGCPixelLabel {
                         text:    _activeJoystick ? _activeJoystick.guid : ""
                         visible: _activeJoystick && _activeJoystick.guid
                         font.family: "monospace"

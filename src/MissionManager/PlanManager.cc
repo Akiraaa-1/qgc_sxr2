@@ -845,6 +845,15 @@ void PlanManager::_finishTransaction(bool success, bool apmGuidedItemWrite)
         }
         break;
     case TransactionRemoveAll:
+        if (success) {
+            _clearAndDeleteMissionItems();
+            if (_planType == MAV_MISSION_TYPE_MISSION) {
+                _currentMissionIndex = -1;
+                _lastCurrentIndex = -1;
+                emit currentIndexChanged(-1);
+                emit lastCurrentIndexChanged(-1);
+            }
+        }
         emit removeAllComplete(!success /* error */);
         break;
     default:
@@ -898,19 +907,35 @@ void PlanManager::removeAll(void)
 
     qCDebug(PlanManagerLog) << QStringLiteral("removeAll %1").arg(_planTypeString());
 
-    _clearAndDeleteMissionItems();
-
-    if (_planType == MAV_MISSION_TYPE_MISSION) {
-        _currentMissionIndex = -1;
-        _lastCurrentIndex = -1;
-        emit currentIndexChanged(-1);
-        emit lastCurrentIndexChanged(-1);
-    }
-
     _retryCount = 0;
     _setTransactionInProgress(TransactionRemoveAll);
 
     _removeAllWorker();
+}
+
+void PlanManager::cancelTransaction(void)
+{
+    if (!inProgress()) {
+        return;
+    }
+
+    qCWarning(PlanManagerLog) << "Cancelling transaction" << _planTypeString();
+
+    _ackTimeoutTimer->stop();
+    _expectedAck = AckNone;
+    _retryCount = 0;
+    _lastMissionRequest = -1;
+    _missionItemCountToRead = -1;
+    _itemIndicesToRead.clear();
+    _itemIndicesToWrite.clear();
+    if (_transactionInProgress == TransactionRead) {
+        _clearAndDeleteMissionItems();
+    }
+    _clearAndDeleteWriteMissionItems();
+    _disconnectFromMavlink();
+    _setTransactionInProgress(TransactionNone);
+    emit progressPctChanged(0);
+    emit error(InternalError, tr("%1 transfer was cancelled. The vehicle plan state is unknown.").arg(_planTypeString()));
 }
 
 void PlanManager::_clearAndDeleteMissionItems(void)

@@ -32,6 +32,8 @@ private slots:
     void _vehicleCoordinateChanged(QGeoCoordinate coordinate);
 
 private:
+    bool _shouldHoldGroundPointOnly() const;
+
     Vehicle*        _vehicle;
     QVariantList    _points;
     QGeoCoordinate  _lastPoint;
@@ -39,4 +41,6 @@ private:
 
     static constexpr double _distanceTolerance = 2.0;
     static constexpr double _azimuthTolerance = 1.5;
+    static constexpr double _minimumGroundTrackSpeed = 1.0;
+    static constexpr double _groundHoldJumpMeters = 10.0;
 };

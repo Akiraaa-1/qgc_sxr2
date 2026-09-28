@@ -36,19 +36,22 @@ QGeoTiledMappingManagerEngineQGC::QGeoTiledMappingManagerEngineQGC(const QVarian
         setLocale(locale);
     });
 
-    QGeoCameraCapabilities cameraCaps{};
-    cameraCaps.setTileSize(256);
-    cameraCaps.setMinimumZoomLevel(2.0);
-    cameraCaps.setMaximumZoomLevel(QGC_MAX_MAP_ZOOM);
-    cameraCaps.setSupportsBearing(true);
-    cameraCaps.setSupportsRolling(false);
-    cameraCaps.setSupportsTilting(false);
-    cameraCaps.setMinimumTilt(0.0);
-    cameraCaps.setMaximumTilt(0.0);
-    cameraCaps.setMinimumFieldOfView(45.0);
-    cameraCaps.setMaximumFieldOfView(45.0);
-    cameraCaps.setOverzoomEnabled(true);
-    setCameraCapabilities(cameraCaps);
+    auto makeCameraCaps = [](int minimumZoomLevel, int maximumZoomLevel) {
+        QGeoCameraCapabilities cameraCaps{};
+        cameraCaps.setTileSize(256);
+        cameraCaps.setMinimumZoomLevel(minimumZoomLevel);
+        cameraCaps.setMaximumZoomLevel(maximumZoomLevel);
+        cameraCaps.setSupportsBearing(true);
+        cameraCaps.setSupportsRolling(false);
+        cameraCaps.setSupportsTilting(false);
+        cameraCaps.setMinimumTilt(0.0);
+        cameraCaps.setMaximumTilt(0.0);
+        cameraCaps.setMinimumFieldOfView(45.0);
+        cameraCaps.setMaximumFieldOfView(45.0);
+        cameraCaps.setOverzoomEnabled(true);
+        return cameraCaps;
+    };
+    setCameraCapabilities(makeCameraCaps(2, QGC_MAX_MAP_ZOOM));
 
     setTileVersion(kTileVersion);
     setTileSize(QSize(256, 256));
@@ -64,7 +67,7 @@ QGeoTiledMappingManagerEngineQGC::QGeoTiledMappingManagerEngineQGC(const QVarian
             false,
             provider->getMapId(),
             QByteArrayLiteral("QGroundControl"),
-            cameraCapabilities()
+            makeCameraCaps(provider->minimumZoomLevel(), provider->maximumZoomLevel())
         );
         mapList.append(map);
     }

@@ -10,6 +10,8 @@ Item {
 
     id: virtualJoysticks
 
+    property bool  autoCenterThrottle:        false
+    property bool  leftHandedMode:            false
     property var   _activeVehicle:            QGroundControl.multiVehicleManager.activeVehicle
     property bool  _initialConnectComplete:   _activeVehicle ? _activeVehicle.initialConnectComplete : false
     property real  leftYAxisValue:            autoCenterThrottle ? height / 2 : height
@@ -32,6 +34,7 @@ Item {
     onHeightChanged:        { keepYAxisWhileChanged() }
     onWidthChanged:         { keepXAxisWhileChanged() }
     onCalibrationChanged:   { calibration ? calibrateJoysticks() : undefined }
+    onVisibleChanged:       { visible && calibration ? calibrateJoysticks() : undefined }
 
     function calibrateJoysticks() {
         if( virtualJoysticks.visible ) {

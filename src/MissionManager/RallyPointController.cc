@@ -161,7 +161,6 @@ void RallyPointController::sendToVehicle(void)
         qCCritical(RallyPointControllerLog) << "RallyPointController::sendToVehicle called while syncInProgress";
     } else {
         qCDebug(RallyPointControllerLog) << "RallyPointController::sendToVehicle";
-        setDirty(false);
         QList<QGeoCoordinate> rgPoints;
         for (int i=0; i<_points.count(); i++) {
             rgPoints.append(qobject_cast<RallyPoint*>(_points[i])->coordinate());
@@ -210,6 +209,10 @@ void RallyPointController::_managerLoadComplete(void)
 
 void RallyPointController::_managerSendComplete(bool error)
 {
+    if (!error) {
+        setDirty(false);
+    }
+
     // Fly view always reloads after send
     if (!error && _flyView) {
         showPlanFromManagerVehicle();
@@ -218,6 +221,10 @@ void RallyPointController::_managerSendComplete(bool error)
 
 void RallyPointController::_managerRemoveAllComplete(bool error)
 {
+    if (_masterController->removeAllFromVehicleInProgress()) {
+        return;
+    }
+
     if (!error) {
         // Remove all from vehicle so we always update
         showPlanFromManagerVehicle();

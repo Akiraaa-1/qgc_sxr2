@@ -39,11 +39,13 @@ SetupPage {
             readonly property real _sectionTitlePointSize: ScreenTools.mediumFontPointSize * 0.92
             readonly property real _bodyPointSize:         ScreenTools.defaultFontPointSize * 0.90
             readonly property real _smallPointSize:        ScreenTools.defaultFontPointSize * ScreenTools.smallFontPointRatio * 0.95
+            readonly property real _pageHeight:            Math.max(ScreenTools.defaultFontPixelHeight * 28, firmwarePage.availableHeight)
+            readonly property int  _versionGridColumns:    firmwarePage.availableWidth < ScreenTools.defaultFontPixelWidth * 68 ? 2 : 3
 
             implicitWidth:  _panelWidth + (_outerMargin * 2)
-            implicitHeight: panelFrame.height + (_outerMargin * 2)
-            width:          implicitWidth
-            height:         implicitHeight
+            implicitHeight: _pageHeight
+            width:          Math.max(implicitWidth, firmwarePage.availableWidth)
+            height:         _pageHeight
 
             // Those user visible strings are hard to translate because we can't send the
             // HTML strings to translation as this can create a security risk. we need to find
@@ -86,8 +88,84 @@ SetupPage {
             property bool   firmwareWarningMessageVisible:  false
             property bool   initialBoardSearch:             true
             property string firmwareName
+            property string _upgradeNoticeText
+            property string _upgradeNoticeLevel:             "info"
+            property bool   _upgradeNoticeVisible:           false
+            property bool   _flashInProgress:                false
+            property bool   _flashCompleted:                 false
+            property string _pendingFlashKind
+            property string _pendingFlashDescription
+            property string _pendingFlashUrl
+            property int    _pendingFlashStack:              FirmwareUpgradeController.AutoPilotStackPX4
+            property int    _pendingFlashBuildType:          FirmwareUpgradeController.StableFirmware
+            property int    _pendingFlashVehicleType:        FirmwareUpgradeController.DefaultVehicleFirmware
 
             property bool _singleFirmwareMode:          QGroundControl.corePlugin.options.firmwareUpgradeSingleURL.length != 0   ///< true: running in special single firmware download mode
+
+            function _setUpgradeNotice(level, text) {
+                _upgradeNoticeLevel = level
+                _upgradeNoticeText = text
+                _upgradeNoticeVisible = text !== ""
+            }
+
+            function _upgradeNoticeColor() {
+                switch (_upgradeNoticeLevel) {
+                case "success":
+                    return qgcPal.colorGreen
+                case "warn":
+                    return qgcPal.warningText
+                case "error":
+                    return qgcPal.colorRed
+                default:
+                    return popupStyle.accentColor
+                }
+            }
+
+            function _requestFlashConfirmation(description, kind, url, stack, buildType, vehicleType) {
+                _flashCompleted = false
+                _pendingFlashDescription = description
+                _pendingFlashKind = kind
+                _pendingFlashUrl = url || ""
+                _pendingFlashStack = stack !== undefined ? stack : FirmwareUpgradeController.AutoPilotStackPX4
+                _pendingFlashBuildType = buildType !== undefined ? buildType : FirmwareUpgradeController.StableFirmware
+                _pendingFlashVehicleType = vehicleType !== undefined ? vehicleType : FirmwareUpgradeController.DefaultVehicleFirmware
+                flashConfirmDialogFactory.open()
+            }
+
+            function _beginConfirmedFlash() {
+                _flashInProgress = true
+                progressBar.value = 0
+                statusTextArea.append(qsTr("已确认刷写，正在准备固件文件..."))
+                _setUpgradeNotice("info", qsTr("正在准备固件文件，请保持 USB 与电源稳定。"))
+                if (_pendingFlashKind === "single") {
+                    controller.flashSingleFirmwareMode(_pendingFlashBuildType)
+                } else if (_pendingFlashKind === "url") {
+                    controller.flashFirmwareUrl(_pendingFlashUrl)
+                } else if (_pendingFlashKind === "firmware") {
+                    controller.flash(_pendingFlashStack, _pendingFlashBuildType, _pendingFlashVehicleType)
+                } else {
+                    _flashInProgress = false
+                    _setUpgradeNotice("error", qsTr("未找到待刷写的固件请求，请重新选择固件。"))
+                }
+                _clearPendingFlash()
+            }
+
+            function _cancelPendingFlash() {
+                _flashInProgress = false
+                _clearPendingFlash()
+                statusTextArea.append(highlightPrefix + qsTr("Upgrade cancelled") + highlightSuffix)
+                statusTextArea.append("------------------------------------------")
+                controller.cancel()
+            }
+
+            function _clearPendingFlash() {
+                _pendingFlashKind = ""
+                _pendingFlashDescription = ""
+                _pendingFlashUrl = ""
+                _pendingFlashStack = FirmwareUpgradeController.AutoPilotStackPX4
+                _pendingFlashBuildType = FirmwareUpgradeController.StableFirmware
+                _pendingFlashVehicleType = FirmwareUpgradeController.DefaultVehicleFirmware
+            }
 
             function _flightControllerVersionText() {
                 if (!_activeVehicle) {
@@ -101,6 +179,63 @@ SetupPage {
                         + _activeVehicle.firmwareMinorVersion + "."
                         + _activeVehicle.firmwarePatchVersion
                         + _activeVehicle.firmwareVersionTypeString
+            }
+
+            function _flightControllerModelText() {
+                if (!_activeVehicle) {
+                    return qsTr("Not detected")
+                }
+
+                const firmwareType = _activeVehicle.firmwareTypeString !== "" ? _activeVehicle.firmwareTypeString : qsTr("Unknown firmware")
+                const vehicleType = _activeVehicle.vehicleTypeString !== "" ? _activeVehicle.vehicleTypeString : qsTr("Unknown vehicle")
+                return firmwareType + " / " + vehicleType
+            }
+
+            function _protocolVersionText() {
+                if (!_vehicleConnected || !_activeVehicle.vehicleLinkManager) {
+                    return qsTr("Not detected")
+                }
+
+                const mavlinkVersion = _activeVehicle.vehicleLinkManager.primaryMavlinkVersion
+                return mavlinkVersion > 0 ? qsTr("MAVLink %1").arg(mavlinkVersion) : qsTr("Not reported")
+            }
+
+            function _deviceIdText() {
+                if (!_activeVehicle) {
+                    return qsTr("Not detected")
+                }
+
+                return _activeVehicle.vehicleUID > 0 ? _activeVehicle.vehicleUIDStr : qsTr("Not reported")
+            }
+
+            function _boardIdText(boardId) {
+                if (!_activeVehicle) {
+                    return qsTr("Not detected")
+                }
+
+                return boardId > 0 ? boardId.toString() : qsTr("Not reported")
+            }
+
+            function _gitHashText() {
+                if (!_activeVehicle) {
+                    return qsTr("Not detected")
+                }
+
+                return _activeVehicle.gitHash !== "" ? _activeVehicle.gitHash : qsTr("Not reported")
+            }
+
+            function _firmwareSupportText() {
+                if (!_activeVehicle) {
+                    return qsTr("Connect a vehicle to verify firmware compatibility.")
+                }
+                if (_activeVehicle.firmwareMajorVersion < 0) {
+                    return qsTr("Firmware version not reported; compatibility cannot be verified.")
+                }
+                if (_activeVehicle.genericFirmware) {
+                    return qsTr("Generic firmware detected; verify compatibility before flight.")
+                }
+
+                return qsTr("Known firmware family detected.")
             }
 
             function _telemetryVersionText() {
@@ -166,7 +301,14 @@ SetupPage {
             }
 
             readonly property var _versionItems: [
-                { title: qsTr("Flight Controller"), value: _flightControllerVersionText() },
+                { title: qsTr("Flight Controller"), value: _flightControllerModelText() },
+                { title: qsTr("Firmware Version"),  value: _flightControllerVersionText() },
+                { title: qsTr("MAVLink Protocol"),  value: _protocolVersionText() },
+                { title: qsTr("Device ID"),         value: _deviceIdText() },
+                { title: qsTr("Board Vendor ID"),   value: _boardIdText(_activeVehicle ? _activeVehicle.firmwareBoardVendorId : 0) },
+                { title: qsTr("Board Product ID"),  value: _boardIdText(_activeVehicle ? _activeVehicle.firmwareBoardProductId : 0) },
+                { title: qsTr("Git Hash"),          value: _gitHashText() },
+                { title: qsTr("Compatibility"),     value: _firmwareSupportText() },
                 { title: qsTr("Telemetry"),         value: _telemetryVersionText() },
                 { title: qsTr("Camera"),            value: _cameraVersionText() },
                 { title: qsTr("Gimbal"),            value: _gimbalVersionText() },
@@ -224,7 +366,7 @@ SetupPage {
                 nameFilters:        [qsTr("Firmware Files (*.px4 *.apj *.bin *.ihx)"), qsTr("All Files (*)")]
                 folder:             QGroundControl.settingsManager.appSettings.logSavePath
                 onAcceptedForLoad: (file) => {
-                    controller.flashFirmwareUrl(file)
+                    firmwareContent._requestFlashConfirmation(qsTr("自定义固件文件：%1").arg(file), "url", file)
                     close()
                 }
             }
@@ -251,6 +393,12 @@ SetupPage {
 
                 onBoardGone: {
                     initialBoardSearch = false
+                    if (progressBar.value > 0 && progressBar.value < 1) {
+                        firmwareContent._setUpgradeNotice("warn", qsTr("刷写过程中设备断开。请保持 USB 连接，按日志提示重新连接或重新进入刷写流程。"))
+                    } else if (firmwareContent._flashInProgress) {
+                        firmwareContent._flashInProgress = false
+                        firmwareContent._setUpgradeNotice("warn", qsTr("刷写尚未进入写入阶段设备已断开，请重新连接并重新选择固件。"))
+                    }
                     if (!QGroundControl.multiVehicleManager.activeVehicleAvailable) {
                         statusTextArea.append(plugInText)
                     }
@@ -276,14 +424,71 @@ SetupPage {
                     }
                 }
 
-                onShowFirmwareSelectDlg:    firmwareSelectDialogFactory.open()
-                onError:                    statusTextArea.append(flashFailText)
+                onShowFirmwareSelectDlg: {
+                    if (firmwareContent._flashCompleted) {
+                        statusTextArea.append(qsTr("检测到刷写完成后的升级设备，已保持完成状态。如需再次刷写，请重新进入固件页面。"))
+                        return
+                    }
+                    firmwareSelectDialogFactory.open()
+                }
+                onFlashComplete: {
+                    firmwareContent._flashInProgress = false
+                    firmwareContent._flashCompleted = true
+                    progressBar.value = 1
+                    controller.cancel()
+                    firmwareContent._setUpgradeNotice("success", qsTr("固件刷写完成。请重新连接飞控，并在摘要或固件维护页面确认版本已更新。"))
+                }
+                onError: {
+                    firmwareContent._flashInProgress = false
+                    firmwareContent._flashCompleted = false
+                    firmwareContent._setUpgradeNotice("error", qsTr("固件刷写失败或中断。请保持 USB 稳定，按日志提示恢复后重试。"))
+                    statusTextArea.append(flashFailText)
+                }
             }
 
             QGCPopupDialogFactory {
                 id: firmwareSelectDialogFactory
 
                 dialogComponent: firmwareSelectDialogComponent
+            }
+
+            QGCPopupDialogFactory {
+                id: flashConfirmDialogFactory
+
+                dialogComponent: flashConfirmDialogComponent
+            }
+
+            Component {
+                id: flashConfirmDialogComponent
+
+                QGCPopupDialog {
+                    title:              qsTr("确认刷写固件")
+                    buttons:            Dialog.Ok | Dialog.Cancel
+                    acceptButtonText:   qsTr("确认刷写")
+                    rejectButtonText:   qsTr("取消")
+
+                    onAccepted: firmwareContent._beginConfirmedFlash()
+                    onRejected: firmwareContent._cancelPendingFlash()
+
+                    ColumnLayout {
+                        width:      Math.min(ScreenTools.defaultFontPixelWidth * 72, Math.max(ScreenTools.defaultFontPixelWidth * 44, firmwarePage.availableWidth * 0.72))
+                        spacing:    ScreenTools.defaultFontPixelHeight * 0.7
+
+                        QGCLabel {
+                            id:                 confirmText
+                            Layout.fillWidth:   true
+                            wrapMode:           Text.WordWrap
+                            text:               qsTr("即将刷写：%1").arg(firmwareContent._pendingFlashDescription)
+                            font.bold:          true
+                        }
+
+                        QGCLabel {
+                            Layout.fillWidth:   true
+                            wrapMode:           Text.WordWrap
+                            text:               qsTr("确认设备身份、固件文件、USB 连接和供电均稳定；移除螺旋桨，按硬件要求断开主电池。刷写期间不要拔插设备。")
+                        }
+                    }
+                }
             }
 
             Component {
@@ -338,7 +543,7 @@ SetupPage {
 
                     onAccepted: {
                         if (_singleFirmwareMode) {
-                            controller.flashSingleFirmwareMode(controller.selectedFirmwareBuildType)
+                            firmwareContent._requestFlashConfirmation(qsTr("单固件模式"), "single", "", FirmwareUpgradeController.AutoPilotStackPX4, controller.selectedFirmwareBuildType, FirmwareUpgradeController.DefaultVehicleFirmware)
                         } else {
                             var firmwareBuildType = firmwareBuildTypeCombo.model.get(firmwareBuildTypeCombo.currentIndex).firmwareType
                             var vehicleType = FirmwareUpgradeController.DefaultVehicleFirmware
@@ -366,7 +571,7 @@ SetupPage {
                                         firmwareSelectDialog.preventClose = true
                                         return
                                     }
-                                    controller.flashFirmwareUrl(controller.apmFirmwareUrls[ardupilotFirmwareSelectionCombo.currentIndex])
+                                    firmwareContent._requestFlashConfirmation(qsTr("ArduPilot 固件：%1").arg(controller.apmFirmwareNames[ardupilotFirmwareSelectionCombo.currentIndex]), "url", firmwareUrl)
                                     return
                                 }
                             }
@@ -374,7 +579,9 @@ SetupPage {
                             if (firmwareBuildType === FirmwareUpgradeController.CustomFirmware) {
                                 customFirmwareDialog.openForLoad()
                             } else {
-                                controller.flash(stack, firmwareBuildType, vehicleType)
+                                var stackName = stack === FirmwareUpgradeController.AutoPilotStackAPM ? qsTr("ArduPilot") : qsTr("PX4")
+                                var buildName = firmwareBuildTypeCombo.model.get(firmwareBuildTypeCombo.currentIndex).text
+                                firmwareContent._requestFlashConfirmation(qsTr("%1 / %2").arg(stackName).arg(buildName), "firmware", "", stack, firmwareBuildType, vehicleType)
                             }
                         }
                     }
@@ -568,28 +775,36 @@ SetupPage {
                 } // QGCPopupDialog
             } // Component - firmwareSelectDialogComponent
 
-            Rectangle {
-                id: panelFrame
-                width: firmwareContent._panelWidth
-                height: contentColumn.implicitHeight + (firmwareContent._panelPadding * 2)
-                anchors.centerIn: parent
-                radius: popupStyle.cornerRadius
-                border.color: popupStyle.borderColor
-                border.width: 1
-                gradient: Gradient {
-                    orientation: Gradient.Vertical
-                    GradientStop { position: 0.0; color: popupStyle.popupBackground }
-                    GradientStop { position: 1.0; color: "#222222" }
-                }
-            }
+            QGCFlickable {
+                id:             contentFlickable
+                anchors.fill:   parent
+                contentWidth:   Math.max(width, panelFrame.width + (firmwareContent._outerMargin * 2))
+                contentHeight:  panelFrame.height + (firmwareContent._outerMargin * 2)
+                clip:           true
 
-            ColumnLayout {
-                id: contentColumn
-                anchors.top: panelFrame.top
-                anchors.topMargin: firmwareContent._panelPadding
-                anchors.horizontalCenter: panelFrame.horizontalCenter
-                width: panelFrame.width - (firmwareContent._panelPadding * 2)
-                spacing: firmwareContent._sectionSpacing
+                Rectangle {
+                    id: panelFrame
+                    x: Math.max(firmwareContent._outerMargin, (contentFlickable.width - width) / 2)
+                    y: firmwareContent._outerMargin
+                    width: firmwareContent._panelWidth
+                    height: contentColumn.implicitHeight + (firmwareContent._panelPadding * 2)
+                    radius: popupStyle.cornerRadius
+                    border.color: popupStyle.borderColor
+                    border.width: 1
+                    gradient: Gradient {
+                        orientation: Gradient.Vertical
+                        GradientStop { position: 0.0; color: popupStyle.popupBackground }
+                        GradientStop { position: 1.0; color: "#222222" }
+                    }
+                }
+
+                ColumnLayout {
+                    id: contentColumn
+                    anchors.top: panelFrame.top
+                    anchors.topMargin: firmwareContent._panelPadding
+                    anchors.horizontalCenter: panelFrame.horizontalCenter
+                    width: panelFrame.width - (firmwareContent._panelPadding * 2)
+                    spacing: firmwareContent._sectionSpacing
 
                 Rectangle {
                     Layout.fillWidth: true
@@ -647,7 +862,7 @@ SetupPage {
 
                         GridLayout {
                             Layout.fillWidth: true
-                            columns: 3
+                            columns: firmwareContent._versionGridColumns
                             rowSpacing: ScreenTools.defaultFontPixelHeight * 0.45
                             columnSpacing: ScreenTools.defaultFontPixelWidth * 0.6
 
@@ -866,32 +1081,94 @@ SetupPage {
                             }
                         }
 
-                        ProgressBar {
-                            id:                 progressBar
+                        Rectangle {
+                            Layout.fillWidth:       true
+                            Layout.preferredHeight: noticeLabel.implicitHeight + (ScreenTools.defaultFontPixelHeight * 0.8)
+                            visible:                firmwareContent._upgradeNoticeVisible
+                            radius:                 popupStyle.cornerRadius
+                            color:                  Qt.rgba(firmwareContent._upgradeNoticeColor().r,
+                                                            firmwareContent._upgradeNoticeColor().g,
+                                                            firmwareContent._upgradeNoticeColor().b,
+                                                            0.16)
+                            border.color:           firmwareContent._upgradeNoticeColor()
+                            border.width:           1
+
+                            QGCLabel {
+                                id:                 noticeLabel
+                                anchors.fill:       parent
+                                anchors.margins:    ScreenTools.defaultFontPixelHeight * 0.4
+                                wrapMode:           Text.WordWrap
+                                text:               firmwareContent._upgradeNoticeText
+                                color:              popupStyle.primaryTextColor
+                                font.pointSize:     firmwareContent._bodyPointSize
+                            }
+                        }
+
+                        ColumnLayout {
                             Layout.fillWidth:   true
                             visible:            !flashBootloaderButton.visible
-                            from:               0
-                            to:                 1
+                            spacing:            ScreenTools.defaultFontPixelHeight * 0.25
 
-                            background: Rectangle {
-                                implicitHeight: ScreenTools.defaultFontPixelHeight * 0.9
-                                radius: popupStyle.cornerRadius
-                                color: popupStyle.inputBackground
-                                border.color: popupStyle.borderColor
-                                border.width: 1
+                            RowLayout {
+                                Layout.fillWidth:   true
+                                spacing:            ScreenTools.defaultFontPixelWidth
+
+                                QGCLabel {
+                                    Layout.fillWidth:   true
+                                    text:               firmwareContent._flashInProgress
+                                                            ? (progressBar.value > 0 ? qsTr("正在刷写") : qsTr("准备刷写"))
+                                                            : (progressBar.value >= 1 ? qsTr("刷写完成") : qsTr("等待刷写"))
+                                    font.bold:          true
+                                    color:              popupStyle.primaryTextColor
+                                }
+
+                                QGCLabel {
+                                    text:           qsTr("%1%").arg(Math.round(progressBar.value * 100))
+                                    font.bold:      true
+                                    color:          popupStyle.primaryTextColor
+                                }
                             }
 
-                            contentItem: Item {
-                                Rectangle {
-                                    width: progressBar.visualPosition * parent.width
-                                    height: parent.height
-                                    radius: popupStyle.cornerRadius
-                                    color: progressBar.indeterminate
-                                               ? popupStyle.hoverColor(popupStyle.primaryButtonColor)
-                                               : popupStyle.primaryButtonColor
+                            ProgressBar {
+                                id:                     progressBar
+                                Layout.fillWidth:       true
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.55
+                                from:                   0
+                                to:                     1
 
-                                    Behavior on width { NumberAnimation { duration: popupStyle.stateAnimationDuration } }
-                                    Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+                                background: Rectangle {
+                                    implicitHeight: ScreenTools.defaultFontPixelHeight * 1.55
+                                    radius: popupStyle.cornerRadius
+                                    color: Qt.rgba(popupStyle.primaryButtonColor.r,
+                                                   popupStyle.primaryButtonColor.g,
+                                                   popupStyle.primaryButtonColor.b,
+                                                   0.14)
+                                    border.color: firmwareContent._flashInProgress || progressBar.value > 0
+                                                    ? popupStyle.primaryButtonColor
+                                                    : popupStyle.borderColor
+                                    border.width: 1
+                                }
+
+                                contentItem: Item {
+                                    Rectangle {
+                                        width: Math.max(progressBar.visualPosition * parent.width,
+                                                        progressBar.value > 0 ? ScreenTools.defaultFontPixelWidth * 2 : 0)
+                                        height: parent.height
+                                        radius: popupStyle.cornerRadius
+                                        color: progressBar.indeterminate
+                                                   ? popupStyle.hoverColor(popupStyle.primaryButtonColor)
+                                                   : popupStyle.primaryButtonColor
+
+                                        Behavior on width { NumberAnimation { duration: popupStyle.stateAnimationDuration } }
+                                        Behavior on color { ColorAnimation { duration: popupStyle.stateAnimationDuration } }
+                                    }
+
+                                    QGCLabel {
+                                        anchors.centerIn: parent
+                                        text: qsTr("%1%").arg(Math.round(progressBar.value * 100))
+                                        font.bold: true
+                                        color: popupStyle.primaryTextColor
+                                    }
                                 }
                             }
                         }
@@ -949,6 +1226,7 @@ SetupPage {
                             }
                         }
                     }
+                }
                 }
             }
 

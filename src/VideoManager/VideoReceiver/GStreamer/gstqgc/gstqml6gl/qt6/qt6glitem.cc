@@ -23,7 +23,6 @@
 #endif
 
 #include <stdio.h>
-
 #include <gst/video/video.h>
 #include "qt6glitem.h"
 #include "gstqsg6glnode.h"

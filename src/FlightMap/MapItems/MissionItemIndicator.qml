@@ -17,7 +17,7 @@ MapQuickItem {
 
     anchorPoint.x:  sourceItem.anchorPointX
     anchorPoint.y:  sourceItem.anchorPointY
-    coordinate:     QGroundControl.mapDisplayCoordinate(sourceCoordinate)
+    coordinate:     QGroundControl.chinaOffsetMapActive, QGroundControl.mapDisplayCoordinate(sourceCoordinate)
 
     sourceItem:
         MissionItemIndexLabel {

@@ -13,6 +13,8 @@ SetupPage {
     pageComponent: joystickManager.activeJoystick ? pageComponent : noJoysticksComponent
     pageDescription: joystickManager.activeJoystick ? (vehicleComponent ? vehicleComponent.description : "") : ""
 
+    QGCPopupStyle { id: popupStyle }
+
     Component {
         id: pageComponent
 
@@ -25,10 +27,10 @@ SetupPage {
 
             Rectangle {
                 anchors.fill: parent
-                color: "#202020"
+                color: popupStyle.popupBackground
                 border.width: 1
-                border.color: "#333333"
-                radius: 8
+                border.color: popupStyle.borderColor
+                radius: popupStyle.cornerRadius
             }
 
             QGCFlickable {
@@ -45,10 +47,10 @@ SetupPage {
                     implicitHeight: contentLayout.implicitHeight + pageRoot._margins * 2
                     x: (contentFlick.width - width) / 2
                     y: (contentFlick.contentHeight - implicitHeight) / 2
-                    color: "#2D2D2D"
+                    color: popupStyle.panelBackground
                     border.width: 1
-                    border.color: "#333333"
-                    radius: 8
+                    border.color: popupStyle.borderColor
+                    radius: popupStyle.cornerRadius
 
                     ColumnLayout {
                         id: contentLayout
@@ -137,6 +139,7 @@ SetupPage {
 
                             RemoteControlCalibration {
                                 id: remoteControlCalibration
+                                useDarkStyle: true
 
                                 controller: JoystickConfigController {
                                     joystick: joystickManager.activeJoystick
@@ -236,20 +239,20 @@ SetupPage {
 
             Rectangle {
                 anchors.fill: parent
-                color: "#202020"
+                color: popupStyle.popupBackground
                 border.width: 1
-                border.color: "#333333"
-                radius: 8
+                border.color: popupStyle.borderColor
+                radius: popupStyle.cornerRadius
             }
 
             Rectangle {
                 width: Math.min(parent.width * 0.9, ScreenTools.defaultFontPixelWidth * 82)
                 implicitHeight: centeredTextColumn.implicitHeight + ScreenTools.defaultFontPixelHeight * 2
                 anchors.centerIn: parent
-                color: "#2D2D2D"
+                color: popupStyle.panelBackground
                 border.width: 1
-                border.color: "#333333"
-                radius: 8
+                border.color: popupStyle.borderColor
+                radius: popupStyle.cornerRadius
 
                 ColumnLayout {
                     id: centeredTextColumn
@@ -269,7 +272,7 @@ SetupPage {
                     QGCLabel {
                         Layout.fillWidth: true
                         text: qsTr("未检测到摇杆或游戏手柄。")
-                        color: "#B0B0B0"
+                        color: popupStyle.secondaryTextColor
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
                     }

@@ -33,7 +33,7 @@ Rectangle {
     property var    _missionItem:               missionItem
     property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
     property real   _fieldWidth:                ScreenTools.defaultFontPixelWidth * 10.5
-    property var    _vehicle:                   QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
+    property var    _vehicle:                   QGroundControl.multiVehicleManager.offlineEditingVehicle
     property real   _cameraMinTriggerInterval:  _missionItem.cameraCalc.minTriggerInterval.rawValue
     property string _doneAdjusting:             qsTr("Done")
     property bool   _presetsAvailable:          _missionItem.presetNames.length !== 0

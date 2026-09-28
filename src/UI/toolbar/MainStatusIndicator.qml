@@ -14,6 +14,7 @@ RowLayout {
     property real   _spacing:           ScreenTools.defaultFontPixelWidth / 2
     property bool   _allowForceArm:      false
     property bool   _healthAndArmingChecksSupported: _activeVehicle ? _activeVehicle.healthAndArmingCheckReport.supported : false
+    property var    _readiness:         _activeVehicle ? _activeVehicle.readiness : null
     property bool   _vehicleFlies:      _activeVehicle ? _activeVehicle.airShip || _activeVehicle.fixedWing || _activeVehicle.vtol || _activeVehicle.multiRotor : false
     property var    _vehicleInAir:      _activeVehicle ? _activeVehicle.flying || _activeVehicle.landing : false
     property bool   _vtolInFWDFlight:   _activeVehicle ? _activeVehicle.vtolInFwdFlight : false
@@ -32,6 +33,26 @@ RowLayout {
         return translated
     }
 
+    function requestArm() {
+        if (!_activeVehicle || !_readiness) {
+            return
+        }
+        if (_readiness.armConfirmationRequired) {
+            QGroundControl.showMessageDialog(
+                mainWindow,
+                qsTr("Arm status unconfirmed"),
+                qsTr("The flight controller has not provided an explicit arming decision. Send a normal arm command and let the flight controller run its checks?"),
+                Dialog.Yes | Dialog.Cancel,
+                function() {
+                    if (_activeVehicle) {
+                        _activeVehicle.requestArm(true)
+                    }
+                })
+            return
+        }
+        _activeVehicle.requestArm(false)
+    }
+
     QGCPalette { id: qgcPal }
 
     QGCLabel {
@@ -46,6 +67,8 @@ RowLayout {
         property string _commLostText:      qsTr("Comms Lost")
         property string _readyToFlyText:    qsTr("Ready")
         property string _notReadyToFlyText: qsTr("Not Ready")
+        property string _checkingText:      qsTr("Checking")
+        property string _unconfirmedText:   qsTr("Arm Unconfirmed")
         property string _disconnectedText:  qsTr("Disconnected - Click to manually connect")
         property string _armedText:         qsTr("Armed")
         property string _flyingText:        qsTr("Flying")
@@ -62,12 +85,8 @@ RowLayout {
                     _mainStatusBGColor = "green"
 
                     if (_healthAndArmingChecksSupported) {
-                        if (_activeVehicle.healthAndArmingCheckReport.canArm) {
-                            if (_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
-                                _mainStatusBGColor = "yellow"
-                            }
-                        } else {
-                            _mainStatusBGColor = "red"
+                        if (_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
+                            _mainStatusBGColor = "yellow"
                         }
                     }
 
@@ -79,36 +98,20 @@ RowLayout {
                         return mainStatusLabel._armedText
                     }
                 } else {
-                    if (_healthAndArmingChecksSupported) {
-                        if (_activeVehicle.healthAndArmingCheckReport.canArm) {
-                            if (_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
-                                _mainStatusBGColor = "yellow"
-                            } else {
-                                _mainStatusBGColor = "green"
-                            }
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "red"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
-                    } else if (_activeVehicle.readyToFlyAvailable) {
-                        if (_activeVehicle.readyToFly) {
-                            _mainStatusBGColor = "green"
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "yellow"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
-                    } else {
-                        // Best we can do is determine readiness based on AutoPilot component setup and health indicators from SYS_STATUS
-                        if (_activeVehicle.allSensorsHealthy && _activeVehicle.autopilotPlugin.setupComplete) {
-                            _mainStatusBGColor = "green"
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "yellow"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
+                    if (!_readiness) {
+                        _mainStatusBGColor = "yellow"
+                        return mainStatusLabel._checkingText
                     }
+                    if (_readiness.armAllowed) {
+                        _mainStatusBGColor = _readiness.hasHealthWarnings ? "yellow" : "green"
+                        return mainStatusLabel._readyToFlyText
+                    }
+                    if (_readiness.canRequestArm) {
+                        _mainStatusBGColor = "yellow"
+                        return mainStatusLabel._unconfirmedText
+                    }
+                    _mainStatusBGColor = _readiness.source === 4 ? "yellow" : "red"
+                    return _readiness.source === 4 ? mainStatusLabel._checkingText : mainStatusLabel._notReadyToFlyText
                 }
             } else {
                 _mainStatusBGColor = qgcPal.brandingPurple
@@ -198,7 +201,7 @@ RowLayout {
                 visible: parametersReady
 
                 QGCDelayButton {
-                    enabled:    _armed || !_healthAndArmingChecksSupported || _activeVehicle.healthAndArmingCheckReport.canArm
+                    enabled:    _armed || (_readiness && _readiness.canRequestArm)
                     text:       _armed ? qsTr("Disarm") : (control._allowForceArm ? qsTr("Force Arm") : qsTr("Arm"))
 
                     onActivated: {
@@ -209,7 +212,7 @@ RowLayout {
                                 _allowForceArm = false
                                 _activeVehicle.forceArm()
                             } else {
-                                _activeVehicle.armed = true
+                                control.requestArm()
                             }
                         }
                         mainWindow.closeIndicatorDrawer()

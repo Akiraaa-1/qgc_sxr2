@@ -545,6 +545,8 @@ bool VideoManager::isStreamSource() const
 
 void VideoManager::_videoSourceChanged()
 {
+    _restartBlockedReceivers.clear();
+
     bool changed = false;
     if (_activeVehicle) {
         QGCCameraManager* camMgr = _activeVehicle->cameraManager();
@@ -815,6 +817,19 @@ void VideoManager::_restartVideo(VideoReceiver *receiver)
         return;
     }
 
+    if (_restartBlockedReceivers.contains(receiver)) {
+        qCDebug(VideoManagerLog) << "Video receiver restart blocked until video source changes" << receiver->name();
+        return;
+    }
+
+    if (receiver->started()) {
+        QQuickItem *visibleWidget = _findReceiverWidget(receiver->name());
+        if (visibleWidget && (receiver->widget() == visibleWidget)) {
+            qCDebug(VideoManagerLog) << "Video receiver already bound to the active stream widget" << receiver->name();
+            return;
+        }
+    }
+
     qCDebug(VideoManagerLog) << "Restart video receiver" << receiver->name();
 
     if (receiver->started()) {
@@ -861,6 +876,11 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
         return;
     }
 
+    if (!receiver->sink() && !_ensureReceiverSink(receiver)) {
+        _scheduleReceiverStartWhenVideoItemReady(receiver);
+        return;
+    }
+
     const QString source = _videoSettings->videoSource()->rawValue().toString();
     /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
        So we should allow for some negotiation time for rtsp */
@@ -876,17 +896,8 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         qCWarning(VideoManagerLog) << "Receiver already initialized";
     }
 
-    QQuickItem *widget = window->findChild<QQuickItem*>(receiver->name());
-    if (!widget) {
-        qCCritical(VideoManagerLog) << "stream widget not found" << receiver->name();
-    }
-    receiver->setWidget(widget);
-
-    void *sink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
-    if (!sink) {
-        qCCritical(VideoManagerLog) << "createVideoSink() failed" << receiver->name();
-    }
-    receiver->setSink(sink);
+    Q_UNUSED(window)
+    (void) _ensureReceiverSink(receiver);
 
     (void) connect(receiver, &VideoReceiver::onStartComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "Start complete, status:" << status;
@@ -909,13 +920,25 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::onStopComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Stop complete" << receiver->name() << receiver->uri()  << ", status:" << status;
         receiver->setStarted(false);
-        if (status == VideoReceiver::STATUS_INVALID_URL) {
-            qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
+        if (status == VideoReceiver::STATUS_INVALID_URL || _restartBlockedReceivers.contains(receiver)) {
+            qCDebug(VideoManagerLog) << "Video receiver stopped without automatic restart" << receiver->name();
         } else {
             QTimer::singleShot(1000, receiver, [this, receiver]() {
+                if (_restartBlockedReceivers.contains(receiver)) {
+                    qCDebug(VideoManagerLog) << "Video receiver restart blocked until video source changes" << receiver->name();
+                    return;
+                }
                 qCDebug(VideoManagerLog) << "Restarting video receiver" << receiver->name() << receiver->uri();
                 _startReceiver(receiver);
             });
+        }
+    });
+
+    (void) connect(receiver, &VideoReceiver::onStartDecodingComplete, this, [this, receiver](VideoReceiver::STATUS status) {
+        qCDebug(VideoManagerLog) << "Video" << receiver->name() << "Start decoding complete, status:" << status;
+        if (status != VideoReceiver::STATUS_OK && status != VideoReceiver::STATUS_INVALID_STATE) {
+            _blockReceiverRestart(receiver);
+            _stopReceiver(receiver);
         }
     });
 
@@ -985,9 +1008,124 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     }
 }
 
+QQuickItem *VideoManager::_findReceiverWidget(const QString &name) const
+{
+    if (!_mainWindow) {
+        return nullptr;
+    }
+
+    static constexpr qreal kMinVideoWidgetWidth = 64.0;
+    static constexpr qreal kMinVideoWidgetHeight = 48.0;
+    auto isUsableVideoWidget = [this](QQuickItem *widget) {
+        return widget
+               && (widget->window() == _mainWindow)
+               && (widget->width() >= kMinVideoWidgetWidth)
+               && (widget->height() >= kMinVideoWidgetHeight);
+    };
+
+    QQuickItem *preferredWidget = _preferredVideoWidgets.value(name);
+    if (isUsableVideoWidget(preferredWidget)) {
+        return preferredWidget;
+    }
+
+    const QList<QQuickItem*> widgets = _mainWindow->findChildren<QQuickItem*>(name);
+    QQuickItem *bestWidget = nullptr;
+    qreal bestArea = 0.0;
+
+    for (QQuickItem *widget : widgets) {
+        if (!isUsableVideoWidget(widget)) {
+            continue;
+        }
+
+        const qreal area = widget->width() * widget->height();
+        if (!bestWidget || (area > bestArea)) {
+            bestWidget = widget;
+            bestArea = area;
+        }
+    }
+
+    return bestWidget;
+}
+
+void VideoManager::setVideoSinkTarget(const QString &name, QQuickItem *item)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    if (item) {
+        if (_preferredVideoWidgets.value(name) == item) {
+            return;
+        }
+        qCDebug(VideoManagerLog) << "Set preferred video sink target" << name
+                                  << item << item->metaObject()->className()
+                                  << "size" << item->width() << item->height();
+        _preferredVideoWidgets.insert(name, item);
+    } else {
+        _preferredVideoWidgets.remove(name);
+    }
+}
+
+bool VideoManager::_ensureReceiverSink(VideoReceiver *receiver)
+{
+    if (!receiver) {
+        qCDebug(VideoManagerLog) << "VideoReceiver is NULL";
+        return false;
+    }
+
+    QQuickItem *widget = _findReceiverWidget(receiver->name());
+    if (!widget) {
+        qCDebug(VideoManagerLog) << "Stream widget not ready, delaying video sink creation" << receiver->name();
+        return false;
+    }
+
+    if (receiver->sink() && (receiver->widget() == widget)) {
+        return true;
+    }
+
+    if (receiver->sink()) {
+        qCDebug(VideoManagerLog) << "Rebinding video sink to visible stream widget" << receiver->name();
+        QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
+        receiver->setSink(nullptr);
+    }
+
+    receiver->setWidget(widget);
+
+    qCDebug(VideoManagerLog) << "Creating video sink for widget" << receiver->name()
+                              << widget << widget->metaObject()->className()
+                              << "size" << widget->width() << widget->height();
+
+    void *sink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
+    if (!sink) {
+        qCCritical(VideoManagerLog) << "createVideoSink() failed" << receiver->name();
+        return false;
+    }
+
+    receiver->setSink(sink);
+    return true;
+}
+
+void VideoManager::_scheduleReceiverStartWhenVideoItemReady(VideoReceiver *receiver)
+{
+    if (!receiver || _pendingVideoItemReceivers.contains(receiver)) {
+        return;
+    }
+
+    _pendingVideoItemReceivers.append(receiver);
+    QTimer::singleShot(1000, receiver, [this, receiver]() {
+        _pendingVideoItemReceivers.removeAll(receiver);
+        if (!_videoReceivers.contains(receiver) || !hasVideo()) {
+            return;
+        }
+        _startReceiver(receiver);
+    });
+}
+
 void VideoManager::startVideo()
 {
     qCDebug(VideoManagerLog) << "startVideo";
+
+    _restartBlockedReceivers.clear();
 
     if (!hasVideo()) {
         qCDebug(VideoManagerLog) << "Stream not enabled/configured";
@@ -995,4 +1133,14 @@ void VideoManager::startVideo()
     }
 
     _restartAllVideos();
+}
+
+void VideoManager::_blockReceiverRestart(VideoReceiver *receiver)
+{
+    if (!receiver || _restartBlockedReceivers.contains(receiver)) {
+        return;
+    }
+
+    qCWarning(VideoManagerLog) << "Video receiver restart blocked after decoding failure" << receiver->name();
+    _restartBlockedReceivers.append(receiver);
 }
